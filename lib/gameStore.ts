@@ -40,6 +40,8 @@ export async function createGame(
     integrity_flagged_turns: null,
     adjudication_notes: null,
     revealed_target: null,
+    corrections: [],
+    abandoned_branches: [],
     clarification_prompt: null,
     ...overrides,
   };
@@ -64,6 +66,9 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.integrity_flagged_turns === undefined) record.integrity_flagged_turns = null;
   if (record.adjudication_notes === undefined) record.adjudication_notes = null;
   if (record.revealed_target === undefined) record.revealed_target = null;
+  // Correction/rewind fields, added in 0.3.2.0.
+  if (!Array.isArray(record.corrections)) record.corrections = [];
+  if (!Array.isArray(record.abandoned_branches)) record.abandoned_branches = [];
   // Participant kinds, added in 0.3.0.1. Every pre-existing game was
   // human-vs-AI, so that is the only correct backfill.
   if (record.composer_kind !== "human" && record.composer_kind !== "ai") {

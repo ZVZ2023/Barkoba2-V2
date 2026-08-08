@@ -119,6 +119,21 @@ export interface IntegrityReviewResult {
   reasoning: string;
 }
 
+/**
+ * Audit trail for a corrected answer. Internal diagnostics only — deliberately
+ * NOT shown to the Integrity Review, which judges the corrected branch as the
+ * only branch. Correcting a mistap is ordinary play, and a reviewer told about
+ * it would be inclined to read it as evidence of something.
+ */
+export interface CorrectionRecord {
+  at: string; // ISO 8601
+  turn_index: number;
+  from: ComposerAnswer;
+  to: ComposerAnswer;
+  /** How many downstream turns were discarded as a result. */
+  discarded_turns: number;
+}
+
 export type GameResult =
   | "racer_correct"
   | "racer_incorrect"
@@ -171,6 +186,17 @@ export interface GameRecord {
    * declassification point, or reconsider the requirement.
    */
   revealed_target: string | null;
+  /** Corrected answers, newest last. Diagnostics only. */
+  corrections: CorrectionRecord[];
+  /**
+   * Turn sequences discarded by a rewind, newest last.
+   *
+   * Kept for diagnostics and structurally invisible to gameplay: the Racer
+   * reads only qa_log via toRacerPublicState(), and the Integrity Review reads
+   * only qa_log. Neither can reach this field, so an abandoned branch cannot
+   * influence a question or a verdict.
+   */
+  abandoned_branches: QuestionLogEntry[][];
   clarification_prompt: string | null; // set when phase = clarification_required
 }
 

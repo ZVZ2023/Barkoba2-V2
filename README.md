@@ -111,6 +111,23 @@ The Guess Detector covers English and Hungarian (M3.1). Hungarian needs its own 
 
 ⚠ Hungarian rules are tuned against `test/fixtures/hungarian.ts`, which has **not had a native-speaker pass**. The fixtures are grammatical but unvalidated against real play. Review protocol is at the top of that file: correct the phrasing, never the expected classification.
 
+## Correcting an answer
+
+`POST /api/game/[id]/correct` replaces a previously given answer. Correcting the
+latest answer just replaces it; correcting an earlier one rewinds the game to
+that turn, discards everything generated after it, and gives back the question
+and ambiguous credits those turns consumed.
+
+Counters are **recomputed** from the surviving log rather than decremented, and
+`ambiguous_consumed_credit` flags are rewritten, because whether an AMBIGUOUS
+answer was free depends on its position in the sequence.
+
+Allowed in the `questioning` phase only — once the Racer has committed a guess,
+correcting would let a Composer read the guess and invalidate it.
+
+The endpoint makes no model call: the rewind leaves exactly the state
+`POST /turn` already resumes from.
+
 ## Resolution
 
 `POST /api/game/[id]/resolve` decides the game. Idempotent — a completed game returns its stored result with zero model calls, which matters because the client auto-fires it and each real invocation spends strong-model calls. On failure the phase stays `resolving` and the route returns 502: a game is never decided by an error path.

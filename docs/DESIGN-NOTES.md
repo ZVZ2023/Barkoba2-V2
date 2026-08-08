@@ -793,3 +793,70 @@ rather than recollection:
 Post-completion link sharing does reveal the target, which is separately
 recorded as accepted for V1 (§7). That is a different exposure from the one this
 section defers, and is not covered by it.
+
+---
+
+## 11. Answer correction and rewind (`0.3.2.0`)
+
+Found in live mobile play: a mistapped YES is unrecoverable, and the whole
+remaining game proceeds from a false answer.
+
+### Counters are recomputed, never decremented
+
+`question_count` and `ambiguous_count` are incremented by the turn route, but
+they are **fully derivable from `qa_log`**. A rewind therefore truncates the log
+and recomputes both from what survives. Subtracting would mean reversing
+arithmetic across an arbitrary span of turns, which is where this class of
+feature usually goes quietly wrong — and quietly is the problem, since the
+failure changes how many questions the Racer has left without ever erroring.
+
+**The subtlety that would otherwise miscount:** `ambiguous_consumed_credit` is
+*positional*, not intrinsic. With a free allowance of 3, if turns 1–3 were
+AMBIGUOUS (free) and turn 4 AMBIGUOUS (charged), correcting turn 1 to YES
+promotes turn 4 into the free tier — its stored flag is now wrong. So the flags
+are **rewritten** across the whole retained log rather than trusted. This is
+asserted directly in `test/rewind.test.ts`.
+
+### The resume needs no new Racer logic
+
+After truncation the game is in a state the system already handles: last entry
+answered, nothing pending. `POST /turn` with no answer generates the next
+question through the existing path, so budget accounting, guess detection, and
+the idempotency guard are all untouched. **The correction endpoint makes no
+model call at all.**
+
+### Correction closes when the Racer commits
+
+Allowed in `questioning` only. Once the Racer guesses or concedes, the Composer
+can see the guess on screen, and a rewind at that point would let them read the
+guess and retroactively invalidate it. That is not recovery, it is a cheat, and
+no audit trail makes it acceptable — so the window is closed rather than
+watched.
+
+**Accepted cost:** a mistap on the very answer that triggered the guess is
+unrecoverable. That is the price of closing the vector, and it is the honest
+trade rather than a gap.
+
+### The audit trail is internal
+
+`corrections[]` and `abandoned_branches[][]` are kept for diagnostics and are
+**deliberately not shown to the Integrity Review**, which judges the corrected
+branch as the only branch. Correcting a mistap is ordinary play; a reviewer told
+about it would be inclined to read it as evidence of something.
+
+Invisibility is structural, not promised: the Racer reads only `qa_log` via
+`toRacerPublicState()`, and the Integrity Review reads only `qa_log`. A test
+asserts a discarded question cannot reach the Racer by any path.
+
+### Concurrency
+
+KV has no compare-and-swap, so a correction racing an in-flight turn would
+interleave two read-modify-write cycles and corrupt the log. The client sends
+`expected_log_length`; a mismatch returns 409 and the client refetches.
+
+### No confirmation dialogs
+
+Accidental taps are occasional; confirming every YES/NO would tax every turn to
+guard against a rare event. Instead the cost of a rewind is shown inside the
+correction control itself — "discards the 14 turns after it" — so it is visible
+at the moment of choosing, without a modal in the main loop.

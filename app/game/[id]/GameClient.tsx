@@ -23,6 +23,12 @@ function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
   return last.composer_response === null ? last : null;
 }
 
+/** How many turns a correction at this turn would discard. */
+function discardCount(game: GameRecord, turnIndex: number): number {
+  const index = game.qa_log.findIndex((e) => e.turn_index === turnIndex);
+  return index < 0 ? 0 : game.qa_log.length - index - 1;
+}
+
 function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   return game.qa_log.filter(
     (e) => e.turn_type !== "question" || e.composer_response !== null
@@ -42,9 +48,13 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
   const [error, setError] = useState<string | null>(null);
   const [ambiguousMode, setAmbiguousMode] = useState(false);
   const [explanation, setExplanation] = useState("");
+  const [correcting, setCorrecting] = useState<number | null>(null);
+  const [correctionExplanation, setCorrectionExplanation] = useState("");
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
-  const kickedOff = useRef(false);
+  // Keyed on qa_log length rather than a boolean, so the resume also fires
+  // after a rewind truncates the log — not only on the opening turn.
+  const autoTurnFor = useRef<number | null>(null);
   const resolveFired = useRef(false);
 
   const pending = pendingQuestion(game);
@@ -85,6 +95,37 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
     [game.game_id]
   );
 
+  const correctAnswer = useCallback(
+    async (turnIndex: number, answer: ComposerAnswer, explanation?: string) => {
+      setBusy(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/game/${game.game_id}/correct`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            turn_index: turnIndex,
+            answer,
+            ambiguous_explanation: explanation,
+            // Optimistic concurrency: refuses if the game moved on meanwhile.
+            expected_log_length: game.qa_log.length,
+          }),
+        });
+        const data = await res.json();
+        if (data.game) setGame(data.game as GameRecord);
+        if (data.ambiguous) setBudget(data.ambiguous as AmbiguousBudget);
+        if (!res.ok) setError(data.message || "Could not correct that answer.");
+      } catch {
+        setError("Network error — please try again.");
+      } finally {
+        setBusy(false);
+        setCorrecting(null);
+        setCorrectionExplanation("");
+      }
+    },
+    [game.game_id, game.qa_log.length]
+  );
+
   const resolveGame = useCallback(async () => {
     setResolving(true);
     setResolveError(null);
@@ -115,17 +156,19 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
     void resolveGame();
   }, [game.phase, resolveGame]);
 
-  // Kick off the Racer's opening question. The ref guards React strict-mode's
-  // double-invoked effect in development; the route's idempotency guard covers
-  // every other duplicate path.
+  // Ask the Racer for the next question whenever the game is live and nothing
+  // is pending. That covers the opening turn and the resume after a rewind,
+  // which leaves exactly the same state: last entry answered, none pending.
+  // The ref keys on log length so it fires once per state, and the route's
+  // idempotency guard covers every other duplicate path.
   useEffect(() => {
-    if (kickedOff.current) return;
     if (game.phase !== "questioning") return;
     if (pendingQuestion(game)) return;
-    if (game.qa_log.length > 0) return;
-    kickedOff.current = true;
+    if (busy) return;
+    if (autoTurnFor.current === game.qa_log.length) return;
+    autoTurnFor.current = game.qa_log.length;
     void sendTurn();
-  }, [game, sendTurn]);
+  }, [game, busy, sendTurn]);
 
   const turns = answeredTurns(game);
   const questionsLeft = Math.max(0, game.max_questions - game.question_count);
@@ -188,6 +231,80 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
                     <p className="min-w-0 break-words text-xs italic text-neutral-500">
                       {entry.ambiguous_explanation}
                     </p>
+                  </div>
+                )}
+
+                {game.phase === "questioning" && correcting !== entry.turn_index && (
+                  <div className="flex min-w-0 gap-3">
+                    <span className="w-6 shrink-0 sm:w-8" />
+                    <button
+                      onClick={() => {
+                        setCorrecting(entry.turn_index);
+                        setCorrectionExplanation(entry.ambiguous_explanation ?? "");
+                      }}
+                      disabled={busy}
+                      className="text-xs text-neutral-600 underline underline-offset-2 disabled:opacity-40"
+                    >
+                      Correct answer
+                    </button>
+                  </div>
+                )}
+
+                {correcting === entry.turn_index && (
+                  <div className="flex min-w-0 gap-3">
+                    <span className="w-6 shrink-0 sm:w-8" />
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 p-3">
+                      <p className="text-xs text-neutral-400">
+                        {discardCount(game, entry.turn_index) > 0 ? (
+                          <>
+                            Correcting this rewinds the game to turn {entry.turn_index} and
+                            discards the {discardCount(game, entry.turn_index)} turns after
+                            it. Questions used since then are given back.
+                          </>
+                        ) : (
+                          <>Replace your answer to this question.</>
+                        )}
+                      </p>
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => void correctAnswer(entry.turn_index, "YES")}
+                          disabled={busy}
+                          className="min-h-11 flex-1 rounded-md bg-emerald-900/60 px-3 py-2.5 text-sm font-medium text-emerald-100 disabled:opacity-40 sm:flex-none"
+                        >
+                          Yes
+                        </button>
+                        <button
+                          onClick={() => void correctAnswer(entry.turn_index, "NO")}
+                          disabled={busy}
+                          className="min-h-11 flex-1 rounded-md bg-red-900/60 px-3 py-2.5 text-sm font-medium text-red-100 disabled:opacity-40 sm:flex-none"
+                        >
+                          No
+                        </button>
+                        <button
+                          onClick={() =>
+                            void correctAnswer(
+                              entry.turn_index,
+                              "AMBIGUOUS",
+                              correctionExplanation
+                            )
+                          }
+                          disabled={busy}
+                          className="min-h-11 flex-1 rounded-md border border-amber-800 px-3 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-40 sm:flex-none"
+                        >
+                          Ambiguous
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => {
+                          setCorrecting(null);
+                          setCorrectionExplanation("");
+                        }}
+                        disabled={busy}
+                        className="self-start text-xs text-neutral-500 underline underline-offset-2"
+                      >
+                        Cancel
+                      </button>
+                    </div>
                   </div>
                 )}
               </>
