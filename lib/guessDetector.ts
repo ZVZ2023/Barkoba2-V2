@@ -1,0 +1,284 @@
+// ---------------------------------------------------------------------------
+// Guess Detector — deterministic heuristic pass. No LLM call, no I/O, no
+// randomness. Pure function of a single string, which is what makes it
+// testable and what makes its behavior auditable after the fact.
+//
+// WHY THIS EXISTS AT ALL, given that the Racer already emits a forced enum
+// `action` field: the enum catches declared guesses. It does not catch the
+// case where the Racer sets action="question" but the text is functionally a
+// guess ("Is it the handle on your lawnmower?"). That question, answered YES,
+// ends the game without ever having been adjudicated. This module catches it.
+//
+// WHAT HAPPENS ON A FLAG (V1): the flag does not end the turn and is never
+// shown to the human Composer. The Racer is re-prompted internally to declare
+// its own intent — see resolveGuessIntent() in lib/prompts/racer.ts. In V1 the
+// Racer is an AI, so there is no human on that side of the table to confirm
+// with. A human-facing confirmation control belongs to Phase 2's human-Racer
+// mode and is documented, not built, in docs/DESIGN-NOTES.md.
+//
+// BIAS: a flag costs only an internal re-prompt, with no penalty to either
+// player. A miss lets a guess score as a free question. Over-flagging is
+// therefore the safe direction and the rules are tuned accordingly.
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// LANGUAGE COVERAGE
+//
+// The scoring machinery, proper-noun rule, and quoted-span rule are
+// language-neutral. English and Hungarian each contribute their own
+// explicit-guess frames, specific-instance patterns, and hedges.
+//
+// The Hungarian rules solve a problem English does not have: Hungarian marks
+// possession with a SUFFIX ("fűnyíród" = "your lawnmower"), so there is no
+// separable word like "your" to match. The discriminator used here is the
+// definite article — possessed nouns in these constructions follow "a"/"az"
+// ("a fűnyíród"), whereas the 2nd-person verb forms sharing the same -d ending
+// ("tudod", "látod", "gondolod") do not. That one constraint is what stops the
+// rule firing on every second verb.
+//
+// ⚠ Hungarian rules are tuned against test/fixtures/hungarian.ts, which has NOT
+// had a native-speaker pass. Treat Hungarian accuracy as provisional until it
+// does. See docs/DESIGN-NOTES.md §5.
+// ---------------------------------------------------------------------------
+
+export const FLAG_THRESHOLD = 3;
+
+export const WEIGHTS = {
+  explicitGuessFrame: 3,
+  properNoun: 2,
+  properNounAdditional: 1, // added once if two or more distinct proper nouns
+  specificInstance: 2,
+  quotedString: 2,
+  possessiveDeictic: 1,
+  possessiveSuffixHu: 2,
+  categoryHedge: -2,
+} as const;
+
+/** Hungarian letters, for suffix patterns where \w is not enough. */
+const HU_WORD = "[A-Za-zÁÉÍÓÖŐÚÜŰáéíóöőúüű-]";
+
+// --- Explicit guess frames -------------------------------------------------
+
+/** English phrases only ever used to declare or float a guess. */
+export const EXPLICIT_GUESS_FRAMES_EN: RegExp[] = [
+  /\bis the answer\b/i,
+  /\bthe answer is\b/i,
+  /\bare you thinking of\b/i,
+  /\bmy guess is\b/i,
+  /\bi(?:'m| am) guessing\b/i,
+  /\bi(?:'ll| will) guess\b/i,
+  /\bis your (?:secret|target|answer|word|thing)\b/i,
+  /\bfinal answer\b/i,
+];
+
+/**
+ * Hungarian equivalents. "gondolsz" ("you are thinking of") is the
+ * highest-yield one: in a Racer's question it is essentially always the setup
+ * for naming the target, and it sidesteps the suffix problem because it is a
+ * verb stem, not a possessed noun.
+ */
+export const EXPLICIT_GUESS_FRAMES_HU: RegExp[] = [
+  /\ba tippem\b/i,
+  /\btippelek\b/i,
+  /\bgondolsz\b/i,
+  /\ba megfejtés\b/i,
+  /\ba megoldás\b/i,
+  /\ba titkod\b/i,
+  /\bvégső válasz/i,
+  /\ba válasz az\b/i,
+];
+
+export const ALL_EXPLICIT_GUESS_FRAMES: RegExp[] = [
+  ...EXPLICIT_GUESS_FRAMES_EN,
+  ...EXPLICIT_GUESS_FRAMES_HU,
+];
+
+// --- Specific-instance patterns --------------------------------------------
+
+/**
+ * A definite noun phrase anchored to a specific instance in the Composer's
+ * world: "the handle on your lawnmower". Generic questions rarely take this
+ * shape.
+ */
+export const SPECIFIC_INSTANCE_PATTERNS_EN: RegExp[] = [
+  /\bthe\s+[\w-]+(?:\s+[\w-]+)?\s+(?:on|of|from|in|inside|attached to|next to|belonging to)\s+(?:your|the|my)\s+[\w-]+/i,
+];
+
+/**
+ * A possessed thing belonging to another possessed thing — "a fűnyíród
+ * fogantyúja", "a kerékpárod kormánya". The Hungarian shape of "the handle on
+ * your lawnmower", and the construction the pre-M3.1 detector missed entirely.
+ */
+export const SPECIFIC_INSTANCE_PATTERNS_HU: RegExp[] = [
+  new RegExp(`\\b(?:a|az)\\s+${HU_WORD}{3,}d\\s+${HU_WORD}{3,}(?:ja|je|a|e)\\b`, "i"),
+];
+
+/** "a/az + noun carrying the 2nd-person possessive -d": "a fűnyíród". */
+export const POSSESSIVE_SUFFIX_PATTERNS_HU: RegExp[] = [
+  new RegExp(`\\b(?:a|az)\\s+${HU_WORD}{3,}d\\b`, "i"),
+];
+
+/** Reference to a specific thing the Composer possesses. Weak signal alone. */
+export const POSSESSIVE_DEICTIC_PATTERNS_EN: RegExp[] = [/\byour\s+[\w-]+/i];
+
+/** Double-quoted spans — naming a thing verbatim rather than describing it. */
+export const QUOTED_STRING_PATTERNS: RegExp[] = [/"[^"]{2,}"/, /“[^”]{2,}”/];
+
+// --- Hedges, in two tiers --------------------------------------------------
+//
+// The tiers exist because a single hedge tier gets one of two cases wrong.
+//
+//   "Is the answer a type of tool?"        -> asks about a CATEGORY. Not a guess.
+//   "Arra gondolsz, hogy ez egy csavarhúzó?" -> names a THING. Is a guess.
+//
+// Both contain a guess frame; both contain something hedge-shaped. What
+// separates them is whether the hedge is real category vocabulary ("type of",
+// "fajta") or merely a copula/comparison frame ("is it a", "ez egy") that
+// appears just as readily inside a guess. So:
+//
+//   STRONG hedges  — explicit category vocabulary. Can offset a guess frame.
+//   WEAK hedges    — framing only. Apply only when no guess frame is present.
+
+export const CATEGORY_HEDGE_STRONG: RegExp[] = [
+  /\b(?:type|kind|category|sort|class|form) of\b/i,
+  /\b(?:fajta|féle|típus)/i,
+];
+
+export const CATEGORY_HEDGE_WEAK: RegExp[] = [
+  // English
+  /\bis it (?:a|an|something|anything|more|less|bigger|smaller|larger|heavier|lighter|older|newer|generally|typically|mostly|usually|ever|always)\b/i,
+  /\bis it (?:alive|abstract|physical|natural|man-?made|edible|electronic|tangible|fictional)\b/i,
+  /\bdoes it\b/i,
+  /\bcan it\b/i,
+  /\bcould it\b/i,
+  /\bwould it\b/i,
+  /\bdo you\b/i,
+  /\bwas it (?:a|an|made|created|invented|built)\b/i,
+  // Hungarian
+  /\bez egy\b/i,
+  /\bez valamilyen\b/i,
+  new RegExp(`\\b${HU_WORD}{2,}-e\\b`, "i"), // "-e" interrogative clitic
+  /\b(?:nagyobb|kisebb|nehezebb|könnyebb|régebbi|újabb)\b/i,
+  /\b(?:élőlény|ember alkotta|mesterséges|természetes|elfér|készült)\b/i,
+  /\bvan\s+\S+\s+alkatrésze\b/i,
+  /\bszoktad\b/i,
+];
+
+/** Capitalized tokens that are not evidence of a proper noun. */
+const PROPER_NOUN_STOPWORDS = new Set([
+  "I", "I'm", "I'll", "I've",
+  "A", "An", "The", "Is", "Are", "Does", "Do", "Was", "Were",
+  "Can", "Could", "Would", "Has", "Have", "Did", "Yes", "No",
+]);
+
+export interface GuessDetectionResult {
+  flagged: boolean;
+  score: number;
+  /** Names of the rules that fired, for post-hoc tuning and log inspection. */
+  matched: string[];
+}
+
+/**
+ * Find capitalized tokens that are not sentence-initial. A guess very often
+ * names something; a narrowing question rarely does.
+ */
+function findProperNouns(text: string): string[] {
+  const tokens = text.split(/\s+/);
+  const found: string[] = [];
+  let atSentenceStart = true;
+
+  for (const rawToken of tokens) {
+    const token = rawToken.replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}']+$/gu, "");
+
+    if (token.length > 0 && !atSentenceStart) {
+      const first = token.charAt(0);
+      const isCapitalized =
+        first !== first.toLowerCase() && first === first.toUpperCase();
+      if (isCapitalized && !PROPER_NOUN_STOPWORDS.has(token)) {
+        found.push(token);
+      }
+    }
+
+    if (token.length > 0) {
+      atSentenceStart = /[.!?]["')\]]?$/.test(rawToken);
+    }
+  }
+
+  return Array.from(new Set(found));
+}
+
+/**
+ * Score a Racer question for guess-likeness. Only call this when the Racer's
+ * declared action is "question" — a declared guess needs no detection.
+ */
+export function detectGuess(questionText: string): GuessDetectionResult {
+  const text = (questionText || "").trim();
+  if (!text) {
+    return { flagged: false, score: 0, matched: [] };
+  }
+
+  let score = 0;
+  const matched: string[] = [];
+
+  const hasExplicitFrame = ALL_EXPLICIT_GUESS_FRAMES.some((re) => re.test(text));
+  if (hasExplicitFrame) {
+    score += WEIGHTS.explicitGuessFrame;
+    matched.push("explicit_guess_frame");
+  }
+
+  const properNouns = findProperNouns(text);
+  const hasProperNoun = properNouns.length > 0;
+  if (hasProperNoun) {
+    score += WEIGHTS.properNoun;
+    matched.push("proper_noun");
+    if (properNouns.length >= 2) {
+      score += WEIGHTS.properNounAdditional;
+      matched.push("proper_noun_multiple");
+    }
+  }
+
+  const hasSpecificInstance =
+    SPECIFIC_INSTANCE_PATTERNS_EN.some((re) => re.test(text)) ||
+    SPECIFIC_INSTANCE_PATTERNS_HU.some((re) => re.test(text));
+  if (hasSpecificInstance) {
+    score += WEIGHTS.specificInstance;
+    matched.push("specific_instance");
+  }
+
+  const hasQuotedString = QUOTED_STRING_PATTERNS.some((re) => re.test(text));
+  if (hasQuotedString) {
+    score += WEIGHTS.quotedString;
+    matched.push("quoted_string");
+  }
+
+  if (POSSESSIVE_DEICTIC_PATTERNS_EN.some((re) => re.test(text))) {
+    score += WEIGHTS.possessiveDeictic;
+    matched.push("possessive_deictic");
+  }
+
+  // Weighted above English "your" because the article+suffix construction
+  // specifically picks out a possessed instance, where English "your" also
+  // shows up in ordinary comparisons ("bigger than your hand").
+  const hasHuPossessive = POSSESSIVE_SUFFIX_PATTERNS_HU.some((re) => re.test(text));
+  if (hasHuPossessive) {
+    score += WEIGHTS.possessiveSuffixHu;
+    matched.push("possessive_suffix_hu");
+  }
+
+  // Naming evidence disables hedging entirely: a question that names a
+  // specific entity is not rescued by category-shaped preamble.
+  const hasNamingEvidence =
+    hasProperNoun || hasSpecificInstance || hasQuotedString || hasHuPossessive;
+
+  const hasStrongHedge = CATEGORY_HEDGE_STRONG.some((re) => re.test(text));
+  const hasWeakHedge = CATEGORY_HEDGE_WEAK.some((re) => re.test(text));
+  const hedgeApplies =
+    !hasNamingEvidence && (hasStrongHedge || (hasWeakHedge && !hasExplicitFrame));
+
+  if (hedgeApplies) {
+    score += WEIGHTS.categoryHedge;
+    matched.push(hasStrongHedge ? "category_hedge_strong" : "category_hedge_weak");
+  }
+
+  return { flagged: score >= FLAG_THRESHOLD, score, matched };
+}

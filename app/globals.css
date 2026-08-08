@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ---------------------------------------------------------------------------
+   Mobile overflow containment.
+
+   Root cause of the landing-screen clipping: `main` had `mx-auto max-w-xl` but
+   no `w-full`, and flex rows lacked `min-w-0`. Flex items default to
+   `min-width: auto`, so one long unbroken string forces the row wider than the
+   viewport; `mx-auto` then centres that oversized box and pushes its LEFT edge
+   off-screen — which is why the title lost its first character while other
+   text ran off to the right. One mechanism, two symptoms.
+
+   The utility classes fix the source. These rules are the backstop, so a
+   future long string cannot reintroduce it.
+--------------------------------------------------------------------------- */
+
+html {
+  /* Stop iOS Safari inflating text in landscape, which re-triggers overflow. */
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  /* Long targets and guesses are user input and can be arbitrarily long. */
+  overflow-wrap: break-word;
+}
+
+html,
+body {
+  /* Nothing should ever be reachable only by horizontal scrolling. */
+  overflow-x: hidden;
+}

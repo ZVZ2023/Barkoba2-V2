@@ -1,0 +1,285 @@
+import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "crypto";
+import { getGame, saveGame } from "@/lib/gameStore";
+import { toRacerPublicState } from "@/lib/racerState";
+import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
+import { detectGuess } from "@/lib/guessDetector";
+import { consumeModelCall } from "@/lib/callBudget";
+import { env } from "@/lib/env";
+import type {
+  ComposerAnswer,
+  GameRecord,
+  GuessIntentOutcome,
+  QuestionLogEntry,
+} from "@/lib/types";
+
+// This route deliberately imports neither lib/secretStore.ts nor anything that
+// does. It runs the entire question loop on public state alone.
+
+export const maxDuration = 60;
+
+interface TurnBody {
+  answer?: ComposerAnswer;
+  ambiguous_explanation?: string;
+}
+
+const VALID_ANSWERS: ComposerAnswer[] = ["YES", "NO", "AMBIGUOUS"];
+
+function ambiguousBudget(game: GameRecord) {
+  const allowance = env.maxFreeAmbiguousAnswers();
+  const freeRemaining = Math.max(0, allowance - game.ambiguous_count);
+  return {
+    used: game.ambiguous_count,
+    free_allowance: allowance,
+    free_remaining: freeRemaining,
+    // AMBIGUOUS is never refused. Past the free allowance it costs a question
+    // credit instead — the Composer is never forced into a misleading YES/NO.
+    next_costs_credit: freeRemaining === 0,
+  };
+}
+
+function respond(game: GameRecord, status = 200) {
+  return NextResponse.json(
+    { game, ambiguous: ambiguousBudget(game) },
+    { status }
+  );
+}
+
+/** The most recent question awaiting a Composer answer, if any. */
+function findPendingEntry(game: GameRecord): QuestionLogEntry | null {
+  for (let i = game.qa_log.length - 1; i >= 0; i -= 1) {
+    const entry = game.qa_log[i];
+    if (!entry) continue;
+    if (entry.turn_type !== "question") return null;
+    return entry.composer_response === null ? entry : null;
+  }
+  return null;
+}
+
+function newLogEntry(turnIndex: number): QuestionLogEntry {
+  return {
+    id: randomUUID(),
+    turn_index: turnIndex,
+    turn_type: "question",
+    racer_output_raw: "",
+    question_text: null,
+    guess_text: null,
+    composer_response: null,
+    ambiguous_explanation: null,
+    guess_detector_flagged: false,
+    guess_detector_method: null,
+    guess_intent_outcome: null,
+    ambiguous_consumed_credit: false,
+    timestamp: new Date().toISOString(),
+    quality_score: null,
+    information_gain: null,
+    strategy_classification: null,
+    integrity_flag: null,
+    confidence: null,
+    latency_ms: null,
+  };
+}
+
+export async function POST(
+  req: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const gameId = params.id;
+
+  const game = await getGame(gameId);
+  if (!game) {
+    return NextResponse.json(
+      { error: "not_found", message: "No such game, or it has expired." },
+      { status: 404 }
+    );
+  }
+
+  if (game.phase !== "questioning") {
+    return NextResponse.json(
+      {
+        error: "wrong_phase",
+        message: `This game is in phase "${game.phase}" and is not accepting turns.`,
+        game,
+      },
+      { status: 409 }
+    );
+  }
+
+  let body: TurnBody = {};
+  if (req.headers.get("content-length") !== "0") {
+    try {
+      body = (await req.json()) as TurnBody;
+    } catch {
+      body = {};
+    }
+  }
+
+  const answer = body.answer;
+  if (answer !== undefined && !VALID_ANSWERS.includes(answer)) {
+    return NextResponse.json(
+      {
+        error: "invalid_answer",
+        message: `answer must be one of ${VALID_ANSWERS.join(", ")}.`,
+      },
+      { status: 400 }
+    );
+  }
+
+  const pending = findPendingEntry(game);
+
+  // -------------------------------------------------------------------------
+  // Step 1 — record the Composer's answer, if one was supplied.
+  // -------------------------------------------------------------------------
+  if (answer) {
+    if (!pending) {
+      return NextResponse.json(
+        {
+          error: "no_pending_question",
+          message: "There is no unanswered question to respond to.",
+          game,
+        },
+        { status: 409 }
+      );
+    }
+
+    pending.composer_response = answer;
+
+    if (answer === "AMBIGUOUS") {
+      pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
+      // Never rejected. Free up to the allowance, then it costs a question
+      // credit. Forcing a YES/NO here would produce exactly the misleading
+      // answer AMBIGUOUS exists to prevent.
+      const costsCredit = game.ambiguous_count >= env.maxFreeAmbiguousAnswers();
+      if (costsCredit) {
+        game.question_count += 1;
+        pending.ambiguous_consumed_credit = true;
+      }
+      game.ambiguous_count += 1;
+    } else {
+      pending.ambiguous_explanation = null;
+      game.question_count += 1;
+    }
+  } else if (pending) {
+    // -----------------------------------------------------------------------
+    // Idempotency guard. A pending question with no answer supplied means a
+    // duplicate request — React strict-mode double-effect, a double click, a
+    // client retry. Return what is already there instead of burning a model
+    // call and desynchronising question_count. KV has no compare-and-swap, so
+    // this guard is the only thing standing between a double-fire and a
+    // corrupted log.
+    // -----------------------------------------------------------------------
+    return respond(game);
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 2 — global spend ceiling. Checked before every model call, fails closed.
+  // -------------------------------------------------------------------------
+  const budget = await consumeModelCall("racer");
+  if (!budget.allowed) {
+    await saveGame(game); // the answer recorded above must not be lost
+    return NextResponse.json(
+      {
+        error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+        message: budget.failedClosed
+          ? "The service is temporarily unable to verify its call budget. Please try again shortly."
+          : "Barkóba has hit its global daily limit for AI turns. Please try again tomorrow.",
+        game,
+      },
+      { status: budget.failedClosed ? 503 : 429 }
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 3 — the Racer's turn, on narrowed public state only.
+  // -------------------------------------------------------------------------
+  const forceFinal = game.question_count >= game.max_questions;
+  const racerState = toRacerPublicState(game);
+
+  let turn;
+  try {
+    turn = await runRacerTurn(racerState, { forceFinal });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] Racer call failed:", err);
+    await saveGame(game); // preserve the recorded answer
+    return NextResponse.json(
+      {
+        error: "racer_unavailable",
+        message: "The Racer could not take its turn right now. Please try again.",
+        game,
+      },
+      { status: 502 }
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 4 — Guess Detector, then internal intent resolution if it fires.
+  //
+  // The flag is never surfaced to the human Composer. In V1 the Racer is an AI
+  // with forced structured output, so the party whose intent is in question is
+  // the one re-prompted. See docs/DESIGN-NOTES.md for the Phase 2 human-Racer
+  // variant, which is documented and deliberately not built.
+  // -------------------------------------------------------------------------
+  let flagged = false;
+  let intentOutcome: GuessIntentOutcome | null = null;
+
+  if (turn.action === "question" && turn.question_text) {
+    const detection = detectGuess(turn.question_text);
+    if (detection.flagged) {
+      flagged = true;
+
+      const resolutionBudget = await consumeModelCall("racer");
+      if (!resolutionBudget.allowed) {
+        // Budget ran out mid-turn. Fail safe for the player: treat the flagged
+        // question as a question rather than silently converting it to a guess.
+        intentOutcome = "continue_questioning";
+      } else {
+        try {
+          const resolution = await resolveGuessIntent(racerState, turn.question_text);
+          intentOutcome = resolution.resolution;
+
+          if (resolution.resolution === "confirm_guess") {
+            turn = {
+              ...turn,
+              action: "guess" as const,
+              guess_text: resolution.guess_text ?? turn.question_text,
+              question_text: null,
+            };
+          } else if (resolution.revised_question) {
+            turn = { ...turn, question_text: resolution.revised_question };
+          }
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error("[barkoba] Guess-intent resolution failed:", err);
+          // Same fail-safe: an unresolved flag stays a question.
+          intentOutcome = "continue_questioning";
+        }
+      }
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 5 — append the turn and transition.
+  // -------------------------------------------------------------------------
+  const entry = newLogEntry(game.qa_log.length + 1);
+  entry.turn_type = turn.action;
+  entry.racer_output_raw = JSON.stringify(turn);
+  entry.question_text = turn.question_text;
+  entry.guess_text = turn.guess_text;
+  entry.guess_detector_flagged = flagged;
+  entry.guess_detector_method = flagged ? "heuristic" : null;
+  entry.guess_intent_outcome = intentOutcome;
+  // latency_ms and the other dormant fields stay null. They are schema-ready,
+  // not implemented — populating them is a separate, explicit decision.
+
+  game.qa_log.push(entry);
+
+  if (turn.action === "guess" || turn.action === "concede") {
+    game.phase = "resolving";
+    game.final_action = turn.action;
+    game.final_guess_text = turn.guess_text;
+  }
+
+  await saveGame(game);
+  return respond(game);
+}
