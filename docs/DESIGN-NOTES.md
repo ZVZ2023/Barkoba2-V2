@@ -1134,3 +1134,68 @@ failure has not been observed in real play.
 
 **Duplicate-question warning** ("You already asked this. Submit anyway?").
 Deferred; not a Milestone 2 blocker.
+
+---
+
+## 16. `0.6.0.3` — generic-category AMBIGUOUS (provisional Milestone 2 sign-off)
+
+### The defect
+
+Medium game, target `penguin`, budget 35, Racer lost 35/35 guessing
+`diving-petrel`. Questions like "Africa?" were answered YES because *some*
+members of the category fit — sending the Racer down a branch most of the
+category does not support.
+
+### The correction, and the trap in making it
+
+`0.6.0.1` pushed hard AWAY from AMBIGUOUS after the bicycle game. This pushes
+back TOWARD it. Appending the new rule without reconciling the two would simply
+swing the model back to over-using AMBIGUOUS, and we would have traded one
+defect for the one we just fixed.
+
+So the prompt now names **exactly two** justifications, and a test that
+separates them from everything else:
+
+1. **Two readings of the question disagree.**
+2. **The category itself splits** — the question is true of some members and
+   false of others.
+
+> The test that separates these: does the split fall INSIDE the locked target,
+> or have I merely found the question hard?
+
+Members of the category disagreeing is a real split. Nuance, caveats and edge
+cases are not. The `0.6.0.1` rule survives intact: a question the granularity or
+definition settles must be answered, and an explanation that resolves the
+question proves the question was answerable.
+
+### Ordinary language, extended
+
+"Does it spend most of its time over open water?" about a bird is most naturally
+about flying above water. The prompt now forbids stretching wording toward
+whichever reading yields the more convenient answer. If two genuinely reasonable
+readings materially change the answer, that is AMBIGUOUS — not licence to pick.
+
+### Non-disclosure, extended to the split case
+
+A category-split explanation must say that members differ **without naming what
+differs**: species, regions and subtypes identify a category as surely as its
+name. The permitted shape is "some members of the target category fit that
+description while others do not".
+
+### A fallback that could itself leak
+
+Testing the recommended wording against the guard surfaced something real: the
+standard replacement text contains "category" and "characteristic". If the
+locked target were one of those, substituting it would have handed over the
+target **while purporting to protect it**.
+
+There is now a two-stage fallback — a minimal replacement carrying no content
+words, used whenever the ordinary one would disclose. Degenerate targets, but a
+fallback that can leak is not a fallback.
+
+### No new architecture
+
+No taxonomy, no category schema, no all/most/some fields, no species data, no
+ontology, no probabilistic scoring, no external lookup, no new granularity
+types. `locked target + granularity + YES/NO/AMBIGUOUS + explanation` was
+sufficient. This is a decision-policy change to one prompt.

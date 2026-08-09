@@ -20,6 +20,17 @@
 export const SAFE_AMBIGUOUS_EXPLANATION =
   "This characteristic varies significantly within the target category, so neither YES nor NO would be reliably accurate.";
 
+/**
+ * Used when the ordinary replacement would ITSELF disclose.
+ *
+ * The primary replacement contains the words "category" and "characteristic".
+ * If the locked target happens to be one of them, substituting it would hand
+ * over the target while purporting to protect it. Degenerate targets, but a
+ * fallback that can leak is not a fallback. This one carries no content words.
+ */
+export const MINIMAL_AMBIGUOUS_EXPLANATION =
+  "Neither YES nor NO would be reliable here.";
+
 /** Words too common to treat as identifying, even inside a multi-word target. */
 const STOPWORDS = new Set([
   "the", "a", "an", "of", "my", "your", "his", "her", "its", "their",
@@ -119,7 +130,11 @@ export function scrubExplanation(
   target: string
 ): ScrubResult<string | null> {
   if (!revealsTarget(text, target)) return { value: text, redacted: false };
-  return { value: SAFE_AMBIGUOUS_EXPLANATION, redacted: true };
+  // Never substitute a replacement that would disclose in its own right.
+  const replacement = revealsTarget(SAFE_AMBIGUOUS_EXPLANATION, target)
+    ? MINIMAL_AMBIGUOUS_EXPLANATION
+    : SAFE_AMBIGUOUS_EXPLANATION;
+  return { value: replacement, redacted: true };
 }
 
 /**
