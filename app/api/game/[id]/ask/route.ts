@@ -3,6 +3,7 @@ import { randomUUID } from "crypto";
 import { getGame, saveGame } from "@/lib/gameStore";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { answerAsComposer } from "@/lib/prompts/composerAnswer";
+import { judgeQuestionEdit } from "@/lib/prompts/questionEdit";
 import { consumeModelCall } from "@/lib/callBudget";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 
@@ -34,6 +35,12 @@ interface AskBody {
   /** Set instead of `question` when the player commits their single guess. */
   guess?: string;
   concede?: boolean;
+  /**
+   * Correct the most recent question in place. Accepted only when the edit
+   * repairs how the question was written rather than what it asks; an accepted
+   * edit costs no extra question and keeps its turn number.
+   */
+  edit_turn_index?: number;
 }
 
 function newEntry(turnIndex: number): QuestionLogEntry {
@@ -50,6 +57,9 @@ function newEntry(turnIndex: number): QuestionLogEntry {
     guess_detector_method: null,
     guess_intent_outcome: null,
     clue_text: null,
+    original_question_text: null,
+    edit_status: null,
+    edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
     quality_score: null,
@@ -134,6 +144,151 @@ export async function POST(
     return respond(game);
   }
 
+  // -------------------------------------------------------------------------
+  // Question correction. Mobile autocorrect should not cost a question.
+  // -------------------------------------------------------------------------
+  if (typeof body.edit_turn_index === "number") {
+    const edited = (body.question || "").trim();
+    if (!edited) {
+      return NextResponse.json(
+        { error: "missing_question", message: "Provide the corrected question.", game },
+        { status: 400 }
+      );
+    }
+
+    const last = game.qa_log[game.qa_log.length - 1];
+    // Only the most recent question is editable. Anything earlier would mean
+    // re-answering a turn the player has already reasoned onward from.
+    if (
+      !last ||
+      last.turn_index !== body.edit_turn_index ||
+      last.turn_type !== "question" ||
+      !last.question_text
+    ) {
+      return NextResponse.json(
+        {
+          error: "not_editable",
+          message: "Only your most recent question can be corrected.",
+          game,
+        },
+        { status: 409 }
+      );
+    }
+
+    const original = last.question_text;
+
+    const judgeBudget = await consumeModelCall("racer");
+    if (!judgeBudget.allowed) {
+      return NextResponse.json(
+        {
+          error: judgeBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+          message: "Could not check that correction right now. Your game is safe.",
+          game,
+        },
+        { status: judgeBudget.failedClosed ? 503 : 429 }
+      );
+    }
+
+    let verdict;
+    try {
+      verdict = await judgeQuestionEdit({
+        original,
+        edited,
+        gameLanguage: game.game_language,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] question edit check failed:", err);
+      return NextResponse.json(
+        {
+          error: "edit_check_unavailable",
+          message: "Could not check that correction. Nothing changed — please try again.",
+          game,
+        },
+        { status: 502 }
+      );
+    }
+
+    if (!verdict.same_intent) {
+      // Rejected: recorded on the entry, nothing else touched. The original
+      // question and its answer stand, and a new question costs one.
+      last.edit_status = "rejected";
+      last.edit_reason = verdict.reasoning;
+      await saveGame(game);
+      return NextResponse.json(
+        {
+          error: "edit_changes_intent",
+          message:
+            "That asks something different, so it counts as a new question. Your original question and answer stand.",
+          game,
+        },
+        { status: 409 }
+      );
+    }
+
+    const secretForEdit = await getSecretForAnswering(game.game_id);
+    if (!secretForEdit) {
+      return NextResponse.json(
+        { error: "secret_unavailable", message: "This game's target is no longer available.", game },
+        { status: 410 }
+      );
+    }
+
+    const answerBudget = await consumeModelCall("racer");
+    if (!answerBudget.allowed) {
+      return NextResponse.json(
+        {
+          error: answerBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+          message: "Could not re-answer right now. Your game is safe.",
+          game,
+        },
+        { status: answerBudget.failedClosed ? 503 : 429 }
+      );
+    }
+
+    let reanswer;
+    try {
+      reanswer = await answerAsComposer({
+        target: secretForEdit.target,
+        definition: secretForEdit.private_clarification,
+        granularity: secretForEdit.granularity ?? "generic_type",
+        modifiers: secretForEdit.modifiers,
+        question: edited,
+        // The corrected turn is excluded, so the Composer re-answers against
+        // the history as it stood before it — not against its own first reply.
+        qaLog: game.qa_log.slice(0, -1),
+        questionsAsked: Math.max(0, game.question_count - 1),
+        maxQuestions: game.max_questions,
+        clueMode: game.clue_mode ?? "none",
+        gameLanguage: game.game_language,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] re-answer after edit failed:", err);
+      return NextResponse.json(
+        {
+          error: "composer_unavailable",
+          message: "Could not re-answer that. Your original question and answer stand.",
+          game,
+        },
+        { status: 502 }
+      );
+    }
+
+    // Same turn number, no extra question spent.
+    last.original_question_text = last.original_question_text ?? original;
+    last.question_text = edited;
+    last.edit_status = "accepted";
+    last.edit_reason = verdict.reasoning;
+    last.composer_response = reanswer.answer;
+    last.ambiguous_explanation = reanswer.ambiguous_explanation;
+    last.clue_text = reanswer.clue_text;
+    last.racer_output_raw = JSON.stringify(reanswer);
+
+    await saveGame(game);
+    return respond(game);
+  }
+
   const question = (body.question || "").trim();
   if (!question) {
     return NextResponse.json(
@@ -184,6 +339,8 @@ export async function POST(
     answer = await answerAsComposer({
       target: secret.target,
       definition: secret.private_clarification,
+      granularity: secret.granularity ?? "generic_type",
+      modifiers: secret.modifiers,
       question,
       qaLog: game.qa_log,
       questionsAsked: game.question_count,

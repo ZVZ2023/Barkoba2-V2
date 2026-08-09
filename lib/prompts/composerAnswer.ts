@@ -2,6 +2,7 @@ import { callAnthropicTool } from "../anthropic";
 import { env } from "../env";
 import type {
   ClueMode,
+  TargetGranularity,
   ComposerAnswerResult,
   GameLanguage,
   QuestionLogEntry,
@@ -33,11 +34,21 @@ CHOOSING YOUR ANSWER:
 
 YES — true of the target under the definition.
 NO — false of the target under the definition.
-AMBIGUOUS — the question cannot be answered truthfully as a binary. Use it when a yes or a no would actively mislead: the question rests on a false premise, uses a word with two relevant senses, or asks about an edge the definition genuinely does not settle.
+AMBIGUOUS — reserved for questions you genuinely cannot answer as a binary.
 
-AMBIGUOUS is unlimited and costs the player one question like any other answer. Do not hoard it — but do not hide behind it either. If a question has a fair binary answer, give it. Answering AMBIGUOUS to avoid narrowing the field is the one genuinely unsporting thing you can do here.
+ANSWER YES OR NO WHENEVER A REASONABLE DETERMINATION IS POSSIBLE.
 
-Be generous with imprecise wording. A player who asks a slightly-wrong question about the right idea should get the answer to what they plainly meant, not a technicality. Never exploit sloppy phrasing to give a technically-true but misleading answer.
+AMBIGUOUS is only for a question where two materially different but equally reasonable readings would give DIFFERENT answers. It is not for questions that merely have nuance, edge cases, or an answer needing a caveat. If you find yourself writing an explanation that settles the question — "it is a type of object rather than a specific one" — then you have determined the answer and must give it. An explanation that resolves the question proves the question was answerable.
+
+Before answering AMBIGUOUS, ask yourself: can I state the two readings, and do they really disagree? If you cannot name both, answer YES or NO.
+
+AMBIGUOUS is unlimited and costs the player one question like any other. Do not hoard it, and do not hide behind it. Overusing it is the one genuinely unsporting thing you can do here, because it burns the player's budget while telling them nothing.
+
+ORDINARY LANGUAGE, NOT TECHNICAL DEFENSIBILITY.
+
+Classify the way an ordinary person would, not the way the broadest defensible reading would allow. A bicycle is a vehicle; calling it a tool is technically arguable and practically misleading, so the honest answer to "is it a tool?" is NO. When a technically-true YES would send the player down a branch no ordinary speaker intended, it is the wrong answer. Answer the question the player actually asked.
+
+Be generous with imprecise wording. A player who asks a slightly-wrong question about the right idea should get the answer to what they plainly meant, not a technicality.
 
 When you answer AMBIGUOUS, always say briefly why a binary answer would mislead. That note is shown to the player.`;
 
@@ -86,9 +97,27 @@ function renderTranscript(qaLog: QuestionLogEntry[]): string {
   return rows.length > 0 ? rows.join("\n") : "No questions answered yet.";
 }
 
+const GRANULARITY_RULE: Record<TargetGranularity, string> = {
+  generic_type: `GRANULARITY: generic_type — the target is a KIND of thing, not one particular one.
+
+Every answer must hold at that level for the whole game. Consequences you must apply consistently:
+- "Is it one particular thing?" -> NO. It is a category.
+- Subtypes and variants ARE instances of it. If asked whether an electric, folding, or child-sized version exists, the answer is YES — those are versions of the target, not different targets.
+- Do not privately narrow it. If the locked target is "bicycle", you are not secretly thinking of a conventional non-electric bicycle, and you must not answer as though you were.`,
+
+  specific_instance: `GRANULARITY: specific_instance — the target is ONE particular thing.
+
+Every answer must hold at that level for the whole game. Consequences you must apply consistently:
+- "Is it one particular thing?" -> YES.
+- Other members of the same category are NOT the target.
+- The modifiers below are part of what the target is, and questions about them are answerable.`,
+};
+
 export async function answerAsComposer(params: {
   target: string;
   definition: string;
+  granularity: TargetGranularity;
+  modifiers: string | null;
   question: string;
   qaLog: QuestionLogEntry[];
   questionsAsked: number;
@@ -108,6 +137,9 @@ export async function answerAsComposer(params: {
         content: [
           `SECRET TARGET: ${params.target}`,
           `DEFINITION: ${params.definition}`,
+          params.modifiers ? `MODIFIERS: ${params.modifiers}` : "MODIFIERS: none",
+          "",
+          GRANULARITY_RULE[params.granularity],
           "",
           CLUE_GUIDANCE[params.clueMode],
           "",

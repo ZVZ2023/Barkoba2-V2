@@ -28,6 +28,8 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const [question, setQuestion] = useState("");
   const [guess, setGuess] = useState("");
   const [guessMode, setGuessMode] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
+  const [editText, setEditText] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveFired = useRef(false);
@@ -49,6 +51,8 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           setQuestion("");
           setGuess("");
           setGuessMode(false);
+          setEditing(null);
+          setEditText("");
         }
       } catch {
         setError("Network error — please try again.");
@@ -150,6 +154,76 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                 </p>
               </div>
             )}
+            {live &&
+              entry.turn_index === turns[turns.length - 1]?.turn_index &&
+              editing !== entry.turn_index && (
+                <div className="flex min-w-0 gap-3">
+                  <span className="w-6 shrink-0 sm:w-8" />
+                  <button
+                    onClick={() => {
+                      setEditing(entry.turn_index);
+                      setEditText(entry.question_text ?? "");
+                    }}
+                    disabled={busy}
+                    className="text-xs text-neutral-600 underline underline-offset-2 disabled:opacity-40"
+                  >
+                    Fix a typo in this question
+                  </button>
+                </div>
+              )}
+
+            {editing === entry.turn_index && (
+              <div className="flex min-w-0 gap-3">
+                <span className="w-6 shrink-0 sm:w-8" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 p-3">
+                  <p className="text-xs text-neutral-400">
+                    Repair a typo or autocorrect slip. Same question, fixed wording —
+                    it will be re-answered and won&apos;t cost you a question. Asking
+                    something different needs a new question.
+                  </p>
+                  <textarea
+                    className="h-20 w-full min-w-0 resize-none rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    disabled={busy}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() =>
+                        void send({
+                          edit_turn_index: entry.turn_index,
+                          question: editText,
+                        })
+                      }
+                      disabled={busy || !editText.trim()}
+                      className="min-h-11 rounded-md bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900 disabled:opacity-40"
+                    >
+                      Fix it
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditing(null);
+                        setEditText("");
+                      }}
+                      disabled={busy}
+                      className="min-h-11 rounded-md border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {entry.original_question_text && entry.edit_status === "accepted" && (
+              <div className="flex min-w-0 gap-3">
+                <span className="w-6 shrink-0 sm:w-8" />
+                <p className="min-w-0 break-words text-xs text-neutral-600">
+                  corrected from &ldquo;{entry.original_question_text}&rdquo;
+                </p>
+              </div>
+            )}
+
             {entry.clue_text && (
               <div className="flex min-w-0 gap-3">
                 <span className="w-6 shrink-0 sm:w-8" />

@@ -26,12 +26,16 @@ function secretKey(gameId: string): string {
 export async function createSecret(
   gameId: string,
   target: string,
-  privateClarification: string
+  privateClarification: string,
+  granularity: SecretRecord["granularity"] = null,
+  modifiers: string | null = null
 ): Promise<void> {
   const record: SecretRecord = {
     game_id: gameId,
     target,
     private_clarification: privateClarification,
+    granularity,
+    modifiers,
     locked_at: null,
   };
   await getKV().set(secretKey(gameId), record, env.gameTtlSeconds());

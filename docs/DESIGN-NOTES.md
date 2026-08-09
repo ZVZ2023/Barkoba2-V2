@@ -996,3 +996,63 @@ the deduction removes the game.
 
 Profiles, personalization, adaptive difficulty, monetization, AI-vs-AI, model
 selection, multiplayer. Recorded, not implemented.
+
+---
+
+## 14. `0.6.0.1` — corrections from Milestone 2 Test 1
+
+### AMBIGUOUS was being used where the Composer had already decided
+
+Observed: target `a bicycle`, question "Is it one particular thing?", answered
+AMBIGUOUS with the explanation *"the target is a type of object rather than one
+specific individual bicycle"* — an explanation that answers the question.
+
+The rule added: **an explanation that resolves the question proves the question
+was answerable.** AMBIGUOUS is now reserved for cases where two materially
+different but equally reasonable readings give *different* answers, with an
+explicit self-test — name both readings, or answer YES/NO. Nuance and edge cases
+are not grounds.
+
+### Semantic drift is prevented by storage, not by instruction
+
+The same game answered as a category at Q2 and as a narrower subtype later
+("does it have an electric version?" -> NO, which is only right if the target
+was secretly "a conventional bicycle").
+
+`granularity` and `modifiers` are now locked into `SecretRecord` alongside the
+target and handed to the Composer **on every single turn**, in the same call
+that supplies the target. The Composer cannot drift between readings because it
+is never asked to remember which reading it chose. Same mechanism that already
+stops target drift, applied one level down.
+
+`generic_type` carries an explicit consequence: subtypes and variants are
+instances of the target, so "is there an electric version?" is YES. And the
+target-selection prompt forbids locking a generic word while privately meaning
+something narrower — whatever narrows the target must be *in* the target.
+
+### Ordinary language over technical defensibility
+
+"Is this a tool?" about a bicycle was answered YES. Defensible, and misleading.
+The Composer now classifies as an ordinary speaker would: a bicycle is a
+vehicle. A technically-true YES that sends the player down a branch no ordinary
+speaker intended is the wrong answer.
+
+No ontology was added. This is a policy sentence, not a taxonomy.
+
+### Question correction, and why the bar is asymmetric
+
+Mobile autocorrect turned "Do the wheels have spokes?" into "The weeks have
+spikes?", which was answered and cost a question.
+
+The most recent question can now be corrected. A cheap model judges whether the
+edit repairs *how the question was written* or changes *what it asks*. Accepted
+edits keep the turn number, spend no extra question, and are re-answered against
+the history as it stood **before** that turn — not against the Composer's own
+first reply, which would let a stale answer anchor the new one.
+
+The judge is told to **reject when unsure**, deliberately: a wrong rejection
+costs one question, a wrong acceptance hands out a free question every turn and
+dissolves the budget the whole game rests on.
+
+Only the latest question is editable. Anything earlier would mean re-answering a
+turn the player has already reasoned onward from.

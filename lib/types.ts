@@ -48,6 +48,20 @@ export type Difficulty = "easy" | "medium" | "hard";
 export type ClueMode = "none" | "minimal" | "progressive";
 
 /**
+ * The semantic level of the locked target. Fixed at lock time and never
+ * renegotiated, because the failure it prevents is the Composer sliding
+ * between readings mid-game — answering one question about the category and
+ * the next about a prototypical instance.
+ *
+ * generic_type      — "bicycle": the kind of thing. Subtypes and variants
+ *                     (electric, folding, tandem) are all instances of it, so
+ *                     "does it have an electric version?" is YES.
+ * specific_instance — "my red bicycle": one particular thing. Variants of the
+ *                     category are NOT it.
+ */
+export type TargetGranularity = "generic_type" | "specific_instance";
+
+/**
  * The language the game is conducted in. Detected once, by the Validator,
  * from the Composer's own words — there is no language-selection screen and
  * no extra model call. This governs the LANGUAGE OF PLAY only. It is not a
@@ -116,6 +130,17 @@ export interface QuestionLogEntry {
   /** True when this AMBIGUOUS answer consumed a question credit (free cap exhausted). */
   ambiguous_consumed_credit: boolean;
 
+  // --- 0.6.0.1: question correction (mobile autocorrect recovery) ---
+  /**
+   * The question as first submitted, kept when an edit was accepted so the
+   * transcript shows what was repaired. question_text holds the correction.
+   * Null when the question was never edited.
+   */
+  original_question_text: string | null;
+  edit_status: "accepted" | "rejected" | null;
+  /** The judge's one-line reason, for both accepted and rejected edits. */
+  edit_reason: string | null;
+
   // --- dormant in V1: present in schema, unused until explicitly defined ---
   quality_score: number | null; // Z-Score successor
   information_gain: number | null;
@@ -135,6 +160,9 @@ export interface ComposerTargetResult {
   target: string;
   /** The hidden definition fixing exactly what the target means. */
   definition: string;
+  granularity: TargetGranularity;
+  /** Qualifiers that narrow the target, or null if it is unqualified. */
+  modifiers: string | null;
   reasoning: string;
 }
 
@@ -146,6 +174,12 @@ export interface ComposerAnswerResult {
   ambiguous_explanation: string | null;
   /** Set only when clue_mode permits it. */
   clue_text: string | null;
+}
+
+/** Verdict on whether an edited question asks the same thing. */
+export interface QuestionEditResult {
+  reasoning: string;
+  same_intent: boolean;
 }
 
 export interface AdjudicatorResult {
@@ -259,6 +293,13 @@ export interface SecretRecord {
   game_id: string;
   target: string;
   private_clarification: string;
+  /**
+   * Locked with the target. Null for 0.3.x games, where a human chose the
+   * target and no AI is answering repeatedly against it.
+   */
+  granularity: TargetGranularity | null;
+  /** e.g. "red, belongs to the Composer". Null when there are none. */
+  modifiers: string | null;
   locked_at: string | null; // set once questioning begins; target becomes immutable
 }
 

@@ -133,7 +133,13 @@ export async function POST(req: NextRequest) {
     }
 
     const aiGameId = randomUUID();
-    await createSecret(aiGameId, chosen.target, chosen.definition);
+    await createSecret(
+      aiGameId,
+      chosen.target,
+      chosen.definition,
+      chosen.granularity,
+      chosen.modifiers
+    );
     await lockSecret(aiGameId);
 
     const aiGame = await createGame(aiGameId, {

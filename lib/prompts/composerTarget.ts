@@ -1,6 +1,11 @@
 import { callAnthropicTool } from "../anthropic";
 import { env } from "../env";
-import type { ComposerTargetResult, Difficulty, GameLanguage } from "../types";
+import type {
+  ComposerTargetResult,
+  Difficulty,
+  GameLanguage,
+  TargetGranularity,
+} from "../types";
 
 // ---------------------------------------------------------------------------
 // The AI Composer choosing its target. Runs exactly once, before questioning.
@@ -34,6 +39,13 @@ Avoid:
 - Anything requiring the player to guess your private associations.
 
 Alongside the target, write a DEFINITION: one or two sentences fixing exactly what you mean by it, precisely enough that a third party could later judge whether a guess matched. This is the reference every answer you give will be checked against, so make it specific about the boundaries that questions are likely to probe — what it includes, what it excludes, and which sense of an ambiguous word you intend.
+
+Also state the target's GRANULARITY, because every answer you later give will be judged against it and it must not drift mid-game:
+
+- generic_type — the kind of thing. "bicycle" means bicycles in general. Subtypes and variants are instances OF it, so an electric bicycle IS a bicycle, and a question about whether an electric version exists is YES.
+- specific_instance — one particular thing. "my red bicycle" is a single object. Other bicycles are not it.
+
+If you choose specific_instance, list the modifiers that narrow it ("red, belongs to the Composer"). If you choose generic_type, modifiers is null and the target must NOT carry hidden narrowing — do not lock "bicycle" while privately meaning "a conventional non-electric bicycle". Whatever narrows the target belongs in the target and the modifiers, never in your private intent.
 
 The definition is never shown to the player.`;
 
@@ -78,13 +90,24 @@ const INPUT_SCHEMA: Record<string, unknown> = {
       type: "string",
       description: "The secret target, stated plainly. A few words at most.",
     },
+    granularity: {
+      type: "string",
+      enum: ["generic_type", "specific_instance"],
+      description:
+        "generic_type for a kind of thing, specific_instance for one particular thing.",
+    },
+    modifiers: {
+      type: ["string", "null"],
+      description:
+        "Qualifiers narrowing the target, e.g. \"red, belongs to the Composer\". Null for an unqualified generic_type.",
+    },
     definition: {
       type: "string",
       description:
         "One or two sentences fixing exactly what the target means, including which sense is intended and what is excluded. The reference every answer is checked against.",
     },
   },
-  required: ["reasoning", "target", "definition"],
+  required: ["reasoning", "target", "definition", "granularity", "modifiers"],
 };
 
 export async function chooseComposerTarget(params: {
@@ -117,9 +140,17 @@ export async function chooseComposerTarget(params: {
     maxTokens: 1024,
   });
 
+  const granularity: TargetGranularity =
+    result.granularity === "specific_instance" ? "specific_instance" : "generic_type";
+
   return {
     target: (result.target ?? "").trim(),
     definition: (result.definition ?? "").trim(),
+    granularity,
+    // A generic type has nothing narrowing it by definition; normalize rather
+    // than let a stray modifier smuggle in hidden narrowing.
+    modifiers:
+      granularity === "specific_instance" ? (result.modifiers || "").trim() || null : null,
     reasoning: result.reasoning ?? "",
   };
 }
