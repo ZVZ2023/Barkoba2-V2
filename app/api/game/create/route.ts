@@ -16,6 +16,11 @@ interface CreateGameBody {
   private_clarification?: string;
   /** 0.6.x — AI Composer. When "ai_composer", the AI chooses the target. */
   mode?: "human_composer" | "ai_composer";
+  /**
+   * The Composer has seen the Validator's warning and chosen to play anyway.
+   * The human decision is final: Barkóba's Composer owns the target.
+   */
+  force?: boolean;
   difficulty?: Difficulty;
   clue_mode?: ClueMode;
   max_questions?: number;
@@ -107,7 +112,10 @@ export async function POST(req: NextRequest) {
     try {
       chosen = await chooseComposerTarget({
         difficulty,
-        gameLanguage: "en",
+        // The V1 interface is Hungarian, so the game is played in Hungarian.
+        // This used to be hardcoded "en", which is why AI questions, guesses
+        // and adjudication all came back in English under a Hungarian UI.
+        gameLanguage: "hu",
         maxQuestions: budgetChoice,
       });
     } catch (err) {
@@ -145,7 +153,7 @@ export async function POST(req: NextRequest) {
     const aiGame = await createGame(aiGameId, {
       phase: "questioning",
       max_questions: budgetChoice,
-      game_language: "en",
+      game_language: "hu",
       composer_kind: "ai",
       racer_kind: "human",
       difficulty,
@@ -200,10 +208,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  if (validation.status === "CLARIFICATION_REQUIRED") {
+  // The Composer owns the target. A clarification request is a RECOMMENDATION,
+  // and once the player has seen it and chosen to continue, it is overridden.
+  // The Validator can still stop a structurally unusable submission on the
+  // first attempt — it just cannot insist.
+  if (validation.status === "CLARIFICATION_REQUIRED" && !body.force) {
     return NextResponse.json({
       status: "CLARIFICATION_REQUIRED",
       message: validation.message,
+      private_knowledge: validation.private_knowledge,
+      can_continue: true,
     });
   }
 
@@ -216,9 +230,13 @@ export async function POST(req: NextRequest) {
   const game = await createGame(gameId, {
     phase: "questioning",
     max_questions: maxQuestions,
+    private_target: validation.private_knowledge,
     // Detected by the Validator from the Composer's own wording — no extra
     // model call, no setup question. Fixed for the life of the game.
-    game_language: validation.game_language,
+    // Detection decided the language from the Composer's own words, which meant
+    // an English target ("My Friend Otto") produced an English game inside a
+    // Hungarian product. V1 is Hungarian-first, so the interface language wins.
+    game_language: "hu",
   });
 
   return NextResponse.json({
@@ -228,5 +246,6 @@ export async function POST(req: NextRequest) {
     max_questions: game.max_questions,
     game_language: game.game_language,
     difficulty_warning: validation.difficulty_warning,
+    private_knowledge: validation.private_knowledge,
   });
 }

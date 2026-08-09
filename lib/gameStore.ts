@@ -26,6 +26,7 @@ export async function createGame(
     expires_at: expires.toISOString(),
     max_questions: env.maxQuestions(),
     game_language: "en",
+    private_target: false,
     // 0.3.x = Human Composer vs AI Racer. Hardcoded on purpose: this records
     // the configuration, it does not select it. No code branches on these.
     composer_kind: "human",
@@ -69,6 +70,7 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.adjudication_notes === undefined) record.adjudication_notes = null;
   if (record.revealed_target === undefined) record.revealed_target = null;
   // Correction/rewind fields, added in 0.3.2.0.
+  if (typeof record.private_target !== "boolean") record.private_target = false;
   if (record.difficulty === undefined) record.difficulty = null;
   if (record.clue_mode === undefined) record.clue_mode = null;
   if (!Array.isArray(record.corrections)) record.corrections = [];

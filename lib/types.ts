@@ -229,8 +229,14 @@ export interface GameRecord {
   created_at: string;
   expires_at: string;
   max_questions: number;
-  /** Language of play, detected once at creation. Never renegotiated mid-game. */
+  /** Language of play, fixed at creation. Never renegotiated mid-game. */
   game_language: GameLanguage;
+  /**
+   * The Validator judged the target to rest on the Composer's private
+   * knowledge. Recorded so the result screen can say plainly that adjudication
+   * rests on the game record rather than on independent verification.
+   */
+  private_target: boolean;
   /** Always "human" in the 0.3.x series. Recorded, never branched on. */
   composer_kind: ParticipantKind;
   /** "ai" in 0.3.x (human Composer), "human" in 0.6.x (AI Composer). */
@@ -307,6 +313,13 @@ export interface ValidatorResult {
   status: "VALID" | "CLARIFICATION_REQUIRED" | "INVALID";
   message: string; // clarifying question, or reason for invalidity
   difficulty_warning: string | null; // non-blocking warning, per spec
+  /**
+   * True when the target's identity rests on facts only the Composer can know
+   * — a personal acquaintance, a private object, a family memory.
+   *
+   * This is a WARNING, never a rejection. Barkóba's Composer owns the target.
+   */
+  private_knowledge: boolean;
   /**
    * Dominant conversational language of the Composer's submission. Detection
    * only — the Validator must never rewrite, normalize, or translate the

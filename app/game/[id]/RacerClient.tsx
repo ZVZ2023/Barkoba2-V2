@@ -211,7 +211,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                       disabled={busy || !editText.trim()}
                       className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
                     >
-                      Fix it
+                      Javítom
                     </button>
                     <button
                       onClick={() => {
@@ -221,7 +221,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                       disabled={busy}
                       className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
                     >
-                      Cancel
+                      Mégsem
                     </button>
                   </div>
                 </div>
@@ -267,14 +267,14 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                     disabled={busy || !question.trim()}
                     className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                   >
-                    Ask
+                    Kérdezek
                   </button>
                   <button
                     onClick={() => setGuessMode(true)}
                     disabled={busy}
                     className="min-h-11 flex-1 rounded-md border border-[var(--green)]/50 px-4 py-2.5 text-sm font-medium text-[var(--green)] disabled:opacity-40 sm:flex-none"
                   >
-                    Make my guess
+                    Tippelek
                   </button>
                 </div>
               </>
@@ -288,7 +288,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                   disabled={busy}
                   className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
                 >
-                  Make my guess
+                  Tippelek
                 </button>
               </div>
             )}
@@ -311,21 +311,21 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                 disabled={busy || !guess.trim()}
                 className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
               >
-                Commit guess
+                Tipp véglegesítése
               </button>
               <button
                 onClick={() => setGuessMode(false)}
                 disabled={busy}
                 className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
               >
-                Back
+                Vissza
               </button>
               <button
                 onClick={() => void send({ concede: true })}
                 disabled={busy}
                 className="min-h-11 rounded-md border border-[var(--ink)]/15 px-4 py-2.5 text-sm text-[var(--ink-soft)]"
               >
-                Give up
+                Feladom
               </button>
             </div>
           </div>
@@ -379,7 +379,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
             {game.adjudication_notes && (
               <div>
                 <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
-                  Adjudicator
+                  Értékelés
                 </dt>
                 <dd className="mt-0.5 break-words text-[var(--ink)]">
                   {game.adjudication_notes}
@@ -387,6 +387,13 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
               </div>
             )}
           </dl>
+          {game.private_target && (
+            <p className="mt-4 rounded-md border border-[var(--ink)]/15 bg-white/70 p-3 text-xs text-[var(--ink-soft)]">
+              Személyes titok volt: az értékelés a játék során megadott
+              információk alapján készült, nem független ellenőrzéssel.
+            </p>
+          )}
+
           <a
             href="/"
             className="mt-5 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"

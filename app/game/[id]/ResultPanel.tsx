@@ -51,7 +51,7 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
               onClick={onRetry}
               className="min-h-11 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm text-neutral-200"
             >
-              Try again
+              Újra
             </button>
           </div>
         ) : (
@@ -125,6 +125,13 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
           </div>
         )}
       </dl>
+
+        {game.private_target && (
+          <p className="mt-4 rounded-md border border-[var(--ink)]/15 bg-white/70 p-3 text-xs text-[var(--ink-soft)]">
+            Személyes titok volt: az értékelés a játék során megadott információk
+            alapján készült, nem független ellenőrzéssel.
+          </p>
+        )}
 
       <a
         href="/"

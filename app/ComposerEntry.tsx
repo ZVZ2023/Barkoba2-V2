@@ -7,10 +7,37 @@ import GameShell from "./components/GameShell";
 type ViewState =
   | { step: "entry" }
   | { step: "submitting" }
-  | { step: "clarification_required"; message: string }
+  | { step: "clarification_required"; message: string; privateKnowledge: boolean }
   | { step: "invalid"; message: string }
-  | { step: "valid"; gameId: string; maxQuestions: number; difficultyWarning: string | null }
+  | {
+      step: "valid";
+      gameId: string;
+      maxQuestions: number;
+      difficultyWarning: string | null;
+      privateKnowledge: boolean;
+    }
   | { step: "error"; message: string };
+
+/**
+ * Shown before play whenever the Validator flags the target as resting on the
+ * Composer's private knowledge.
+ *
+ * It is a warning, never a gate. The point is that the player understands what
+ * adjudication can and cannot do here BEFORE they spend a game on it — not
+ * that Barkóba talks them out of the target they chose.
+ */
+function PrivateTargetNote() {
+  return (
+    <div className="rounded-md border border-[var(--ink)]/15 bg-white/70 p-3">
+      <p className="text-sm font-semibold text-[var(--ink)]">Személyes titok</p>
+      <p className="mt-1 text-sm text-[var(--ink-soft)]">
+        Az AI nem tud önállóan ellenőrizni olyan tényeket, amelyeket csak te ismersz.
+        A kérdések megítélése és a végső értékelés ezért az általad megadott
+        információk pontosságán múlik.
+      </p>
+    </div>
+  );
+}
 
 export default function ComposerEntry({ versionLabel }: { versionLabel: string }) {
   const router = useRouter();
@@ -18,7 +45,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
   const [clarification, setClarification] = useState("");
   const [view, setView] = useState<ViewState>({ step: "entry" });
 
-  async function submit() {
+  async function submit(force = false) {
     setView({ step: "submitting" });
     try {
       const res = await fetch("/api/game/create", {
@@ -27,6 +54,8 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
         body: JSON.stringify({
           target,
           private_clarification: clarification,
+          // Set once the player has seen the warning and chosen to continue.
+          force,
         }),
       });
 
@@ -44,13 +73,18 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
       if (data.status === "INVALID") {
         setView({ step: "invalid", message: data.message });
       } else if (data.status === "CLARIFICATION_REQUIRED") {
-        setView({ step: "clarification_required", message: data.message });
+        setView({
+          step: "clarification_required",
+          message: data.message,
+          privateKnowledge: data.private_knowledge === true,
+        });
       } else if (data.status === "VALID") {
         setView({
           step: "valid",
           gameId: data.game_id,
           maxQuestions: data.max_questions,
           difficultyWarning: data.difficulty_warning,
+          privateKnowledge: data.private_knowledge === true,
         });
         // A difficulty warning is worth a beat to read; otherwise go straight in.
         if (!data.difficulty_warning) {
@@ -98,7 +132,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
           </label>
 
           <button
-            onClick={submit}
+            onClick={() => void submit()}
             disabled={view.step === "submitting" || !target}
             className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
           >
@@ -108,17 +142,31 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
       )}
 
       {view.step === "clarification_required" && (
-        <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-4">
+        <div className="flex flex-col gap-3 rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-4">
+          <p className="text-sm font-semibold text-[var(--ink)]">Javaslat, nem akadály</p>
           <p className="text-sm text-[var(--ink)]">{view.message}</p>
+
+          {view.privateKnowledge && <PrivateTargetNote />}
+
           <p className="text-xs text-[var(--ink-soft)]">
-            Pontosítsd fent, majd küldd be újra.
+            A titok a tiéd. Ha így akarsz játszani, indulhat — az AI-nak nehéz dolga
+            lesz, de ez a te döntésed.
           </p>
-          <button
-            onClick={() => setView({ step: "entry" })}
-            className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
-          >
-            Back to entry
-          </button>
+
+          <div className="flex flex-col gap-2 sm:flex-row">
+            <button
+              onClick={() => void submit(true)}
+              className="min-h-12 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)]"
+            >
+              Mégis ezzel játszom
+            </button>
+            <button
+              onClick={() => setView({ step: "entry" })}
+              className="min-h-12 rounded-md border border-[var(--ink)]/25 px-5 py-3 text-base text-[var(--ink)]"
+            >
+              Másik titkot adok meg
+            </button>
+          </div>
         </div>
       )}
 
@@ -133,7 +181,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
             }}
             className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
           >
-            Try a different target
+            Másik titkot adok meg
           </button>
         </div>
       )}
@@ -145,7 +193,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
             onClick={() => setView({ step: "entry" })}
             className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
           >
-            Back
+            Vissza
           </button>
         </div>
       )}
@@ -155,6 +203,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
           <p className="text-sm text-[var(--green)]">
             A titok rögzítve. Játékazonosító: <code className="break-all text-xs">{view.gameId}</code>
           </p>
+          {view.privateKnowledge && <PrivateTargetNote />}
           {view.difficultyWarning && (
             <p className="text-xs text-[var(--red)]">⚠ {view.difficultyWarning}</p>
           )}
@@ -162,7 +211,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
             onClick={() => router.push(`/game/${view.gameId}`)}
             className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
           >
-            Start the game
+            Kezdődhet
           </button>
         </div>
       )}

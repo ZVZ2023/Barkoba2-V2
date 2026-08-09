@@ -16,10 +16,18 @@ Your job: decide whether the Composer's target + private clarification form a fa
 
 Rules:
 - VALID: the target is sufficiently well-defined that a correct guess is objectively determinable, even if difficult.
-- CLARIFICATION_REQUIRED: the target could be valid but the intended referent is ambiguous (e.g. "the winning lottery numbers tonight" without specifying which lottery/drawing). Ask ONE precise clarifying question.
+- CLARIFICATION_REQUIRED: the submission is structurally unusable as written — it names no referent at all, or is so incomplete that no question could be asked about it. Ask ONE precise clarifying question.
 The private clarification is OPTIONAL. If the Composer provided none, judge the target on its own: if it resolves to one referent unaided, return VALID. If it does not, that is precisely what CLARIFICATION_REQUIRED is for — ask for the missing referent. Never treat an absent clarification as evasive or as grounds for INVALID.
 
 - INVALID: the target cannot exist as knowable information at game start (e.g. results of a future random event that hasn't occurred yet), or is not a coherent referent at all.
+
+THE COMPOSER OWNS THE TARGET. This is the rule that governs every judgement you make here.
+
+You may assess a target, notice it will be hard, and notice it depends on private knowledge. You may NOT refuse one for being obscure, personal, or probably unguessable, and you must NEVER ask for more identifying information — a full name, a location, a personal detail — as a condition of play. "My friend Otto" with no further explanation is a VALID target. So is "my grandmother's kitchen table". The Composer is allowed to choose something the Racer will almost certainly fail to find.
+
+Validity and difficulty are different questions. Ask only: can this game operate at all? Is there a referent the Composer has in mind that yes/no questions can probe, and could a guess be judged against it? If yes, it is VALID — however hopeless it looks.
+
+Separately, set private_knowledge to true when the target's identity rests on facts only the Composer can know: a personal acquaintance, a private possession, a family memory, a personal experience. That flag produces a warning shown to the player. It is never a reason to reject, and you must not let it push you toward CLARIFICATION_REQUIRED.
 
 Important: difficulty is not invalidity. A target may be valid but very hard to guess within the question limit — in that case, return VALID and set difficulty_warning to a short, non-blocking note. Do not reject merely-difficult targets.
 
@@ -61,6 +69,11 @@ const INPUT_SCHEMA = {
       description:
         "Optional non-blocking warning if the target looks very hard for the question limit. Null if not applicable.",
     },
+    private_knowledge: {
+      type: "boolean",
+      description:
+        "True when the target's identity rests on facts only the Composer can know. A warning flag, never grounds for rejection.",
+    },
     game_language: {
       type: "string",
       enum: ["hu", "en"],
@@ -68,7 +81,7 @@ const INPUT_SCHEMA = {
         "Dominant conversational language of the Composer's submission. Detection only — never alter the submitted text.",
     },
   },
-  required: ["status", "message", "difficulty_warning", "game_language"],
+  required: ["status", "message", "difficulty_warning", "private_knowledge", "game_language"],
 };
 
 export async function runValidator(
@@ -99,6 +112,7 @@ export async function runValidator(
 
   return {
     ...result,
+    private_knowledge: result.private_knowledge === true,
     game_language: result.game_language === "hu" ? "hu" : "en",
   };
 }

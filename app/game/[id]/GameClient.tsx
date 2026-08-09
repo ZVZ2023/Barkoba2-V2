@@ -261,21 +261,21 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                             disabled={busy}
                             className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-3 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                           >
-                            Yes
+                            IGEN
                           </button>
                           <button
                             onClick={() => void correctAnswer(entry.turn_index, "NO")}
                             disabled={busy}
                             className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-3 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                           >
-                            No
+                            NEM
                           </button>
                           <button
                             onClick={() => setCorrectionAmbiguousMode(true)}
                             disabled={busy}
                             className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-3 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
                           >
-                            Bizonytalan
+                            IS-IS
                           </button>
                         </div>
                       ) : (
@@ -300,16 +300,16 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                                 )
                               }
                               disabled={busy}
-                              className="min-h-11 rounded-md bg-[var(--red)]/85 px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+                              className="min-h-12 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] disabled:opacity-40"
                             >
-                              Send ambiguous
+                              IS-IS küldése
                             </button>
                             <button
                               onClick={() => setCorrectionAmbiguousMode(false)}
                               disabled={busy}
                               className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
                             >
-                              Back
+                              Vissza
                             </button>
                           </div>
                         </div>
@@ -323,7 +323,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                         disabled={busy}
                         className="self-start text-xs text-[var(--ink-soft)] underline underline-offset-2"
                       >
-                        Cancel
+                        Mégsem
                       </button>
                     </div>
                   </div>
@@ -364,27 +364,27 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
-                  Yes
+                  IGEN
                 </button>
                 <button
                   onClick={() => void sendTurn("NO")}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
-                  No
+                  NEM
                 </button>
                 <button
                   onClick={() => setAmbiguousMode(true)}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
                 >
-                  Bizonytalan
+                  IS-IS
                 </button>
               </div>
             ) : (
               <div className="flex flex-col gap-2 sm:pl-11">
                 <p className="text-xs text-[var(--ink-soft)]">
-                  Írd le, miért lenne félrevezető az igen vagy a nem. Az AI látja ezt a megjegyzést.
+                  IS-IS: sem az IGEN, sem a NEM nem lenne pontos pontosítás nélkül. Írd le, miért — az AI látja ezt a megjegyzést. Kitöltése nem kötelező.
                 </p>
                 <textarea
                   className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
@@ -396,9 +396,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   <button
                     onClick={() => void sendTurn("AMBIGUOUS", explanation)}
                     disabled={busy}
-                    className="min-h-11 rounded-md bg-[var(--red)]/85 px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+                    className="min-h-12 flex-1 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40 sm:flex-none"
                   >
-                    Send ambiguous
+                    IS-IS küldése
                   </button>
                   <button
                     onClick={() => {
@@ -408,7 +408,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                     disabled={busy}
                     className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
                   >
-                    Cancel
+                    Mégsem
                   </button>
                 </div>
               </div>

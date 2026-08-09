@@ -185,6 +185,7 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
     expires_at: new Date().toISOString(),
     max_questions: 20,
     game_language: "en",
+    private_target: false,
     composer_kind: "human",
     racer_kind: "ai",
     difficulty: null,
