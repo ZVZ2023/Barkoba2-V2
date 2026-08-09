@@ -24,7 +24,7 @@ import SiteFooter from "./SiteFooter";
 const FEATURE_MARKS = ["◯", "🔒", "◌", "🛡", "▮", "🏆"];
 const STEP_MARKS = ["1", "2", "3", "4"];
 
-export default function FrontDoor() {
+export default function FrontDoor({ version }: { version?: string }) {
   return (
     <div className="flex min-h-screen w-full flex-col text-neutral-900">
       <SiteHeader />
@@ -121,7 +121,7 @@ export default function FrontDoor() {
         </div>
       </main>
 
-      <SiteFooter />
+      <SiteFooter version={version} />
     </div>
   );
 }

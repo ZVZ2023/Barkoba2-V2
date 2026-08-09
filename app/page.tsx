@@ -27,10 +27,7 @@ export default function Page() {
   return (
     <>
       <Stage />
-      <FrontDoor />
-      <span className="pointer-events-none fixed bottom-1 right-2 z-40 text-[10px] text-neutral-500/70">
-        {label}
-      </span>
+      <FrontDoor version={label} />
     </>
   );
 }

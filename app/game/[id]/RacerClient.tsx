@@ -1,7 +1,15 @@
 "use client";
 
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
+import EvaluationState from "@/app/components/EvaluationState";
+
+/** Stored values stay YES/NO/AMBIGUOUS; only the display is Hungarian. */
+const ANSWER_HU: Record<string, string> = {
+  YES: "IGEN",
+  NO: "NEM",
+  AMBIGUOUS: "IS-IS",
+};
 
 const DIFFICULTY_HU: Record<string, string> = {
   easy: "könnyű",
@@ -92,10 +100,12 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
     }
   }, [game.game_id]);
 
-  if (game.phase === "resolving" && !resolveFired.current && !busy) {
+  useEffect(() => {
+    if (resolveFired.current) return;
+    if (game.phase !== "resolving") return;
     resolveFired.current = true;
     void resolveGame();
-  }
+  }, [game.phase, resolveGame]);
 
   const turns = answeredTurns(game);
   const remaining = Math.max(0, game.max_questions - game.question_count);
@@ -156,7 +166,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                       : "text-xs font-medium text-[var(--red)]"
                 }
               >
-                {entry.composer_response}
+                {ANSWER_HU[entry.composer_response ?? ""] ?? entry.composer_response}
               </span>
             </div>
             {entry.ambiguous_explanation && (
@@ -333,9 +343,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       </section>
 
       {game.phase === "resolving" && (
-        <section className="rounded-md border border-[var(--green)]/30 bg-[var(--green)]/6 p-4">
-          <p className="text-sm text-[var(--green)]">Ellenőrizzük a tipped…</p>
-        </section>
+        <EvaluationState error={error} busy={busy} onRetry={() => void resolveGame()} />
       )}
 
       {game.phase === "complete" && game.result && (

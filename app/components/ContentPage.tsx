@@ -1,6 +1,7 @@
 import Link from "next/link";
 import SiteHeader from "./SiteHeader";
 import SiteFooter from "./SiteFooter";
+import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 
 // ---------------------------------------------------------------------------
 // Shell for long-form pages.
@@ -44,7 +45,7 @@ export default function ContentPage({
         </article>
       </main>
 
-      <SiteFooter />
+      <SiteFooter version={formatVersionLabel(getAppVersion())} />
     </div>
   );
 }

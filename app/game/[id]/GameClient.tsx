@@ -3,11 +3,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
+import EvaluationState from "@/app/components/EvaluationState";
 
 interface Props {
   initialGame: GameRecord;
   versionLabel: string;
 }
+
+/** Stored values stay YES/NO/AMBIGUOUS; only the display is Hungarian. */
+const ANSWER_HU: Record<string, string> = {
+  YES: "IGEN",
+  NO: "NEM",
+  AMBIGUOUS: "IS-IS",
+};
 
 function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
   const last = game.qa_log.length > 0 ? game.qa_log[game.qa_log.length - 1] : undefined;
@@ -210,7 +218,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                           : "text-xs font-medium text-[var(--red)]"
                     }
                   >
-                    {entry.composer_response}
+                    {ANSWER_HU[entry.composer_response ?? ""] ?? entry.composer_response}
                   </span>
                 </div>
                 {entry.ambiguous_explanation && (
@@ -422,7 +430,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         )}
       </section>
 
-      {(game.phase === "resolving" || game.phase === "complete") && (
+      {game.phase === "resolving" && (
+        <EvaluationState error={resolveError} busy={resolving} onRetry={() => void resolveGame()} />
+      )}
+
+      {game.phase === "complete" && (
         <ResultPanel
           game={game}
           resolving={resolving}

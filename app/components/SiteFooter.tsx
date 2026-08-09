@@ -8,7 +8,7 @@ import { useComingSoon } from "./ComingSoon";
 // Social destinations still do not exist, so those keep the Coming Soon
 // treatment rather than pointing at invented accounts.
 
-export default function SiteFooter() {
+export default function SiteFooter({ version }: { version?: string }) {
   const comingSoon = useComingSoon();
 
   const link = (href: string, label: string) => (

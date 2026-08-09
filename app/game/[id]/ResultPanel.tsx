@@ -49,7 +49,7 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
             </p>
             <button
               onClick={onRetry}
-              className="min-h-11 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm text-neutral-200"
+              className="min-h-11 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm text-[var(--ink)]"
             >
               Újra
             </button>
