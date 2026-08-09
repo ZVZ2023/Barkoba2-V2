@@ -6,6 +6,7 @@ import ResultPanel from "./ResultPanel";
 
 interface Props {
   initialGame: GameRecord;
+  versionLabel: string;
 }
 
 function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
@@ -27,7 +28,7 @@ function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   );
 }
 
-export default function GameClient({ initialGame }: Props) {
+export default function GameClient({ initialGame, versionLabel }: Props) {
   const [game, setGame] = useState<GameRecord>(initialGame);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -158,7 +159,12 @@ export default function GameClient({ initialGame }: Props) {
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex items-baseline justify-between gap-3 border-b border-neutral-800 pb-4">
         <div className="min-w-0">
-          <h1 className="text-xl font-semibold tracking-tight">Barkóba</h1>
+          <div className="flex items-baseline gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">Barkóba</h1>
+            <span className="shrink-0 text-xs font-normal text-neutral-600">
+              {versionLabel}
+            </span>
+          </div>
           <p className="mt-1 text-xs text-neutral-500">
             You are the Composer. Answer honestly.
           </p>
