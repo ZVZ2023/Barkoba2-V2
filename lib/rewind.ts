@@ -12,11 +12,10 @@ import type { ComposerAnswer, QuestionLogEntry } from "./types";
 // which is where this class of feature usually goes quietly wrong. Recomputing
 // from what remains cannot drift.
 //
-// THE SUBTLETY THAT WOULD OTHERWISE MISCOUNT: `ambiguous_consumed_credit` is
-// positional, not intrinsic. With a free allowance of 3, if turns 1-3 were
-// AMBIGUOUS (free) and turn 4 AMBIGUOUS (costed), correcting turn 1 to YES
-// promotes turn 4 into the free tier. Its stored flag is now wrong. So the
-// flags are REWRITTEN across the whole retained log rather than trusted.
+// MILESTONE 1: AMBIGUOUS is unlimited and never consumes a question credit,
+// so question_count is simply the number of YES/NO answers in the surviving
+// log. The positional free-allowance arithmetic this function used to carry is
+// gone with the quota that required it.
 // ---------------------------------------------------------------------------
 
 export interface SplitResult {
@@ -53,16 +52,13 @@ export interface RecomputedCounters {
 }
 
 /**
- * Recompute both counters from the log, rewriting each entry's
- * `ambiguous_consumed_credit` to match its position in the surviving sequence.
+ * Recompute both counters from the log.
  *
- * MUTATES the entries it is given — deliberately, since the flags are part of
- * the record being repaired, not a derived view of it.
+ * question_count counts YES/NO answers only. MUTATES entries to clear the
+ * retired `ambiguous_consumed_credit` flag, which repairs records written
+ * before the quota was removed.
  */
-export function recomputeCounters(
-  qaLog: QuestionLogEntry[],
-  freeAmbiguousAllowance: number
-): RecomputedCounters {
+export function recomputeCounters(qaLog: QuestionLogEntry[]): RecomputedCounters {
   let questionCount = 0;
   let ambiguousCount = 0;
 
@@ -72,14 +68,12 @@ export function recomputeCounters(
     if (answer === null) continue;
 
     if (answer === "AMBIGUOUS") {
-      const costsCredit = ambiguousCount >= freeAmbiguousAllowance;
-      entry.ambiguous_consumed_credit = costsCredit;
-      if (costsCredit) questionCount += 1;
       ambiguousCount += 1;
     } else {
-      entry.ambiguous_consumed_credit = false;
       questionCount += 1;
     }
+    // Retired flag: nothing charges a credit any more.
+    entry.ambiguous_consumed_credit = false;
   }
 
   return { questionCount, ambiguousCount };

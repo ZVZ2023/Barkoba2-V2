@@ -25,24 +25,8 @@ interface TurnBody {
 
 const VALID_ANSWERS: ComposerAnswer[] = ["YES", "NO", "AMBIGUOUS"];
 
-function ambiguousBudget(game: GameRecord) {
-  const allowance = env.maxFreeAmbiguousAnswers();
-  const freeRemaining = Math.max(0, allowance - game.ambiguous_count);
-  return {
-    used: game.ambiguous_count,
-    free_allowance: allowance,
-    free_remaining: freeRemaining,
-    // AMBIGUOUS is never refused. Past the free allowance it costs a question
-    // credit instead — the Composer is never forced into a misleading YES/NO.
-    next_costs_credit: freeRemaining === 0,
-  };
-}
-
 function respond(game: GameRecord, status = 200) {
-  return NextResponse.json(
-    { game, ambiguous: ambiguousBudget(game) },
-    { status }
-  );
+  return NextResponse.json({ game }, { status });
 }
 
 /** The most recent question awaiting a Composer answer, if any. */
@@ -146,14 +130,11 @@ export async function POST(
 
     if (answer === "AMBIGUOUS") {
       pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
-      // Never rejected. Free up to the allowance, then it costs a question
-      // credit. Forcing a YES/NO here would produce exactly the misleading
-      // answer AMBIGUOUS exists to prevent.
-      const costsCredit = game.ambiguous_count >= env.maxFreeAmbiguousAnswers();
-      if (costsCredit) {
-        game.question_count += 1;
-        pending.ambiguous_consumed_credit = true;
-      }
+      // Milestone 1: AMBIGUOUS is unlimited and budget-neutral. The Racer's
+      // budget is spent only by questions that got a genuine YES or NO, so an
+      // unanswerable question costs it nothing. ambiguous_count is still
+      // tracked — it is the input to abuse detection, which is a separate,
+      // later concern and deliberately not enforced here.
       game.ambiguous_count += 1;
     } else {
       pending.ambiguous_explanation = null;

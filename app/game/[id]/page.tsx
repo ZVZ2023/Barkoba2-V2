@@ -1,6 +1,5 @@
 import { notFound } from "next/navigation";
 import { getGame } from "@/lib/gameStore";
-import { env } from "@/lib/env";
 import GameClient from "./GameClient";
 
 // Server component. Reads public game state directly from gameStore — there is
@@ -18,10 +17,5 @@ export default async function GamePage({ params }: { params: { id: string } }) {
     notFound();
   }
 
-  return (
-    <GameClient
-      initialGame={game}
-      freeAmbiguousAllowance={env.maxFreeAmbiguousAnswers()}
-    />
-  );
+  return <GameClient initialGame={game} />;
 }

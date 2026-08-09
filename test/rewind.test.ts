@@ -40,55 +40,43 @@ function entry(turnIndex: number, answer: ComposerAnswer | null): QuestionLogEnt
 
 test("counters are derived from the log, not tracked separately", () => {
   const log = [entry(1, "YES"), entry(2, "NO"), entry(3, "YES")];
-  const c = recomputeCounters(log, 3);
+  const c = recomputeCounters(log);
   assert.equal(c.questionCount, 3);
   assert.equal(c.ambiguousCount, 0);
 });
 
-test("AMBIGUOUS inside the free allowance costs no question credit", () => {
-  const log = [entry(1, "AMBIGUOUS"), entry(2, "AMBIGUOUS"), entry(3, "YES")];
-  const c = recomputeCounters(log, 3);
-  assert.equal(c.questionCount, 1, "only the YES should be charged");
-  assert.equal(c.ambiguousCount, 2);
-  assert.equal(log[0]!.ambiguous_consumed_credit, false);
-  assert.equal(log[1]!.ambiguous_consumed_credit, false);
+test("MILESTONE 1: AMBIGUOUS never consumes a question credit, at any count", () => {
+  // The quota is gone. Ten AMBIGUOUS answers cost the Racer nothing.
+  const log = Array.from({ length: 10 }, (_, i) => entry(i + 1, "AMBIGUOUS"));
+  const c = recomputeCounters(log);
+  assert.equal(c.questionCount, 0, "the Racer's budget is untouched by AMBIGUOUS");
+  assert.equal(c.ambiguousCount, 10, "but they are still counted, for later abuse analysis");
+  for (const e of log) {
+    assert.equal(e.ambiguous_consumed_credit, false, "the retired flag stays false");
+  }
 });
 
-test("AMBIGUOUS past the free allowance costs a question credit", () => {
+test("question_count counts YES/NO answers and nothing else", () => {
   const log = [
-    entry(1, "AMBIGUOUS"),
+    entry(1, "YES"),
     entry(2, "AMBIGUOUS"),
-    entry(3, "AMBIGUOUS"),
+    entry(3, "NO"),
     entry(4, "AMBIGUOUS"),
+    entry(5, "AMBIGUOUS"),
+    entry(6, "YES"),
   ];
-  const c = recomputeCounters(log, 3);
-  assert.equal(c.questionCount, 1, "the fourth is charged");
-  assert.equal(c.ambiguousCount, 4);
-  assert.equal(log[3]!.ambiguous_consumed_credit, true);
+  const c = recomputeCounters(log);
+  assert.equal(c.questionCount, 3);
+  assert.equal(c.ambiguousCount, 3);
 });
 
-test("THE SUBTLE ONE: correcting an early AMBIGUOUS promotes a later one into the free tier", () => {
-  // Free allowance 3. Turns 1-3 AMBIGUOUS (free), turn 4 AMBIGUOUS (charged).
-  const log = [
-    entry(1, "AMBIGUOUS"),
-    entry(2, "AMBIGUOUS"),
-    entry(3, "AMBIGUOUS"),
-    entry(4, "AMBIGUOUS"),
-  ];
-  recomputeCounters(log, 3);
-  assert.equal(log[3]!.ambiguous_consumed_credit, true, "precondition");
-
-  // Composer corrects turn 1 to YES. Turn 4 is now only the third AMBIGUOUS.
-  log[0]!.composer_response = "YES";
-  const after = recomputeCounters(log, 3);
-
-  assert.equal(
-    log[3]!.ambiguous_consumed_credit,
-    false,
-    "turn 4 must be promoted into the free tier — a stored flag would be wrong here"
-  );
-  assert.equal(after.questionCount, 1, "only the corrected YES is charged");
-  assert.equal(after.ambiguousCount, 3);
+test("records written under the old quota are repaired on read", () => {
+  // A stored entry may still carry ambiguous_consumed_credit = true.
+  const log = [entry(1, "AMBIGUOUS"), entry(2, "AMBIGUOUS")];
+  log[0]!.ambiguous_consumed_credit = true;
+  const c = recomputeCounters(log);
+  assert.equal(log[0]!.ambiguous_consumed_credit, false, "stale charge is cleared");
+  assert.equal(c.questionCount, 0, "and it does not leak into the budget");
 });
 
 test("unanswered and non-question turns are not counted", () => {
@@ -96,7 +84,7 @@ test("unanswered and non-question turns are not counted", () => {
   const guess = entry(5, "YES");
   guess.turn_type = "guess";
   const log = [entry(1, "YES"), pending, guess];
-  const c = recomputeCounters(log, 3);
+  const c = recomputeCounters(log);
   assert.equal(c.questionCount, 1);
 });
 
@@ -152,12 +140,12 @@ test("a full rewind restores credits exactly, not approximately", () => {
     entry(5, "AMBIGUOUS"),
     entry(6, "NO"),
   ];
-  const before = recomputeCounters(log, 3);
-  assert.equal(before.questionCount, 4);
+  const before = recomputeCounters(log);
+  assert.equal(before.questionCount, 4, "four YES/NO answers");
   assert.equal(before.ambiguousCount, 2);
 
   const split = splitAtTurn(log, 2)!;
-  const after = recomputeCounters(split.retained, 3);
+  const after = recomputeCounters(split.retained);
   assert.equal(after.questionCount, 2, "turns 3-6 released their credits");
   assert.equal(after.ambiguousCount, 0);
   assert.equal(split.abandoned.length, 4);

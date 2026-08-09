@@ -6,8 +6,7 @@ import {
   recomputeCounters,
   splitAtTurn,
 } from "@/lib/rewind";
-import { env } from "@/lib/env";
-import type { ComposerAnswer, GameRecord } from "@/lib/types";
+import type { ComposerAnswer } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // Correct a previously given answer, rewinding the game to that point.
@@ -32,17 +31,6 @@ interface CorrectBody {
 }
 
 const VALID_ANSWERS: ComposerAnswer[] = ["YES", "NO", "AMBIGUOUS"];
-
-function ambiguousBudget(game: GameRecord) {
-  const allowance = env.maxFreeAmbiguousAnswers();
-  const freeRemaining = Math.max(0, allowance - game.ambiguous_count);
-  return {
-    used: game.ambiguous_count,
-    free_allowance: allowance,
-    free_remaining: freeRemaining,
-    next_costs_credit: freeRemaining === 0,
-  };
-}
 
 export async function POST(
   req: NextRequest,
@@ -138,7 +126,7 @@ export async function POST(
     answer === "AMBIGUOUS" ? (body.ambiguous_explanation || "").trim() || null : null;
 
   if (isNoOpCorrection(target!, answer, explanation)) {
-    return NextResponse.json({ game, ambiguous: ambiguousBudget(game) });
+    return NextResponse.json({ game });
   }
 
   const previousAnswer = target!.composer_response!;
@@ -166,7 +154,7 @@ export async function POST(
 
   // Recomputed, never decremented — and this also repairs the positional
   // ambiguous_consumed_credit flags across the surviving log.
-  const counters = recomputeCounters(game.qa_log, env.maxFreeAmbiguousAnswers());
+  const counters = recomputeCounters(game.qa_log);
   game.question_count = counters.questionCount;
   game.ambiguous_count = counters.ambiguousCount;
 
@@ -183,5 +171,5 @@ export async function POST(
   game.phase = "questioning";
 
   await saveGame(game);
-  return NextResponse.json({ game, ambiguous: ambiguousBudget(game) });
+  return NextResponse.json({ game });
 }

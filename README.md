@@ -85,7 +85,7 @@ As of M3 this is enforced in three layers rather than promised in one:
 2. `scripts/check-isolation.mjs` walks the import graph from every Racer-facing module and **fails the build** on any path — direct or transitive — that reaches `lib/secretStore.ts`.
 3. The check runs as part of `npm run build`, so it cannot be skipped by forgetting to run it.
 
-See `docs/DESIGN-NOTES.md` for the full reasoning, plus the decisions on AMBIGUOUS economics, guess-flag resolution, and the Phase 2 human-Racer confirmation UI that is deliberately documented and not built.
+See `docs/DESIGN-NOTES.md` for the full reasoning, plus the AMBIGUOUS rule, guess-flag resolution, and the Phase 2 human-Racer confirmation UI that is deliberately documented and not built.
 
 ## Configuration
 
@@ -118,9 +118,8 @@ latest answer just replaces it; correcting an earlier one rewinds the game to
 that turn, discards everything generated after it, and gives back the question
 and ambiguous credits those turns consumed.
 
-Counters are **recomputed** from the surviving log rather than decremented, and
-`ambiguous_consumed_credit` flags are rewritten, because whether an AMBIGUOUS
-answer was free depends on its position in the sequence.
+Counters are **recomputed** from the surviving log rather than decremented.
+`question_count` is simply the number of YES/NO answers that survive.
 
 Allowed in the `questioning` phase only — once the Racer has committed a guess,
 correcting would let a Composer read the guess and invalidate it.

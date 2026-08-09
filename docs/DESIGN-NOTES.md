@@ -84,29 +84,32 @@ this. **V1 never enters it.** Do not delete it as dead code — it is reserved.
 
 ---
 
-## 2. AMBIGUOUS answers: free, then costed, never refused
+## 2. AMBIGUOUS: unlimited and budget-neutral
 
-**Decision (M3).** The first `MAX_FREE_AMBIGUOUS_ANSWERS` (default 3) AMBIGUOUS
-answers do not consume a question credit. Every AMBIGUOUS answer after that
-consumes one. AMBIGUOUS is **never rejected** and the Composer is **never
-forced** into a YES/NO.
+**Current rule (Milestone 1).** AMBIGUOUS is available for the whole game, with
+no cap, and never consumes a question credit. `question_count` is decremented
+only by questions that received a genuine YES or NO.
 
-**Why.** AMBIGUOUS exists so a Composer is never made to give a materially
-misleading binary answer to a badly-cut question. A cap implemented as
-"rejected after N" would reintroduce that exact failure at the boundary — the
-Composer's only remaining options would be to lie or to abandon the game. A cap
-implemented as "costs a question after N" still bites a stalling Composer, but
-the cost lands on the game clock rather than on the truth of the answer.
+`ambiguous_count` is still tracked. It is the input to ambiguity-abuse
+detection, which is deliberately **not** implemented here — unlimited now,
+analysed later, and never conflated with the Racer's budget.
 
-**Provenance note.** The decision recorded here is: *the cap exists* (chosen
-from options) and *the cap is implemented as a cost, not a refusal* (decided
-later, on the merits). An earlier written proposal described the mechanism as
-"force YES/NO on the 4th, or flag for abuse", and a subsequent plan described it
-as rejection at the API boundary. Neither was ever approved as a mechanism; both
-were drafting artifacts that outran the actual decision. Recorded here so the
-distinction survives.
+**Superseded design, recorded so it is not reinvented.** An earlier rule gave
+the first N AMBIGUOUS answers free and charged a question credit thereafter
+(`MAX_FREE_AMBIGUOUS_ANSWERS`, default 3). Its reasoning was that an unbounded
+AMBIGUOUS lets a Composer stall indefinitely, and a *refusal* would force the
+misleading YES/NO that AMBIGUOUS exists to prevent — so the cost landed on the
+game clock instead.
 
----
+That was removed because it charged the Racer for the Composer's imprecision.
+An unanswerable question is usually a badly-cut question, not a stalling tactic,
+and the Racer had no way to avoid paying for one. Stalling is real but rare, and
+it is better handled by detection after the fact than by a toll on every
+ambiguous turn.
+
+`QuestionLogEntry.ambiguous_consumed_credit` is **retired, always false**, kept
+only so records written under the old rule deserialize during their TTL.
+`recomputeCounters()` clears it on read.
 
 ## 3. Two independent cost controls, and why one is not enough
 

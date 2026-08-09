@@ -38,13 +38,6 @@ export const env = {
 
   maxQuestions: () => optionalInt("MAX_QUESTIONS", 20),
 
-  // AMBIGUOUS answers are never rejected — forcing a materially misleading
-  // YES/NO is the exact failure AMBIGUOUS exists to prevent. The first N are
-  // free; every one after that consumes a question credit instead. That gives
-  // the cap teeth against a stalling Composer without ever making the
-  // Composer lie.
-  maxFreeAmbiguousAnswers: () => optionalInt("MAX_FREE_AMBIGUOUS_ANSWERS", 3),
-
   // Global daily ceiling on Racer model calls, across ALL users and IPs.
   // This is deliberately separate from, and in addition to, the per-IP limit
   // on /api/game/create. Per-IP limiting caps one abuser; it does nothing

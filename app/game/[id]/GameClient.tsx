@@ -4,16 +4,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 
-interface AmbiguousBudget {
-  used: number;
-  free_allowance: number;
-  free_remaining: number;
-  next_costs_credit: boolean;
-}
-
 interface Props {
   initialGame: GameRecord;
-  freeAmbiguousAllowance: number;
 }
 
 function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
@@ -35,15 +27,8 @@ function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   );
 }
 
-export default function GameClient({ initialGame, freeAmbiguousAllowance }: Props) {
+export default function GameClient({ initialGame }: Props) {
   const [game, setGame] = useState<GameRecord>(initialGame);
-  const [budget, setBudget] = useState<AmbiguousBudget>({
-    used: initialGame.ambiguous_count ?? 0,
-    free_allowance: freeAmbiguousAllowance,
-    free_remaining: Math.max(0, freeAmbiguousAllowance - (initialGame.ambiguous_count ?? 0)),
-    next_costs_credit:
-      Math.max(0, freeAmbiguousAllowance - (initialGame.ambiguous_count ?? 0)) === 0,
-  });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambiguousMode, setAmbiguousMode] = useState(false);
@@ -78,9 +63,6 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
         if (data.game) {
           setGame(data.game as GameRecord);
         }
-        if (data.ambiguous) {
-          setBudget(data.ambiguous as AmbiguousBudget);
-        }
         if (!res.ok) {
           setError(data.message || "Something went wrong.");
         }
@@ -113,7 +95,6 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
         });
         const data = await res.json();
         if (data.game) setGame(data.game as GameRecord);
-        if (data.ambiguous) setBudget(data.ambiguous as AmbiguousBudget);
         if (!res.ok) setError(data.message || "Could not correct that answer.");
       } catch {
         setError("Network error — please try again.");
@@ -222,7 +203,6 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
                     }
                   >
                     {entry.composer_response}
-                    {entry.ambiguous_consumed_credit && " · cost a question"}
                   </span>
                 </div>
                 {entry.ambiguous_explanation && (
@@ -393,20 +373,6 @@ export default function GameClient({ initialGame, freeAmbiguousAllowance }: Prop
               </div>
             )}
 
-            <p className="text-xs text-neutral-500 sm:pl-11">
-              {budget.next_costs_credit ? (
-                <>
-                  Free ambiguous answers used up ({budget.used}/{budget.free_allowance}).
-                  Further ambiguous answers still work — each one costs the Racer a
-                  question instead.
-                </>
-              ) : (
-                <>
-                  {budget.free_remaining} free ambiguous{" "}
-                  {budget.free_remaining === 1 ? "answer" : "answers"} left.
-                </>
-              )}
-            </p>
           </div>
         )}
 
