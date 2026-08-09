@@ -293,6 +293,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                             Racer sees this note.
                           </p>
                           <textarea
+                            spellCheck
+                            autoCorrect="on"
+                            autoCapitalize="sentences"
                             className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                             value={correctionExplanation}
                             onChange={(e) => setCorrectionExplanation(e.target.value)}
@@ -395,6 +398,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   IS-IS: sem az IGEN, sem a NEM nem lenne pontos pontosítás nélkül. Írd le, miért — az AI látja ezt a megjegyzést. Kitöltése nem kötelező.
                 </p>
                 <textarea
+                  spellCheck
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
                   className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                   value={explanation}
                   onChange={(e) => setExplanation(e.target.value)}
@@ -449,12 +455,17 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         </div>
       )}
 
-      <a
-        href="/"
-        className="mt-2 inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
-      >
-        ← Vissza a Barkóba főoldalra
-      </a>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <a
+          href="/"
+          className="inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
+        >
+          ← Vissza a Barkóba főoldalra
+        </a>
+        <span className="text-xs text-[var(--ink-soft)]" title="Telepített Barkóba verzió">
+          {versionLabel}
+        </span>
+      </div>
     </main>
   );
 }

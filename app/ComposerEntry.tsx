@@ -99,7 +99,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
   }
 
   return (
-    <GameShell role="Te gondolsz valamire. Az AI fogja kitalálni.">
+    <GameShell role="Te gondolsz valamire. Az AI fogja kitalálni." version={versionLabel}>
       <p className="text-sm text-[var(--ink-soft)]">
         Gondolj valamire, és rögzítsd. Az AI teljesen vakon indul, és{" "}
         {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.
@@ -110,6 +110,9 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-[var(--ink)]">Amire gondolsz</span>
             <input
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
               className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
@@ -123,6 +126,9 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
               Pontosítás <span className="text-[var(--ink-soft)]">(nem kötelező)</span> — az AI sosem látja
             </span>
             <textarea
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
               className="h-24 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={clarification}
               onChange={(e) => setClarification(e.target.value)}

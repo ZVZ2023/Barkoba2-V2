@@ -205,6 +205,9 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                     újabb kérdésbe. Más kérdéshez új kérdés kell.
                   </p>
                   <textarea
+                    spellCheck
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
                     className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                     value={editText}
                     onChange={(e) => setEditText(e.target.value)}
@@ -265,6 +268,9 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
             {remaining > 0 ? (
               <>
                 <textarea
+                  spellCheck
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
                   className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                   value={question}
                   onChange={(e) => setQuestion(e.target.value)}
@@ -309,6 +315,9 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           <div className="flex flex-col gap-2 rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-4">
             <p className="text-sm text-[var(--green)]">Egyetlen tipped van.</p>
             <input
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
               className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={guess}
               onChange={(e) => setGuess(e.target.value)}
@@ -417,12 +426,17 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
         </div>
       )}
 
-      <a
-        href="/"
-        className="mt-2 inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
-      >
-        ← Vissza a Barkóba főoldalra
-      </a>
+      <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
+        <a
+          href="/"
+          className="inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
+        >
+          ← Vissza a Barkóba főoldalra
+        </a>
+        <span className="text-xs text-[var(--ink-soft)]" title="Telepített Barkóba verzió">
+          {versionLabel}
+        </span>
+      </div>
     </main>
   );
 }

@@ -1199,3 +1199,45 @@ No taxonomy, no category schema, no all/most/some fields, no species data, no
 ontology, no probabilistic scoring, no external lookup, no new granularity
 types. `locked target + granularity + YES/NO/AMBIGUOUS + explanation` was
 sufficient. This is a decision-policy change to one prompt.
+
+---
+
+## 17. Deferred after the 0.9.4.0 field test — NOT V1 scope
+
+### Adjudication provenance (recorded, not changed)
+
+Hidden target `bicycle`, human guess `stationary bicycle`, ruled incorrect. The
+verdict was defensible, but the explanation leaned on distinctions — transport,
+roads, trails — that had **not been established in the visible Q&A**.
+
+That points at a real question nobody has answered yet: an adjudication
+explanation currently mixes three different things without distinguishing them.
+
+1. Facts inherent in the hidden target and its definition.
+2. Facts established during play, in the transcript.
+3. Inference the Adjudicator brought itself.
+
+A player can only check the second. When a verdict rests on the third and is
+narrated as though it rested on the second, the result feels arbitrary even when
+it is correct.
+
+**Nothing was changed.** No adjudication policy, integrity review, winner
+determination, result semantics, scoring or related prompt was touched in TASK 7.
+The V1 principle stands: **AI adjudication is procedurally final for the game
+without claiming epistemic infallibility.**
+
+### Disputed adjudication / community appeal (product concept)
+
+Post-V1 concept from the same session: after a result, the player either accepts
+it or disputes it; a disputed game can optionally be published with its history
+and the player's argument, for community discussion or voting.
+
+Possible value: transparent edge-case discussion, engagement, sharing, challenge
+content, organic promotion.
+
+**Not V1.** It needs accounts, publishing, moderation and a sharing
+architecture — none of which exist — and it presupposes the provenance work
+above, since a community cannot usefully argue about a verdict whose basis is
+not visible.
+
+Recorded so it survives the session it was thought of in.

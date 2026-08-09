@@ -23,7 +23,7 @@ const CLUE_MODES: { value: ClueMode; label: string; blurb: string }[] = [
 
 const BUDGETS = [20, 35, 50, 100];
 
-export default function RacerSetup({ versionLabel: _versionLabel }: { versionLabel: string }) {
+export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
   const router = useRouter();
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [clueMode, setClueMode] = useState<ClueMode>("none");
@@ -66,7 +66,7 @@ export default function RacerSetup({ versionLabel: _versionLabel }: { versionLab
     }`;
 
   return (
-    <GameShell role="Az AI gondol valamire. Te fogsz kérdezni.">
+    <GameShell role="Az AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Nehézség</span>
         <div className="flex flex-wrap gap-2">

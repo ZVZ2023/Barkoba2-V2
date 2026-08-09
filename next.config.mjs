@@ -15,6 +15,7 @@ const nextConfig = {
       "/": ["./VERSION"],
       "/play/ai": ["./VERSION"],
       "/compose": ["./VERSION"],
+      "/play": ["./VERSION"],
       "/game/[id]": ["./VERSION"],
     },
   },

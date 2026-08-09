@@ -18,12 +18,19 @@ import Link from "next/link";
 export default function GameShell({
   role,
   meta,
+  version,
   children,
 }: {
   /** "Te gondoltál valamire." — who the player is this game. */
   role: string;
   /** Optional right-hand status, e.g. questions remaining. */
   meta?: React.ReactNode;
+  /**
+   * Supplied by the server page. Deliberately a prop rather than read here:
+   * this component is imported by client components, so reading the VERSION
+   * file inside it drags node:fs into the browser bundle and fails the build.
+   */
+  version?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -49,12 +56,24 @@ export default function GameShell({
 
       <footer className="w-full px-4 pb-6 sm:px-6">
         <div className="mx-auto w-full max-w-2xl">
-          <Link
-            href="/"
-            className="inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
-          >
-            ← Vissza a Barkóba főoldalra
-          </Link>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <Link
+              href="/"
+              className="inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
+            >
+              ← Vissza a Barkóba főoldalra
+            </Link>
+            {/*
+              Version lives here as well as in the site footer. A tester spends
+              the whole session on a game screen, which had no footer at all —
+              so "it is in the footer" was true and useless.
+            */}
+            {version && (
+              <span className="text-xs text-[var(--ink-soft)]" title="Telepített Barkóba verzió">
+                {version}
+              </span>
+            )}
+          </div>
         </div>
       </footer>
     </div>

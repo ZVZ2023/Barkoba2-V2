@@ -3,6 +3,7 @@ import Link from "next/link";
 import Stage from "../components/Stage";
 import SiteHeader from "../components/SiteHeader";
 import { copy } from "@/lib/ui/copy";
+import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 
 // The one new screen between the front door and the two proven modes.
 // Nothing here touches the engine — both cards are links to entry points that
@@ -41,9 +42,14 @@ export default function PlayPage() {
               <span className="text-sm text-neutral-600">{copy.modes.aiComposer.detail}</span>
             </Link>
 
-            <Link href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
-              {copy.modes.back}
-            </Link>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <Link href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
+                {copy.modes.back}
+              </Link>
+              <span className="text-xs text-neutral-600" title="Telepített Barkóba verzió">
+                {formatVersionLabel(getAppVersion())}
+              </span>
+            </div>
           </div>
         </main>
       </div>
