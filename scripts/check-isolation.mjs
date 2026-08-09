@@ -46,6 +46,7 @@ const QUARANTINED = [
   "lib/racerState.ts",
   "lib/gameStore.ts",
   "lib/resolveResult.ts",
+  "lib/disclosureGuard.ts",
   "app/api/game/[id]/turn/route.ts",
   "app/game/[id]/page.tsx",
   "app/game/[id]/GameClient.tsx",

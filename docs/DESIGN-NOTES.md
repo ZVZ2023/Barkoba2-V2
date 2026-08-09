@@ -1056,3 +1056,81 @@ dissolves the budget the whole game rests on.
 
 Only the latest question is editable. Anything earlier would mean re-answering a
 turn the player has already reasoned onward from.
+
+---
+
+## 15. `0.6.0.2` — non-disclosure, and why it is code
+
+### The defect
+
+Field Test #2, target `dog`, Q15 "Does it have long hair?" answered AMBIGUOUS —
+correctly — with "Hair length varies enormously by breed, some dogs have long
+hair...". The classification was right. The explanation handed over the answer
+with five questions still unspent.
+
+### The prompt was already told not to do this
+
+That is the important part. `0.6.0.0`'s Composer prompt said the definition is
+never shown to the player, and the model disclosed anyway. **A rule the model is
+asked to follow is not an invariant.**
+
+So `0.6.0.2` uses both, in this order:
+
+1. **Prompt (prevention).** An explicit non-disclosure section naming the actual
+   trap: explaining *why* a question is unanswerable by describing the target.
+   "Say that the property varies within the category, never what the category
+   is." Instruction to write every explanation as if read by someone who has not
+   yet guessed — because it will be.
+2. **`lib/disclosureGuard.ts` (guarantee).** A pure, deterministic check applied
+   to every piece of visible model text before it is stored. Catches the target,
+   its inflections, accent-folded forms, and the content words of a multi-word
+   target.
+
+The guard is what makes the invariant hold. The prompt is what stops it firing.
+
+### Redaction shape, chosen deliberately
+
+**An explanation that discloses is replaced wholesale, not edited.** Cutting the
+word out leaves "…some ___ have long hair", whose shape is nearly as
+informative as the word.
+
+**A disclosing clue is dropped, not replaced.** A clue is optional help; a
+generic one is noise dressed as assistance.
+
+**The answer itself is always kept.** Only the prose is touched — the
+classification was right in the observed failure and there is no reason to
+discard it.
+
+### Two bugs the tests caught before deployment
+
+Both would have shipped a guard that silently did nothing:
+
+- The combining-diacritics range was mangled into raw bytes, so accent folding
+  never worked.
+- A single-word target below the multi-word length floor got no inflections
+  generated, so `dog` never matched `dogs` — **precisely the Field Test #2
+  case**.
+
+There is also a deliberate word-boundary test: `cat` must not match inside
+`category`, or the safe replacement text would itself trip the guard.
+
+### AMBIGUOUS — governing rule, locked
+
+> Answer YES or NO when one is reasonably defensible under the ordinary meaning
+> of the Racer's question. Use AMBIGUOUS only when committing to either YES or
+> NO would materially mislead the Racer.
+
+Nuance alone is not enough. The existence of edge cases is not enough.
+`dog` + "does it have long hair?" remains a correct AMBIGUOUS.
+
+### Deferred, recorded, not built
+
+**AI self-correction of its own most recent answer.** Rule locked for future
+use: correctable only before the Racer submits the next question; always visible
+and logged; no silent history rewriting; immutable once the next question
+arrives; older errors handled by integrity review rather than rewriting history.
+Not implemented — the architecture does not support it trivially, and the
+failure has not been observed in real play.
+
+**Duplicate-question warning** ("You already asked this. Submit anyway?").
+Deferred; not a Milestone 2 blocker.

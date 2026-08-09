@@ -1,4 +1,5 @@
 import { callAnthropicTool } from "../anthropic";
+import { scrubClue, scrubExplanation } from "../disclosureGuard";
 import { env } from "../env";
 import type {
   ClueMode,
@@ -36,13 +37,27 @@ YES — true of the target under the definition.
 NO — false of the target under the definition.
 AMBIGUOUS — reserved for questions you genuinely cannot answer as a binary.
 
-ANSWER YES OR NO WHENEVER A REASONABLE DETERMINATION IS POSSIBLE.
+THE GOVERNING RULE: Answer YES or NO when one is reasonably defensible under the ordinary meaning of the Racer's question. Use AMBIGUOUS only when committing to either YES or NO would materially mislead the Racer.
+
+Nuance alone is not enough. The existence of edge cases is not enough.
 
 AMBIGUOUS is only for a question where two materially different but equally reasonable readings would give DIFFERENT answers. It is not for questions that merely have nuance, edge cases, or an answer needing a caveat. If you find yourself writing an explanation that settles the question — "it is a type of object rather than a specific one" — then you have determined the answer and must give it. An explanation that resolves the question proves the question was answerable.
 
 Before answering AMBIGUOUS, ask yourself: can I state the two readings, and do they really disagree? If you cannot name both, answer YES or NO.
 
 AMBIGUOUS is unlimited and costs the player one question like any other. Do not hoard it, and do not hide behind it. Overusing it is the one genuinely unsporting thing you can do here, because it burns the player's budget while telling them nothing.
+
+NEVER REVEAL THE TARGET IN ANYTHING THE PLAYER READS.
+
+Everything you write that reaches the player — the AMBIGUOUS explanation and the clue — must be safe to read at any point in the game. In them you must not:
+- name the target;
+- use an obvious synonym or equivalent for it;
+- name subtypes, breeds, models or examples of it, which identify it just as surely;
+- narrow the remaining search space beyond what your YES/NO/AMBIGUOUS already does.
+
+The trap is explaining WHY a question is unanswerable by describing the target. "Hair length varies by breed — some dogs have long hair" is a correct explanation and a total giveaway. Say that the property varies within the category, never what the category is.
+
+Write the explanation as if it will be read by someone who has not yet guessed, because it will be.
 
 ORDINARY LANGUAGE, NOT TECHNICAL DEFENSIBILITY.
 
@@ -165,14 +180,30 @@ export async function answerAsComposer(params: {
       ? result.answer
       : "AMBIGUOUS";
 
+  const rawExplanation =
+    answer === "AMBIGUOUS" ? (result.ambiguous_explanation || "").trim() || null : null;
+  const rawClue =
+    params.clueMode === "none" ? null : (result.clue_text || "").trim() || null;
+
+  // The prompt above already forbids disclosure. Field Test #2 showed a prompt
+  // rule is not an invariant — the model was told, and disclosed anyway. This
+  // is the check that makes the guarantee hold regardless.
+  const explanation = scrubExplanation(rawExplanation, params.target);
+  const clue = scrubClue(rawClue, params.target);
+
+  if (explanation.redacted || clue.redacted) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[barkoba] Composer text disclosed the target and was redacted ` +
+        `(explanation=${explanation.redacted}, clue=${clue.redacted}). ` +
+        "The answer itself was kept; only the visible prose was replaced."
+    );
+  }
+
   return {
     reasoning: result.reasoning ?? "",
     answer,
-    // Normalize rather than trust: an explanation on a YES, or a clue when the
-    // mode forbids one, would leak shape the player should not be given.
-    ambiguous_explanation:
-      answer === "AMBIGUOUS" ? (result.ambiguous_explanation || "").trim() || null : null,
-    clue_text:
-      params.clueMode === "none" ? null : (result.clue_text || "").trim() || null,
+    ambiguous_explanation: explanation.value,
+    clue_text: clue.value,
   };
 }
