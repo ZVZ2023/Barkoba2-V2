@@ -12,10 +12,13 @@ import type { ComposerAnswer, QuestionLogEntry } from "./types";
 // which is where this class of feature usually goes quietly wrong. Recomputing
 // from what remains cannot drift.
 //
-// MILESTONE 1: AMBIGUOUS is unlimited and never consumes a question credit,
-// so question_count is simply the number of YES/NO answers in the surviving
-// log. The positional free-allowance arithmetic this function used to carry is
-// gone with the quota that required it.
+// MILESTONE 1 RULE: every Racer question costs one of the 20, whatever answer
+// it receives. YES, NO and AMBIGUOUS are all worth exactly one question.
+// AMBIGUOUS is unlimited in COUNT — there is no quota — but it is not free.
+//
+// So question_count is simply the number of answered questions in the
+// surviving log, and no per-entry credit bookkeeping is needed at all: there
+// is no longer any way for two answered questions to cost different amounts.
 // ---------------------------------------------------------------------------
 
 export interface SplitResult {
@@ -54,9 +57,10 @@ export interface RecomputedCounters {
 /**
  * Recompute both counters from the log.
  *
- * question_count counts YES/NO answers only. MUTATES entries to clear the
- * retired `ambiguous_consumed_credit` flag, which repairs records written
- * before the quota was removed.
+ * question_count is the number of ANSWERED questions, of any answer type.
+ * ambiguous_count is a subset of that, tracked for later abuse analysis.
+ * MUTATES entries to clear the retired `ambiguous_consumed_credit` flag,
+ * repairing records written under either earlier rule.
  */
 export function recomputeCounters(qaLog: QuestionLogEntry[]): RecomputedCounters {
   let questionCount = 0;
@@ -67,12 +71,13 @@ export function recomputeCounters(qaLog: QuestionLogEntry[]): RecomputedCounters
     const answer = entry.composer_response;
     if (answer === null) continue;
 
-    if (answer === "AMBIGUOUS") {
-      ambiguousCount += 1;
-    } else {
-      questionCount += 1;
-    }
-    // Retired flag: nothing charges a credit any more.
+    // Every answered question costs exactly one, regardless of answer type.
+    questionCount += 1;
+    if (answer === "AMBIGUOUS") ambiguousCount += 1;
+
+    // Retired flag. Under a flat cost there is nothing for it to record —
+    // every answered question consumes a credit, so a per-entry "did this one
+    // consume a credit?" carries zero information. Cleared, never set.
     entry.ambiguous_consumed_credit = false;
   }
 

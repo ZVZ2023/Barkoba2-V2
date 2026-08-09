@@ -130,16 +130,17 @@ export async function POST(
 
     if (answer === "AMBIGUOUS") {
       pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
-      // Milestone 1: AMBIGUOUS is unlimited and budget-neutral. The Racer's
-      // budget is spent only by questions that got a genuine YES or NO, so an
-      // unanswerable question costs it nothing. ambiguous_count is still
-      // tracked — it is the input to abuse detection, which is a separate,
-      // later concern and deliberately not enforced here.
+      // Unlimited in COUNT — there is no quota — but not free. ambiguous_count
+      // is tracked separately as the input to later abuse analysis, never as a
+      // discount on the Racer's budget.
       game.ambiguous_count += 1;
     } else {
       pending.ambiguous_explanation = null;
-      game.question_count += 1;
     }
+
+    // Every question the Racer asks costs one of its 20, whatever answer comes
+    // back. YES, NO and AMBIGUOUS are all worth exactly one question.
+    game.question_count += 1;
   } else if (pending) {
     // -----------------------------------------------------------------------
     // Idempotency guard. A pending question with no answer supplied means a

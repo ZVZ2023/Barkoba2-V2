@@ -26,9 +26,26 @@ because assigning them versions after the fact would invent a history that did
 not happen. Everything through this point is consolidated as `0.3.0.1`. New
 work uses the numeric convention only.
 
-Note on `package.json`: npm requires three-part semver, so it reads `0.3.0`.
-The four-part build tag lives in the `VERSION` file and should be the git tag
-(`v0.3.0.1`).
+Note on `package.json`: npm requires three-part semver, so it carries only the
+first three components. The four-part build tag lives in the `VERSION` file and
+should be the git tag.
+
+### What bumps `VERSION`, and what does not
+
+**Standing convention.** `VERSION` moves on **feature and behaviour changes
+only**. Infrastructure-only commits — tooling, build config, observability,
+docs — do not bump it.
+
+Ground-truth deployment identity is the **commit SHA**, reported as
+`commit_short` by `/api/version` and injected by Vercel from the actual pushed
+commit. It cannot go stale, because nobody has to remember to update it.
+`VERSION` is a human label for what changed in the game; the SHA is the answer
+to "what is actually running".
+
+The consequence is intended: two consecutive deployments can report the same
+`VERSION` and different `commit_short`. That is not ambiguity — it is the label
+correctly saying "the game did not change" while the SHA says "the deployment
+did".
 
 ---
 
@@ -84,31 +101,37 @@ this. **V1 never enters it.** Do not delete it as dead code — it is reserved.
 
 ---
 
-## 2. AMBIGUOUS: unlimited and budget-neutral
+## 2. AMBIGUOUS: unlimited in count, but not free
 
-**Current rule (Milestone 1).** AMBIGUOUS is available for the whole game, with
-no cap, and never consumes a question credit. `question_count` is decremented
-only by questions that received a genuine YES or NO.
+**Current rule.** Every question the Racer asks costs one of its 20, whatever
+answer comes back. YES, NO and AMBIGUOUS are all worth exactly one question.
+AMBIGUOUS has no quota and can be used for the whole game.
 
-`ambiguous_count` is still tracked. It is the input to ambiguity-abuse
-detection, which is deliberately **not** implemented here — unlimited now,
-analysed later, and never conflated with the Racer's budget.
+`ambiguous_count` is tracked separately as the input to ambiguity-abuse
+detection, which is deliberately not implemented here. It is telemetry, never a
+discount.
 
-**Superseded design, recorded so it is not reinvented.** An earlier rule gave
-the first N AMBIGUOUS answers free and charged a question credit thereafter
-(`MAX_FREE_AMBIGUOUS_ANSWERS`, default 3). Its reasoning was that an unbounded
-AMBIGUOUS lets a Composer stall indefinitely, and a *refusal* would force the
-misleading YES/NO that AMBIGUOUS exists to prevent — so the cost landed on the
-game clock instead.
+**Two superseded designs, recorded so neither is reinvented.**
 
-That was removed because it charged the Racer for the Composer's imprecision.
-An unanswerable question is usually a badly-cut question, not a stalling tactic,
-and the Racer had no way to avoid paying for one. Stalling is real but rare, and
-it is better handled by detection after the fact than by a toll on every
-ambiguous turn.
+*First*, a quota: the first N AMBIGUOUS answers free, a question credit charged
+thereafter (`MAX_FREE_AMBIGUOUS_ANSWERS`, default 3). Removed because it charged
+the Racer for the Composer's imprecision, and because the positional
+free-tier arithmetic was a real source of counting bugs on rewind.
 
-`QuestionLogEntry.ambiguous_consumed_credit` is **retired, always false**, kept
-only so records written under the old rule deserialize during their TTL.
+*Second*, and briefly, unlimited **and** budget-neutral — AMBIGUOUS costing the
+Racer nothing at all. That went too far in the other direction. A question is
+spent when it is asked; whether the Composer could answer it cleanly is a
+property of how well the question was cut, and asking an unanswerable one is
+not free. Budget-neutrality also gives the Composer an unpriced way to stall,
+which is the exact problem the original quota existed to prevent.
+
+The flat cost keeps what both attempts were reaching for: the Composer is never
+forced into a misleading YES/NO, and the Racer's 20 questions mean 20 questions.
+
+`QuestionLogEntry.ambiguous_consumed_credit` stays **retired, always false**.
+Under a flat cost it carries no information — every answered question consumes a
+credit, so a per-entry record of "did this one?" is a constant. It is kept only
+so records written under either earlier rule deserialize during their TTL, and
 `recomputeCounters()` clears it on read.
 
 ## 3. Two independent cost controls, and why one is not enough

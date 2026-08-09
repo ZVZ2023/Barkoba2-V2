@@ -45,18 +45,28 @@ test("counters are derived from the log, not tracked separately", () => {
   assert.equal(c.ambiguousCount, 0);
 });
 
-test("MILESTONE 1: AMBIGUOUS never consumes a question credit, at any count", () => {
-  // The quota is gone. Ten AMBIGUOUS answers cost the Racer nothing.
+test("unanswered questions are not charged", () => {
+  // The Racer has asked, the Composer has not replied. Nothing is spent until
+  // an answer exists — otherwise a pending question would cost the budget even
+  // if the game were abandoned there.
+  const log = [entry(1, "YES"), entry(2, null)];
+  const c = recomputeCounters(log);
+  assert.equal(c.questionCount, 1);
+});
+
+test("MILESTONE 1: AMBIGUOUS is unlimited in count but still costs a question", () => {
+  // No quota — ten AMBIGUOUS answers are all permitted. Each still costs one
+  // of the Racer's 20, because every question it asks costs one.
   const log = Array.from({ length: 10 }, (_, i) => entry(i + 1, "AMBIGUOUS"));
   const c = recomputeCounters(log);
-  assert.equal(c.questionCount, 0, "the Racer's budget is untouched by AMBIGUOUS");
-  assert.equal(c.ambiguousCount, 10, "but they are still counted, for later abuse analysis");
+  assert.equal(c.questionCount, 10, "ten questions asked, ten questions charged");
+  assert.equal(c.ambiguousCount, 10, "and tracked, for later abuse analysis");
   for (const e of log) {
     assert.equal(e.ambiguous_consumed_credit, false, "the retired flag stays false");
   }
 });
 
-test("question_count counts YES/NO answers and nothing else", () => {
+test("every answer type costs exactly the same: one question", () => {
   const log = [
     entry(1, "YES"),
     entry(2, "AMBIGUOUS"),
@@ -66,17 +76,19 @@ test("question_count counts YES/NO answers and nothing else", () => {
     entry(6, "YES"),
   ];
   const c = recomputeCounters(log);
-  assert.equal(c.questionCount, 3);
-  assert.equal(c.ambiguousCount, 3);
+  assert.equal(c.questionCount, 6, "six answered questions, six charged");
+  assert.equal(c.ambiguousCount, 3, "three of which were ambiguous");
 });
 
-test("records written under the old quota are repaired on read", () => {
-  // A stored entry may still carry ambiguous_consumed_credit = true.
+test("records written under either earlier rule are repaired on read", () => {
+  // A stored entry may still carry ambiguous_consumed_credit = true from the
+  // quota era. Under a flat cost the flag is meaningless and must be cleared,
+  // and it must not cause a double charge.
   const log = [entry(1, "AMBIGUOUS"), entry(2, "AMBIGUOUS")];
   log[0]!.ambiguous_consumed_credit = true;
   const c = recomputeCounters(log);
-  assert.equal(log[0]!.ambiguous_consumed_credit, false, "stale charge is cleared");
-  assert.equal(c.questionCount, 0, "and it does not leak into the budget");
+  assert.equal(log[0]!.ambiguous_consumed_credit, false, "stale flag cleared");
+  assert.equal(c.questionCount, 2, "charged once each, not twice for the flagged one");
 });
 
 test("unanswered and non-question turns are not counted", () => {
@@ -141,7 +153,7 @@ test("a full rewind restores credits exactly, not approximately", () => {
     entry(6, "NO"),
   ];
   const before = recomputeCounters(log);
-  assert.equal(before.questionCount, 4, "four YES/NO answers");
+  assert.equal(before.questionCount, 6, "six answered questions, all charged");
   assert.equal(before.ambiguousCount, 2);
 
   const split = splitAtTurn(log, 2)!;
