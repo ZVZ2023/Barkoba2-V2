@@ -36,6 +36,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   const [explanation, setExplanation] = useState("");
   const [correcting, setCorrecting] = useState<number | null>(null);
   const [correctionExplanation, setCorrectionExplanation] = useState("");
+  // Mirrors `ambiguousMode` on the main answer path: Ambiguous reveals the
+  // optional note before committing, Yes/No commit straight away.
+  const [correctionAmbiguousMode, setCorrectionAmbiguousMode] = useState(false);
   const [resolving, setResolving] = useState(false);
   const [resolveError, setResolveError] = useState<string | null>(null);
   // Keyed on qa_log length rather than a boolean, so the resume also fires
@@ -102,6 +105,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
       } finally {
         setBusy(false);
         setCorrecting(null);
+        setCorrectionAmbiguousMode(false);
         setCorrectionExplanation("");
       }
     },
@@ -226,6 +230,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                     <button
                       onClick={() => {
                         setCorrecting(entry.turn_index);
+                        setCorrectionAmbiguousMode(false);
                         setCorrectionExplanation(entry.ambiguous_explanation ?? "");
                       }}
                       disabled={busy}
@@ -251,38 +256,70 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                           <>Replace your answer to this question.</>
                         )}
                       </p>
-                      <div className="flex flex-wrap gap-2">
-                        <button
-                          onClick={() => void correctAnswer(entry.turn_index, "YES")}
-                          disabled={busy}
-                          className="min-h-11 flex-1 rounded-md bg-emerald-900/60 px-3 py-2.5 text-sm font-medium text-emerald-100 disabled:opacity-40 sm:flex-none"
-                        >
-                          Yes
-                        </button>
-                        <button
-                          onClick={() => void correctAnswer(entry.turn_index, "NO")}
-                          disabled={busy}
-                          className="min-h-11 flex-1 rounded-md bg-red-900/60 px-3 py-2.5 text-sm font-medium text-red-100 disabled:opacity-40 sm:flex-none"
-                        >
-                          No
-                        </button>
-                        <button
-                          onClick={() =>
-                            void correctAnswer(
-                              entry.turn_index,
-                              "AMBIGUOUS",
-                              correctionExplanation
-                            )
-                          }
-                          disabled={busy}
-                          className="min-h-11 flex-1 rounded-md border border-amber-800 px-3 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-40 sm:flex-none"
-                        >
-                          Ambiguous
-                        </button>
-                      </div>
+                      {!correctionAmbiguousMode ? (
+                        <div className="flex flex-wrap gap-2">
+                          <button
+                            onClick={() => void correctAnswer(entry.turn_index, "YES")}
+                            disabled={busy}
+                            className="min-h-11 flex-1 rounded-md bg-emerald-900/60 px-3 py-2.5 text-sm font-medium text-emerald-100 disabled:opacity-40 sm:flex-none"
+                          >
+                            Yes
+                          </button>
+                          <button
+                            onClick={() => void correctAnswer(entry.turn_index, "NO")}
+                            disabled={busy}
+                            className="min-h-11 flex-1 rounded-md bg-red-900/60 px-3 py-2.5 text-sm font-medium text-red-100 disabled:opacity-40 sm:flex-none"
+                          >
+                            No
+                          </button>
+                          <button
+                            onClick={() => setCorrectionAmbiguousMode(true)}
+                            disabled={busy}
+                            className="min-h-11 flex-1 rounded-md border border-amber-800 px-3 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-40 sm:flex-none"
+                          >
+                            Ambiguous
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-2">
+                          <p className="text-xs text-neutral-400">
+                            Say why a straight yes or no would mislead. Optional. The
+                            Racer sees this note.
+                          </p>
+                          <textarea
+                            className="h-20 w-full min-w-0 resize-none rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500"
+                            value={correctionExplanation}
+                            onChange={(e) => setCorrectionExplanation(e.target.value)}
+                            placeholder="e.g. it depends on whether you count the handle as part of it"
+                          />
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              onClick={() =>
+                                void correctAnswer(
+                                  entry.turn_index,
+                                  "AMBIGUOUS",
+                                  correctionExplanation
+                                )
+                              }
+                              disabled={busy}
+                              className="min-h-11 rounded-md bg-amber-900/60 px-4 py-2.5 text-sm font-medium text-amber-100 disabled:opacity-40"
+                            >
+                              Send ambiguous
+                            </button>
+                            <button
+                              onClick={() => setCorrectionAmbiguousMode(false)}
+                              disabled={busy}
+                              className="min-h-11 rounded-md border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300"
+                            >
+                              Back
+                            </button>
+                          </div>
+                        </div>
+                      )}
                       <button
                         onClick={() => {
                           setCorrecting(null);
+                          setCorrectionAmbiguousMode(false);
                           setCorrectionExplanation("");
                         }}
                         disabled={busy}

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import ComposerEntry from "./ComposerEntry";
 
@@ -10,6 +11,25 @@ import ComposerEntry from "./ComposerEntry";
 // page fetch, no API access required.
 
 export const dynamic = "force-dynamic";
+
+/**
+ * The version also goes in a meta tag, not only in the visible badge.
+ *
+ * The badge is for the player. This is for machine verification: readability
+ * extractors routinely discard a small inline span next to a heading, so the
+ * badge alone could not be read from outside — which was the entire point of
+ * putting it on the landing page. Meta tags survive extraction, so this is the
+ * channel that actually confirms which build is live.
+ */
+export function generateMetadata(): Metadata {
+  const v = getAppVersion();
+  return {
+    other: {
+      "x-app-version": v.version ?? "unknown",
+      "x-app-commit": v.commitShort ?? "unknown",
+    },
+  };
+}
 
 export default function Page() {
   return <ComposerEntry versionLabel={formatVersionLabel(getAppVersion())} />;
