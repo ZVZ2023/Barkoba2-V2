@@ -289,8 +289,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                       ) : (
                         <div className="flex flex-col gap-2">
                           <p className="text-xs text-[var(--ink-soft)]">
-                            Say why a straight yes or no would mislead. Optional. The
-                            Racer sees this note.
+                            Írd le, miért lenne félrevezető egy sima igen vagy
+                            nem. Nem kötelező. Az ellenfeled látja ezt a
+                            megjegyzést.
                           </p>
                           <textarea
                             spellCheck

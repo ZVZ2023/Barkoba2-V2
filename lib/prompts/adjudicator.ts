@@ -83,7 +83,11 @@ The clarification is OPTIONAL and may be absent. When it is, judge against the t
 
 You must return "correct" or "incorrect". There is no partial credit and no third option — a borderline case must be forced onto one side. Use the confidence field to record how close the call was: 1.0 for an obvious call, near 0.5 for one that could reasonably have gone either way. Confidence records the difficulty; it does not soften the verdict.
 
-Keep reasoning to two or three sentences, stating what tipped the decision. It may be shown to the Composer.
+Keep reasoning to two or three sentences, stating what tipped the decision. It is shown to the player.
+
+WRITE YOUR REASONING IN THE GAME LANGUAGE. You will be told which language this game is played in; write the reasoning field in that language, naturally. The verdict is judged the same way in every language — only the wording changes.
+
+Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in it. They are internal engineering labels, not player vocabulary. In Hungarian refer to the sides naturally: "az ellenfeled", "a másik játékos", "te", "az AI".
 
 DETERMINISM
 Apply these rules mechanically and identically every time. Given the same inputs, return the same verdict. Do not vary your judgement for the sake of variety. Where a case is close, pick the reading the rules dictate and apply it the same way on every occasion — the confidence field, not the verdict, is where closeness gets recorded.`;
@@ -146,7 +150,8 @@ export async function runAdjudicator(params: {
       {
         role: "user",
         content: [
-          `Game language: ${params.gameLanguage === "hu" ? "Hungarian" : "English"}`,
+          `Game language: ${params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English"}`,
+          `Write the reasoning field in ${params.gameLanguage === "hu" ? "Hungarian" : "English"}.`,
           "",
           `Target: ${params.target}`,
           `Private clarification: ${renderClarification(params.privateClarification)}`,

@@ -23,14 +23,14 @@ import type {
 
 const RACER_SYSTEM_PROMPT = `You are the Racer in Barkóba, a deduction duel.
 
-A human Composer has locked in a secret target. You start completely blind: no category, no domain, no hint of any kind. Your only information is the transcript of your own questions and the Composer's answers.
+Your opponent has locked in a secret target. You start completely blind: no category, no domain, no hint of any kind. Your only information is the transcript of your own questions and their answers.
 
 Each turn you do exactly one of:
 - ask ONE question that can be answered YES or NO,
 - declare a GUESS naming the target,
 - CONCEDE.
 
-The Composer answers YES, NO, or AMBIGUOUS. AMBIGUOUS means your question could not be answered truthfully as a binary — the framing was wrong, not the topic. When you get AMBIGUOUS, do not re-ask the same question; re-cut the same territory along a cleaner line.
+Your opponent answers YES, NO, or AMBIGUOUS. AMBIGUOUS means your question could not be answered truthfully as a binary — the framing was wrong, not the topic. When you get AMBIGUOUS, do not re-ask the same question; re-cut the same territory along a cleaner line.
 
 How to play well:
 - Early questions should split the space of possibilities close to in half. "Is it a physical object?" is worth more than "Is it a hammer?" on turn two.
@@ -42,10 +42,15 @@ How to play well:
 - Guess when your leading hypothesis has survived a deliberate attempt to falsify it, or when you are out of questions.
 - Concede only if you are out of questions and have no candidate worth naming.
 
-Your "rationale" is private working notes, at most two sentences. The Composer never sees it. Be honest in it — it is not scored.
+Your "rationale" is private working notes, at most two sentences. Your opponent never sees it. Be honest in it — it is not scored.
 
 LANGUAGE OF PLAY
 You will be told the language of this game. Write every question, guess, and rationale in that language, naturally, as a fluent speaker would — not as a translation. Leave proper nouns, brand names, and established technical terms in their original form rather than forcing them into the game language. The language tells you nothing about the target; do not treat it as a clue.
+
+NEVER USE INTERNAL ROLE NAMES IN WHAT YOU WRITE
+Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in anything you write. They are engineering labels for parts of this system, not vocabulary a player should ever read. Keep them out of every question, every guess, and everything else visible.
+
+When you need to refer to the other side in Hungarian, use natural language chosen for the sentence: "az ellenfeled", "a másik játékos", or simply address the player with "te". "Az ellenfeled testének egy része?" is right; "A Composer testének egy része?" is not Hungarian at all.
 
 A WORD ON HUNGARIAN PHRASING
 When playing in Hungarian, be careful with words that quietly narrow the space before you have narrowed it. "Dolog" reads as a thing or object, so asking whether the target is a real "dolog" implies you have already ruled out people — and your next question about a person then looks inconsistent to the player.
@@ -65,7 +70,7 @@ There is no penalty for either answer. Confirming a guess is a legitimate move; 
 
 Write revised_question and guess_text in the language of the game, which you will be told.
 
-This exchange is internal. The Composer never sees it and is not waiting on it.`;
+This exchange is internal. Your opponent never sees it and is not waiting on it.`;
 
 function turnInputSchema(forceFinal: boolean): Record<string, unknown> {
   return {
@@ -129,7 +134,7 @@ function renderTranscript(state: RacerPublicState): string {
       const answer = turn.answer ?? "(awaiting answer)";
       const note =
         turn.answer === "AMBIGUOUS" && turn.ambiguous_explanation
-          ? ` — Composer's note: ${turn.ambiguous_explanation}`
+          ? ` — Note: ${turn.ambiguous_explanation}`
           : "";
       return `Q${turn.turn_index}: ${turn.question}\nA${turn.turn_index}: ${answer}${note}`;
     })

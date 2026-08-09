@@ -1241,3 +1241,68 @@ above, since a community cannot usefully argue about a verdict whose basis is
 not visible.
 
 Recorded so it survives the session it was thought of in.
+
+---
+
+## 18. Racer intelligence benchmarks — observed, recorded, NOT fixed
+
+Two field games exposed reasoning weaknesses in the AI Racer. They are
+recorded here as **benchmarks**, not as defects being repaired in `0.9.x`.
+No Racer prompt or strategy change was made for either. Any future attempt to
+make the Racer smarter should be measured against these two cases first,
+because both are cheap to re-run and both fail in an obvious, visible way.
+
+The reason for recording rather than fixing: Racer strategy is the single
+highest-variance surface in the system. Changing it invalidates every previous
+field observation, and we have no regression harness for question quality —
+only for adjudication. Tuning strategy now would trade a measurable system for
+an unmeasurable one right before V1.
+
+### Benchmark A — "Red Citroën C4": weak global hypothesis management
+
+**Target:** a specific red Citroën C4.
+
+**Observed:** the Racer established the broad frame correctly and early —
+man-made, vehicle, car — and then spent its remaining questions on locally
+plausible but globally uncoordinated probes. It did not maintain a running
+candidate set, did not visibly track which attributes were already pinned, and
+re-tested territory that earlier answers had already settled.
+
+**The failure is not any single question.** Each one is defensible on its own.
+The failure is that the sequence has no memory of its own shape: the Racer
+optimises the next question against the last answer rather than against the
+whole transcript.
+
+**What a fix would have to demonstrate:** that after N answers the Racer can
+state its live candidate set and choose the question that best halves *it* —
+not the question that best follows the most recent answer.
+
+### Benchmark B — "My left leg": no reconsideration of the parent abstraction
+
+**Target:** the player's own left leg.
+
+**Observed:** the Racer repeatedly received containment-flavoured signals —
+answers indicating the target was *part of* something, and specifically part of
+a person — and did not revise the abstraction level it was searching at. It
+kept asking questions appropriate to a whole object while the evidence said
+"component of a body". Repeated IS-IS answers, which in this game mean *the
+framing is wrong, not the topic*, were treated as noise rather than as the
+signal they are.
+
+**The related observation — the question/guess boundary.** In this game the
+Racer also produced inputs that sit ambiguously between a narrowing question
+and a guess ("Is it your leg?"). The Guess Detector resolves these by asking
+the player to confirm intent, which is the correct mechanism and worked. But it
+means the Racer can spend its single guess by accident of phrasing, and it means
+question-shaped guesses are a live category rather than an edge case. Worth
+watching; not changed.
+
+**What a fix would have to demonstrate:** that a run of AMBIGUOUS answers causes
+the Racer to re-ask *at a different level of abstraction*, not merely to re-cut
+the same level along a different line.
+
+### Status
+
+Both benchmarks are **open**. Neither blocks V1. Neither has been fixed,
+mitigated, or worked around in prompt text. If a later version claims to
+improve Racer reasoning, these are the first two games to replay.

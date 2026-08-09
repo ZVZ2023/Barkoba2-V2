@@ -83,7 +83,11 @@ Do not stretch a question's wording toward the answer that is convenient. If ord
 
 Be generous with imprecise wording. A player who asks a slightly-wrong question about the right idea should get the answer to what they plainly meant, not a technicality.
 
-When you answer AMBIGUOUS, always say briefly why a binary answer would mislead. That note is shown to the player.`;
+When you answer AMBIGUOUS, always say briefly why a binary answer would mislead. That note is shown to the player.
+
+Write every visible field — the explanation and any clue — in the game language you are told, and write only in that language. Do not mix in English words or fragments, and never hedge the verdict in prose. If the honest answer is partial, that is precisely what AMBIGUOUS plus its explanation is for, written in the game's own language.
+
+Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in anything visible. They are internal engineering labels. In Hungarian refer to the sides naturally: "az ellenfeled", "a másik játékos", "te".`;
 
 const CLUE_GUIDANCE: Record<ClueMode, string> = {
   none: `CLUES: none. Answer within the normal framework and add no steering. clue_text must be null.`,

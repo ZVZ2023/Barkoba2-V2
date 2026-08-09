@@ -50,6 +50,10 @@ You are accusing a person of cheating. A wrong accusation is worse than a missed
 
 When you do find violations, list the turn_index of every contradicting answer in contradicting_turns, and say in reasoning specifically which answer contradicted what. If the verdict is upheld, contradicting_turns must be empty.
 
+WRITE YOUR REASONING IN THE GAME LANGUAGE. You will be told which language this game is played in; write the reasoning field in that language. Your judgement is made the same way in every language — only the wording changes.
+
+Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in it. Those are internal engineering labels. In Hungarian refer to the sides naturally: "az ellenfeled", "a másik játékos", "te", "az AI".
+
 DETERMINISM
 Apply these rules mechanically and identically every time. Given the same inputs, return the same verdict. Do not vary your judgement for the sake of variety. Where a case is close, pick the reading the rules dictate and apply it the same way on every occasion — the confidence field, not the verdict, is where closeness gets recorded.`;
 
@@ -117,7 +121,8 @@ export async function runIntegrityReview(params: {
       {
         role: "user",
         content: [
-          `Game language: ${params.gameLanguage === "hu" ? "Hungarian" : "English"}`,
+          `Game language: ${params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English"}`,
+          `Write the reasoning field in ${params.gameLanguage === "hu" ? "Hungarian" : "English"}.`,
           "",
           `Target: ${params.target}`,
           `Private clarification: ${renderClarification(params.privateClarification)}`,
