@@ -4,6 +4,16 @@ Next.js (App Router) + Vercel, full-stack single deploy, per the approved archit
 
 **Version `0.3.0.1`** · series `0.3.x` — Human Composer → AI Racer.
 
+## Two games, one engine
+
+- **`/`** — `0.6.x`: the AI picks a secret, you ask the questions.
+- **`/compose`** — `0.3.x`: you set the secret, the AI guesses.
+
+They share the store, the secret module, the budget ceilings, adjudication, and
+integrity review. They differ only in which participant the server synthesises
+on a turn: `/api/game/[id]/turn` (AI Racer) versus `/api/game/[id]/ask`
+(AI Composer).
+
 ## Versioning
 
 | Series | Configuration | Status |

@@ -33,6 +33,9 @@ const PERMITTED_SECRET_IMPORTERS = [
   "app/api/game/create/route.ts", // createSecret + lockSecret, at game creation
   "app/api/game/[id]/resolve/route.ts", // getSecretForAdjudication, at resolution
   "lib/prompts/validator.ts", // (reserved) pre-game validation
+  "app/api/game/[id]/ask/route.ts", // getSecretForAnswering, every AI-Composer turn
+  "lib/prompts/composerTarget.ts", // (reserved) produces the secret
+  "lib/prompts/composerAnswer.ts", // (reserved) answers against the secret
   "lib/prompts/adjudicator.ts", // (reserved) judges the guess
   "lib/prompts/integrityReview.ts", // (reserved) judges the answers
 ];
@@ -47,6 +50,8 @@ const QUARANTINED = [
   "app/game/[id]/page.tsx",
   "app/game/[id]/GameClient.tsx",
   "app/game/[id]/ResultPanel.tsx",
+  "app/game/[id]/RacerClient.tsx", // the human Racer must never reach the target
+  "app/RacerSetup.tsx",
 ];
 
 const SCAN_ROOTS = ["app", "lib", "scripts", "test"];

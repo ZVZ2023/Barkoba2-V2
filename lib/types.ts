@@ -34,6 +34,19 @@ export type ComposerAnswer = "YES" | "NO" | "AMBIGUOUS";
  */
 export type ParticipantKind = "human" | "ai";
 
+// --- 0.6.x: AI Composer vs Human Racer -------------------------------------
+
+/**
+ * How hard the AI Composer should make the target.
+ *
+ * These describe DEDUCTIVE DISTANCE, never obscurity. The AI has a vastly
+ * larger knowledge pool than any human player and must not use it to win.
+ */
+export type Difficulty = "easy" | "medium" | "hard";
+
+/** Only offered on Hard. Easy and Medium always run as "none". */
+export type ClueMode = "none" | "minimal" | "progressive";
+
 /**
  * The language the game is conducted in. Detected once, by the Validator,
  * from the Composer's own words — there is no language-selection screen and
@@ -75,7 +88,12 @@ export interface QuestionLogEntry {
    */
   turn_index: number;
   turn_type: RacerAction;
-  /** Full tool output as returned by the model — the audit trail. */
+  /**
+   * The AI participant's raw tool output for this turn, whichever seat it
+   * occupies: the Racer's move in 0.3.x, the Composer's answer in 0.6.x.
+   * The field name predates role inversion and is kept to avoid churning a
+   * schema that is otherwise correct.
+   */
   racer_output_raw: string;
   /** Denormalized from racer_output_raw so readers never re-parse JSON to render a thread. */
   question_text: string | null;
@@ -88,6 +106,13 @@ export interface QuestionLogEntry {
 
   // --- M3: guess-intent resolution (only set when guess_detector_flagged) ---
   guess_intent_outcome: GuessIntentOutcome | null;
+  /**
+   * Optional steer from an AI Composer, attached to any answer type. Null
+   * unless clue_mode is "minimal" or "progressive". Distinct from
+   * ambiguous_explanation, which explains why a binary answer would mislead
+   * and exists in both directions of play.
+   */
+  clue_text: string | null;
   /** True when this AMBIGUOUS answer consumed a question credit (free cap exhausted). */
   ambiguous_consumed_credit: boolean;
 
@@ -104,6 +129,24 @@ export interface QuestionLogEntry {
 
 export type AdjudicatorVerdict = "correct" | "incorrect";
 export type IntegrityVerdict = "upheld" | "violated";
+
+/** What the AI Composer locks in before questioning begins. */
+export interface ComposerTargetResult {
+  target: string;
+  /** The hidden definition fixing exactly what the target means. */
+  definition: string;
+  reasoning: string;
+}
+
+/** One answer from the AI Composer. */
+export interface ComposerAnswerResult {
+  reasoning: string;
+  answer: ComposerAnswer;
+  /** Set only when the answer is AMBIGUOUS. */
+  ambiguous_explanation: string | null;
+  /** Set only when clue_mode permits it. */
+  clue_text: string | null;
+}
 
 export interface AdjudicatorResult {
   verdict: AdjudicatorVerdict;
@@ -156,8 +199,15 @@ export interface GameRecord {
   game_language: GameLanguage;
   /** Always "human" in the 0.3.x series. Recorded, never branched on. */
   composer_kind: ParticipantKind;
-  /** Always "ai" in the 0.3.x series. Recorded, never branched on. */
+  /** "ai" in 0.3.x (human Composer), "human" in 0.6.x (AI Composer). */
   racer_kind: ParticipantKind;
+  /**
+   * Set only when the AI is the Composer. Null in 0.3.x games, where the
+   * human chose the target and difficulty is not a meaningful concept.
+   */
+  difficulty: Difficulty | null;
+  /** Only ever non-"none" on Hard. Null in 0.3.x games. */
+  clue_mode: ClueMode | null;
   question_count: number;
   /** Total AMBIGUOUS answers given, free and costed alike. */
   ambiguous_count: number;

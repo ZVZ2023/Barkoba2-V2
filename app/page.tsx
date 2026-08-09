@@ -1,26 +1,16 @@
 import type { Metadata } from "next";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
-import ComposerEntry from "./ComposerEntry";
+import RacerSetup from "./RacerSetup";
 
-// Server component. Its only job is to read the deployment version — which a
-// client component cannot do — and hand it to the form.
+// 0.6.x default: AI Composer, human Racer.
 //
-// The badge is on this page as well as the game screen deliberately: this is
-// the only screen reachable without first creating a game, which makes it the
-// one place a deployed version can be confirmed from outside with a plain
-// page fetch, no API access required.
+// The 0.3.x human-Composer game is unchanged and lives at /compose. Both run on
+// the same engine — same store, same secret module, same adjudication and
+// integrity review — and differ only in which participant the server has to
+// synthesise on a turn.
 
 export const dynamic = "force-dynamic";
 
-/**
- * The version also goes in a meta tag, not only in the visible badge.
- *
- * The badge is for the player. This is for machine verification: readability
- * extractors routinely discard a small inline span next to a heading, so the
- * badge alone could not be read from outside — which was the entire point of
- * putting it on the landing page. Meta tags survive extraction, so this is the
- * channel that actually confirms which build is live.
- */
 export function generateMetadata(): Metadata {
   const v = getAppVersion();
   return {
@@ -32,5 +22,5 @@ export function generateMetadata(): Metadata {
 }
 
 export default function Page() {
-  return <ComposerEntry versionLabel={formatVersionLabel(getAppVersion())} />;
+  return <RacerSetup versionLabel={formatVersionLabel(getAppVersion())} />;
 }

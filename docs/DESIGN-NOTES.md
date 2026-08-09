@@ -886,3 +886,113 @@ Accidental taps are occasional; confirming every YES/NO would tax every turn to
 guard against a rare event. Instead the cost of a rewind is shown inside the
 correction control itself — "discards the 14 turns after it" — so it is visible
 at the moment of choosing, without a modal in the main loop.
+
+---
+
+## 12. OPEN DECISION — the Validator ambiguity gate is a UX problem, not a bug
+
+**Status: undecided. Not a defect. Do not fold this into a Pass scope silently.**
+
+Diagnosed during Test #8, which was reported as "the optional clarification
+field blocked progression". It did not. Reproduced against the deployed path:
+
+| Case | Result |
+|---|---|
+| Empty clarification, unambiguous target | VALID |
+| Clarification omitted entirely | VALID |
+| Empty clarification, target the Validator finds ambiguous | CLARIFICATION_REQUIRED |
+| **Same ambiguous target *with* clarification supplied** | **still CLARIFICATION_REQUIRED** |
+
+That last row is the point: the gate fires on the **target**, and supplying
+clarification does not clear it. The clarification field is not a blocker and
+never was. `/api/game/create` has no clarification check, and the submit button
+gates on `!target` alone.
+
+**What makes it feel like a blocker** — three surfaces contradicting each other:
+
+1. The field is labelled **"(optional)"**.
+2. The response panel says **"Refine your private clarification above and submit
+   again"**, which states the opposite.
+3. From that panel the only affordance is **"Back to entry"**. There is no
+   "proceed anyway", so a Composer who cannot guess what the Validator wants has
+   no exit except changing the target.
+
+**Why this is a decision and not a fix.** The gate's purpose is to stop a game
+starting on a target that cannot be adjudicated fairly. Any escape hatch trades
+that guarantee for Composer autonomy, and how much to trade is a product call:
+
+- Reword only — say the *target* needs disambiguating, not that clarification is
+  required. Cheapest, removes the contradiction, keeps the gate absolute.
+- Add a "use my target as written" override — restores autonomy, and accepts
+  that some games will be adjudicated against a genuinely ambiguous target.
+- Show the Validator's clarifying question inline with the target field so
+  refining the *target* is the obvious next move rather than a dead end.
+
+Recorded here because a decision left in a chat log gets rediscovered as a bug.
+
+---
+
+## 13. Milestone 2 — AI Composer vs Human Racer (`0.6.x`)
+
+### What §9 predicted, and what it got wrong
+
+§9 said the coupling to break was `turn/route.ts`, whose contract is "prior
+answer in, next Racer action out". That was right. What it got wrong was the
+implied remedy: it read as though the route needed splitting.
+
+The actual minimum was to leave it alone and add a sibling, `/api/game/[id]/ask`,
+whose contract is the mirror image — "question in, Composer's answer out". The
+two differ in which participant the server has to synthesise, which is precisely
+what role inversion changes and the only thing it changes.
+
+Branching inside one handler would have produced a route whose contract depends
+on a stored field, so anyone changing either game would have to hold both in
+their head. Two small honest routes beat one route with a mode flag.
+
+### What was reused unchanged
+
+Everything below the turn: `secretStore`, `gameStore`, `kv`, `callBudget`,
+`rateLimit`, `resolveResult`, `adjudicator`, `integrityReview`, the resolve
+route, declassification, the result table, `/api/version`. None of it needed to
+know who occupied which seat, which is the payoff from `RacerPublicState` and
+the seat fields added in `0.3.0.1`.
+
+**`secretStore` turned out to be the load-bearing piece.** The brief asked that
+the locked target be held independently rather than relying on the AI's later
+recollection — and that module already did exactly that. The AI's chosen target
+goes through `createSecret` and `lockSecret` identically to a human's, and
+`getSecretForAnswering` hands it back on **every single turn**. The Composer
+never answers from memory of what it picked; it answers against the stored
+record. "Never silently change the target" is therefore structural, not an
+instruction the model is asked to honour.
+
+### What could not be reused
+
+**The Guess Detector.** It exists to infer an AI Racer's intent from its prose.
+A human Racer presses a button, so intent is declared rather than inferred, and
+the whole detect-then-re-prompt path is inert. Not deleted — `0.3.x` still needs
+it.
+
+**The correction/rewind path.** Corrections let a human Composer fix a mistyped
+answer. With an AI Composer there is no human answer to mistype. `/correct`
+remains for `0.3.x` and is simply unreachable in `0.6.x`.
+
+### Difficulty is deductive distance, never obscurity
+
+The Composer prompt is explicit that the AI must not use its knowledge advantage
+to win. Hard means specificity, abstraction, or unusual combinations of familiar
+concepts — not specialist terminology or deep trivia. The stated test: on hearing
+the answer the player should think "that was hard and I should have got there",
+never "how could anyone know that?".
+
+### Clue modes
+
+Offered on Hard only; Easy and Medium are forced to `none` **server-side**, not
+merely hidden in the UI. `progressive` scales help as the budget shrinks, with a
+floor: never name the target, never leave one word to say. A clue that removes
+the deduction removes the game.
+
+### Deliberately not built
+
+Profiles, personalization, adaptive difficulty, monetization, AI-vs-AI, model
+selection, multiplayer. Recorded, not implemented.

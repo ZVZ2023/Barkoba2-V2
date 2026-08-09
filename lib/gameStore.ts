@@ -30,6 +30,8 @@ export async function createGame(
     // the configuration, it does not select it. No code branches on these.
     composer_kind: "human",
     racer_kind: "ai",
+    difficulty: null,
+    clue_mode: null,
     question_count: 0,
     ambiguous_count: 0,
     qa_log: [],
@@ -67,6 +69,8 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.adjudication_notes === undefined) record.adjudication_notes = null;
   if (record.revealed_target === undefined) record.revealed_target = null;
   // Correction/rewind fields, added in 0.3.2.0.
+  if (record.difficulty === undefined) record.difficulty = null;
+  if (record.clue_mode === undefined) record.clue_mode = null;
   if (!Array.isArray(record.corrections)) record.corrections = [];
   if (!Array.isArray(record.abandoned_branches)) record.abandoned_branches = [];
   // Participant kinds, added in 0.3.0.1. Every pre-existing game was

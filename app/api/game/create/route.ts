@@ -5,12 +5,25 @@ import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame } from "@/lib/gameStore";
 import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
+import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
+import { consumeModelCall } from "@/lib/callBudget";
+import type { ClueMode, Difficulty } from "@/lib/types";
 import { env } from "@/lib/env";
 
 interface CreateGameBody {
-  target: string;
-  private_clarification: string;
+  /** 0.3.x — human Composer. */
+  target?: string;
+  private_clarification?: string;
+  /** 0.6.x — AI Composer. When "ai_composer", the AI chooses the target. */
+  mode?: "human_composer" | "ai_composer";
+  difficulty?: Difficulty;
+  clue_mode?: ClueMode;
+  max_questions?: number;
 }
+
+const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
+const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
+const QUESTION_BUDGETS = [20, 35, 50, 100];
 
 export async function POST(req: NextRequest) {
   // Refuse to start a game that cannot survive its own second request. On a
@@ -49,6 +62,98 @@ export async function POST(req: NextRequest) {
       { error: "invalid_body", message: "Request body must be JSON." },
       { status: 400 }
     );
+  }
+
+  // -------------------------------------------------------------------------
+  // 0.6.x — AI Composer, human Racer.
+  //
+  // The AI picks the target and its definition, and both go straight into
+  // secretStore and are locked, exactly as a human Composer's would. From this
+  // point the two game modes share one engine: the same store, the same
+  // adjudication, the same integrity review. Nothing downstream asks which
+  // seat the AI occupied.
+  // -------------------------------------------------------------------------
+  if (body.mode === "ai_composer") {
+    const difficulty: Difficulty = DIFFICULTIES.includes(body.difficulty as Difficulty)
+      ? (body.difficulty as Difficulty)
+      : "medium";
+
+    // The clue selector is only offered on Hard; anything else is forced to
+    // "none" here rather than trusted from the client.
+    const clueMode: ClueMode =
+      difficulty === "hard" && CLUE_MODES.includes(body.clue_mode as ClueMode)
+        ? (body.clue_mode as ClueMode)
+        : "none";
+
+    const budgetChoice =
+      typeof body.max_questions === "number" && QUESTION_BUDGETS.includes(body.max_questions)
+        ? body.max_questions
+        : 20;
+
+    const callBudget = await consumeModelCall("resolve");
+    if (!callBudget.allowed) {
+      return NextResponse.json(
+        {
+          error: callBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+          message: callBudget.failedClosed
+            ? "Unable to verify the call budget right now. Please try again shortly."
+            : "Barkóba has hit its global daily limit. Please try again tomorrow.",
+        },
+        { status: callBudget.failedClosed ? 503 : 429 }
+      );
+    }
+
+    let chosen;
+    try {
+      chosen = await chooseComposerTarget({
+        difficulty,
+        gameLanguage: "en",
+        maxQuestions: budgetChoice,
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] Composer target selection failed:", err);
+      return NextResponse.json(
+        {
+          error: "composer_unavailable",
+          message: "Could not start a game right now. Please try again.",
+        },
+        { status: 502 }
+      );
+    }
+
+    if (!chosen.target || !chosen.definition) {
+      return NextResponse.json(
+        {
+          error: "composer_invalid_target",
+          message: "The Composer did not produce a usable target. Please try again.",
+        },
+        { status: 502 }
+      );
+    }
+
+    const aiGameId = randomUUID();
+    await createSecret(aiGameId, chosen.target, chosen.definition);
+    await lockSecret(aiGameId);
+
+    const aiGame = await createGame(aiGameId, {
+      phase: "questioning",
+      max_questions: budgetChoice,
+      game_language: "en",
+      composer_kind: "ai",
+      racer_kind: "human",
+      difficulty,
+      clue_mode: clueMode,
+    });
+
+    return NextResponse.json({
+      status: "VALID",
+      game_id: aiGame.game_id,
+      phase: aiGame.phase,
+      max_questions: aiGame.max_questions,
+      difficulty,
+      clue_mode: clueMode,
+    });
   }
 
   const target = (body.target || "").trim();

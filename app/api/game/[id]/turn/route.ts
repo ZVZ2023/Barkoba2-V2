@@ -53,6 +53,7 @@ function newLogEntry(turnIndex: number): QuestionLogEntry {
     guess_detector_flagged: false,
     guess_detector_method: null,
     guess_intent_outcome: null,
+    clue_text: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
     quality_score: null,

@@ -13,6 +13,7 @@ const nextConfig = {
     outputFileTracingIncludes: {
       "/api/version": ["./VERSION"],
       "/": ["./VERSION"],
+      "/compose": ["./VERSION"],
       "/game/[id]": ["./VERSION"],
     },
   },

@@ -55,6 +55,20 @@ export async function getSecretForValidation(
   return getKV().get<SecretRecord>(secretKey(gameId));
 }
 
+/**
+ * Used only by the AI Composer when answering a question (0.6.x).
+ *
+ * This is the one call site that reads the secret DURING play rather than
+ * before or after it, which is what makes the AI Composer possible at all:
+ * the authoritative target lives here, not in the model's recollection of
+ * what it once chose. Every answer is checked against this record.
+ */
+export async function getSecretForAnswering(
+  gameId: string
+): Promise<SecretRecord | null> {
+  return getKV().get<SecretRecord>(secretKey(gameId));
+}
+
 /** Used only by the post-guess Adjudicator and Integrity Review calls. */
 export async function getSecretForAdjudication(
   gameId: string
