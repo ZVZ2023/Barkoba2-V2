@@ -39,7 +39,7 @@ export async function POST(
   const game = await getGame(params.id);
   if (!game) {
     return NextResponse.json(
-      { error: "not_found", message: "No such game, or it has expired." },
+      { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
       { status: 404 }
     );
   }
@@ -50,8 +50,8 @@ export async function POST(
         error: "corrections_closed",
         message:
           game.phase === "resolving" || game.phase === "complete"
-            ? "Answers can no longer be corrected once the Racer has committed to a guess."
-            : `This game is in phase "${game.phase}" and is not accepting corrections.`,
+            ? "A válaszokat már nem lehet javítani, miután az ellenfeled tippelt."
+            : `Ez a játék "${game.phase}" állapotban van, nem fogad javítást.`,
         game,
       },
       { status: 409 }
@@ -63,7 +63,7 @@ export async function POST(
     body = (await req.json()) as CorrectBody;
   } catch {
     return NextResponse.json(
-      { error: "invalid_body", message: "Request body must be JSON." },
+      { error: "invalid_body", message: "A kérés törzsének JSON formátumúnak kell lennie." },
       { status: 400 }
     );
   }
@@ -72,7 +72,7 @@ export async function POST(
 
   if (typeof turnIndex !== "number") {
     return NextResponse.json(
-      { error: "missing_turn_index", message: "turn_index is required." },
+      { error: "missing_turn_index", message: "A turn_index megadása kötelező." },
       { status: 400 }
     );
   }
@@ -80,7 +80,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "invalid_answer",
-        message: `answer must be one of ${VALID_ANSWERS.join(", ")}.`,
+        message: `A válasznak ezek egyikének kell lennie: ${VALID_ANSWERS.join(", ")}.`,
       },
       { status: 400 }
     );
@@ -95,7 +95,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "stale_state",
-        message: "The game moved on while you were correcting. Try again.",
+        message: "A játék közben továbblépett. Próbáld újra.",
         game,
       },
       { status: 409 }
@@ -105,7 +105,7 @@ export async function POST(
   const split = splitAtTurn(game.qa_log, turnIndex);
   if (!split) {
     return NextResponse.json(
-      { error: "no_such_turn", message: `No turn ${turnIndex} in this game.`, game },
+      { error: "no_such_turn", message: `Nincs ${turnIndex}. kör ebben a játékban.`, game },
       { status: 404 }
     );
   }
@@ -115,7 +115,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "not_correctable",
-        message: "Only a question that has already been answered can be corrected.",
+        message: "Csak olyan kérdést lehet javítani, amelyre már megjött a válasz.",
         game,
       },
       { status: 400 }

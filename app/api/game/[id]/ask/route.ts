@@ -82,7 +82,7 @@ export async function POST(
   const game = await getGame(params.id);
   if (!game) {
     return NextResponse.json(
-      { error: "not_found", message: "No such game, or it has expired." },
+      { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
       { status: 404 }
     );
   }
@@ -91,7 +91,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "wrong_mode",
-        message: "This game has an AI Racer. Use /turn.",
+        message: "Ebben a játékban az AI kérdez. Használd a /turn végpontot.",
         game,
       },
       { status: 409 }
@@ -102,7 +102,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "wrong_phase",
-        message: `This game is in phase "${game.phase}" and is not accepting questions.`,
+        message: `Ez a játék "${game.phase}" állapotban van, nem fogad több kérdést.`,
         game,
       },
       { status: 409 }
@@ -114,7 +114,7 @@ export async function POST(
     body = (await req.json()) as AskBody;
   } catch {
     return NextResponse.json(
-      { error: "invalid_body", message: "Request body must be JSON." },
+      { error: "invalid_body", message: "A kérés törzsének JSON formátumúnak kell lennie." },
       { status: 400 }
     );
   }
@@ -151,7 +151,7 @@ export async function POST(
     const edited = (body.question || "").trim();
     if (!edited) {
       return NextResponse.json(
-        { error: "missing_question", message: "Provide the corrected question.", game },
+        { error: "missing_question", message: "Add meg a javított kérdést.", game },
         { status: 400 }
       );
     }
@@ -168,7 +168,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "not_editable",
-          message: "Only your most recent question can be corrected.",
+          message: "Csak a legutóbbi kérdésedet lehet javítani.",
           game,
         },
         { status: 409 }
@@ -182,7 +182,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: judgeBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-          message: "Could not check that correction right now. Your game is safe.",
+          message: "Most nem sikerült ellenőrizni a javítást. A játékod megvan.",
           game,
         },
         { status: judgeBudget.failedClosed ? 503 : 429 }
@@ -202,7 +202,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "edit_check_unavailable",
-          message: "Could not check that correction. Nothing changed — please try again.",
+          message: "Nem sikerült ellenőrizni a javítást. Semmi nem változott — próbáld újra.",
           game,
         },
         { status: 502 }
@@ -229,7 +229,7 @@ export async function POST(
     const secretForEdit = await getSecretForAnswering(game.game_id);
     if (!secretForEdit) {
       return NextResponse.json(
-        { error: "secret_unavailable", message: "This game's target is no longer available.", game },
+        { error: "secret_unavailable", message: "Ennek a játéknak a titka már nem elérhető.", game },
         { status: 410 }
       );
     }
@@ -239,7 +239,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: answerBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-          message: "Could not re-answer right now. Your game is safe.",
+          message: "Most nem sikerült újra megválaszolni. A játékod megvan.",
           game,
         },
         { status: answerBudget.failedClosed ? 503 : 429 }
@@ -268,7 +268,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "composer_unavailable",
-          message: "Could not re-answer that. Your original question and answer stand.",
+          message: "Nem sikerült újra megválaszolni. Az eredeti kérdésed és válaszod marad érvényben.",
           game,
         },
         { status: 502 }
@@ -292,7 +292,7 @@ export async function POST(
   const question = (body.question || "").trim();
   if (!question) {
     return NextResponse.json(
-      { error: "missing_question", message: "Ask a question, make a guess, or concede." },
+      { error: "missing_question", message: "Tegyél fel egy kérdést, tippelj, vagy add fel." },
       { status: 400 }
     );
   }
@@ -301,7 +301,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "out_of_questions",
-        message: "No questions left. Make your guess, or concede.",
+        message: "Elfogytak a kérdések. Tippelj, vagy add fel.",
         game,
       },
       { status: 409 }
@@ -313,7 +313,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "secret_unavailable",
-        message: "This game's target is no longer available, so it cannot continue.",
+        message: "Ennek a játéknak a titka már nem elérhető, így nem folytatható.",
         game,
       },
       { status: 410 }
@@ -326,8 +326,8 @@ export async function POST(
       {
         error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
         message: budget.failedClosed
-          ? "Unable to verify the call budget right now. Your game is safe — try again shortly."
-          : "Barkóba has hit its global daily limit. Your game is safe — try again tomorrow.",
+          ? "Most nem tudjuk ellenőrizni a keretet. A játékod megvan — próbáld újra hamarosan."
+          : "A Barkóba elérte a napi globális határát. A játékod megvan — próbáld újra holnap.",
         game,
       },
       { status: budget.failedClosed ? 503 : 429 }
@@ -355,7 +355,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "composer_unavailable",
-        message: "Could not answer that right now. Your question was not used — please try again.",
+        message: "Most nem sikerült válaszolni. A kérdésed nem lett felhasználva — próbáld újra.",
         game,
       },
       { status: 502 }

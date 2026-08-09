@@ -77,7 +77,7 @@ export async function POST(
   const game = await getGame(gameId);
   if (!game) {
     return NextResponse.json(
-      { error: "not_found", message: "No such game, or it has expired." },
+      { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
       { status: 404 }
     );
   }
@@ -86,7 +86,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "wrong_phase",
-        message: `This game is in phase "${game.phase}" and is not accepting turns.`,
+        message: `Ez a játék "${game.phase}" állapotban van, nem fogad több kört.`,
         game,
       },
       { status: 409 }
@@ -107,7 +107,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "invalid_answer",
-        message: `answer must be one of ${VALID_ANSWERS.join(", ")}.`,
+        message: `A válasznak ezek egyikének kell lennie: ${VALID_ANSWERS.join(", ")}.`,
       },
       { status: 400 }
     );
@@ -123,7 +123,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "no_pending_question",
-          message: "There is no unanswered question to respond to.",
+          message: "Nincs megválaszolatlan kérdés.",
           game,
         },
         { status: 409 }
@@ -167,8 +167,8 @@ export async function POST(
       {
         error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
         message: budget.failedClosed
-          ? "The service is temporarily unable to verify its call budget. Please try again shortly."
-          : "Barkóba has hit its global daily limit for AI turns. Please try again tomorrow.",
+          ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
+          : "A Barkóba elérte az AI-körökre szánt napi globális határát. Próbáld újra holnap.",
         game,
       },
       { status: budget.failedClosed ? 503 : 429 }
@@ -191,7 +191,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "racer_unavailable",
-        message: "The Racer could not take its turn right now. Please try again.",
+        message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
         game,
       },
       { status: 502 }

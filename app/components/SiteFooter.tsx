@@ -50,9 +50,26 @@ export default function SiteFooter({ version }: { version?: string }) {
           ))}
         </div>
 
-        <Link href="/compose" className="text-xs text-neutral-500 underline underline-offset-2">
-          {copy.modes.humanComposer.title}
-        </Link>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <Link href="/compose" className="text-xs text-neutral-500 underline underline-offset-2">
+            {copy.modes.humanComposer.title}
+          </Link>
+          {/*
+            0.9.7.0: this prop was accepted and never rendered. The version
+            string still appeared in the page source — Next serializes client
+            component props into the RSC payload — so a grep of the HTML said
+            "present" while nothing was ever painted. Render it, and test what
+            is paintable rather than what is in the file.
+          */}
+          {version && (
+            <span
+              className="text-xs tabular-nums text-neutral-600"
+              title="Telepített Barkóba verzió"
+            >
+              {version}
+            </span>
+          )}
+        </div>
       </div>
     </footer>
   );

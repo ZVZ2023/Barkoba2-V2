@@ -99,7 +99,7 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Felhasznált kérdés</dt>
           <dd className="mt-0.5 text-[var(--ink)]">
-            {game.question_count} of {game.max_questions}
+            {game.question_count} / {game.max_questions}
             {game.ambiguous_count > 0 && ` · ${game.ambiguous_count} bizonytalan`}
           </dd>
         </div>

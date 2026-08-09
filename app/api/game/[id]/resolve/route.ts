@@ -44,7 +44,7 @@ export async function POST(
   const game = await getGame(params.id);
   if (!game) {
     return NextResponse.json(
-      { error: "not_found", message: "No such game, or it has expired." },
+      { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
       { status: 404 }
     );
   }
@@ -61,7 +61,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "wrong_phase",
-        message: `This game is in phase "${game.phase}" and has nothing to resolve.`,
+        message: `Ez a játék "${game.phase}" állapotban van, nincs mit értékelni.`,
         game,
       },
       { status: 409 }
@@ -99,8 +99,8 @@ export async function POST(
         {
           error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
           message: budget.failedClosed
-            ? "Unable to verify the call budget right now. The game is safe — try resolving again shortly."
-            : "Barkóba has hit its global daily limit for adjudication. The game is safe — try again tomorrow.",
+            ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
+            : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
           game,
         },
         { status: budget.failedClosed ? 503 : 429 }
@@ -123,7 +123,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "adjudicator_unavailable",
-          message: "Could not adjudicate right now. The game is unchanged — please try again.",
+          message: "Most nem sikerült értékelni. A játék változatlan — próbáld újra.",
           game,
         },
         { status: 502 }
@@ -142,8 +142,8 @@ export async function POST(
         {
           error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
           message: budget.failedClosed
-            ? "Unable to verify the call budget right now. The game is safe — try resolving again shortly."
-            : "Barkóba has hit its global daily limit for adjudication. The game is safe — try again tomorrow.",
+            ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
+            : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
           game,
         },
         { status: budget.failedClosed ? 503 : 429 }
@@ -166,7 +166,7 @@ export async function POST(
       return NextResponse.json(
         {
           error: "integrity_review_unavailable",
-          message: "Could not complete the integrity review. The game is unchanged — please try again.",
+          message: "Most nem sikerült befejezni az ellenőrzést. A játék változatlan — próbáld újra.",
           game,
         },
         { status: 502 }
@@ -191,7 +191,7 @@ export async function POST(
     return NextResponse.json(
       {
         error: "resolution_failed",
-        message: "This game could not be resolved into a defined result.",
+        message: "Ebből a játékból nem jött ki egyértelmű eredmény.",
         game,
       },
       { status: 500 }

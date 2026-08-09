@@ -49,6 +49,11 @@ Also report the dominant conversational language of the Composer's submission as
 - If there is too little prose to judge, default to "en".
 - This is DETECTION ONLY. Never rewrite, translate, normalize, or correct the target or the private clarification in any way. They remain canonical exactly as the Composer typed them.
 
+THE LANGUAGE OF YOUR MESSAGE
+Your "message" is shown to the player. Write it in the same language you report as game_language — if you detect Hungarian, write the message in Hungarian. This changes only the wording. It never changes your verdict, your tolerance, or what counts as valid.
+
+Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in the message. They are internal engineering labels, not player vocabulary. In Hungarian address the player directly with "te", and refer to what they submitted rather than to a role name.
+
 DETERMINISM
 Apply these rules mechanically and identically every time. Given the same inputs, return the same verdict. Do not vary your judgement for the sake of variety. Where a case is close, pick the reading the rules dictate and apply it the same way on every occasion — the confidence field, not the verdict, is where closeness gets recorded.`;
 

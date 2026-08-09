@@ -53,7 +53,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "rate_limited",
-        message: `You've reached the guest limit of ${rateLimit.limit} games per hour. Try again later.`,
+        message: `Elérted a vendégeknek szóló határt: óránként ${rateLimit.limit} játék. Próbáld újra később.`,
       },
       { status: 429 }
     );
@@ -64,7 +64,7 @@ export async function POST(req: NextRequest) {
     body = await req.json();
   } catch {
     return NextResponse.json(
-      { error: "invalid_body", message: "Request body must be JSON." },
+      { error: "invalid_body", message: "A kérés törzsének JSON formátumúnak kell lennie." },
       { status: 400 }
     );
   }
@@ -101,8 +101,8 @@ export async function POST(req: NextRequest) {
         {
           error: callBudget.failedClosed ? "budget_unavailable" : "budget_exhausted",
           message: callBudget.failedClosed
-            ? "Unable to verify the call budget right now. Please try again shortly."
-            : "Barkóba has hit its global daily limit. Please try again tomorrow.",
+            ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
+            : "A Barkóba elérte a napi globális határát. Próbáld újra holnap.",
         },
         { status: callBudget.failedClosed ? 503 : 429 }
       );
@@ -124,7 +124,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "composer_unavailable",
-          message: "Could not start a game right now. Please try again.",
+          message: "Most nem sikerült elindítani a játékot. Próbáld újra.",
         },
         { status: 502 }
       );
@@ -134,7 +134,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json(
         {
           error: "composer_invalid_target",
-          message: "The Composer did not produce a usable target. Please try again.",
+          message: "Nem született használható titok. Próbáld újra.",
         },
         { status: 502 }
       );
@@ -175,7 +175,7 @@ export async function POST(req: NextRequest) {
 
   if (!target) {
     return NextResponse.json(
-      { error: "missing_target", message: "Target is required." },
+      { error: "missing_target", message: "Meg kell adnod, mire gondolsz." },
       { status: 400 }
     );
   }
@@ -195,7 +195,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         error: "validator_unavailable",
-        message: "Could not validate the target right now. Please try again.",
+        message: "Most nem sikerült ellenőrizni, amire gondoltál. Próbáld újra.",
       },
       { status: 502 }
     );

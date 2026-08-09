@@ -170,14 +170,29 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   return (
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
       <header className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3">
-        <a href="/" className="flex min-w-0 items-center gap-2" aria-label="Barkóba főoldal">
+        <div className="flex min-w-0 flex-col">
+          <a href="/" className="flex min-w-0 items-center gap-2" aria-label="Barkóba főoldal">
+            <span
+              aria-hidden="true"
+              className="inline-block h-6 w-6 shrink-0 rounded-full border-[3px] border-[var(--ink)]/80"
+              style={{ borderRightColor: "transparent" }}
+            />
+            <span className="truncate text-base font-semibold tracking-tight">Barkóba</span>
+          </a>
+          {/*
+            The version also sits at the very bottom of this screen, which after
+            a twenty-question transcript is a scroll hunt. A field tester must
+            be able to read the build identity without leaving the first
+            viewport, so it lives in the persistent header too. Same single
+            source, rendered twice — no second hardcoded string.
+          */}
           <span
-            aria-hidden="true"
-            className="inline-block h-6 w-6 shrink-0 rounded-full border-[3px] border-[var(--ink)]/80"
-            style={{ borderRightColor: "transparent" }}
-          />
-          <span className="truncate text-base font-semibold tracking-tight">Barkóba</span>
-        </a>
+            className="mt-0.5 text-[11px] tabular-nums text-[var(--ink-soft)]"
+            title="Telepített Barkóba verzió"
+          >
+            {versionLabel}
+          </span>
+        </div>
         <div className="shrink-0 text-right">
           <div className="text-sm font-semibold tabular-nums">
             {game.question_count} / {game.max_questions}
