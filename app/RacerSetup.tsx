@@ -3,26 +3,27 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClueMode, Difficulty } from "@/lib/types";
+import GameShell from "./components/GameShell";
 
 // Pre-game controls for the human Racer. Deliberately three buttons and four
 // numbers — the brief called for the smallest sensible selector, and anything
 // more here is polish on a screen the player sees for four seconds.
 
 const DIFFICULTIES: { value: Difficulty; label: string; blurb: string }[] = [
-  { value: "easy", label: "Easy", blurb: "Everyday things. Good with a child." },
-  { value: "medium", label: "Medium", blurb: "General knowledge. No looking things up." },
-  { value: "hard", label: "Hard", blurb: "Further to deduce — not more obscure." },
+  { value: "easy", label: "Könnyű", blurb: "Hétköznapi dolgok. Gyerekkel is jó." },
+  { value: "medium", label: "Közepes", blurb: "Általános műveltség. Nem kell utánanézni." },
+  { value: "hard", label: "Nehéz", blurb: "Több lépés a megfejtésig — nem homályosabb." },
 ];
 
 const CLUE_MODES: { value: ClueMode; label: string; blurb: string }[] = [
-  { value: "none", label: "No clues", blurb: "Answers only." },
-  { value: "minimal", label: "Minimal", blurb: "An occasional nudge when you stall." },
-  { value: "progressive", label: "Progressive", blurb: "Help that grows as questions run out." },
+  { value: "none", label: "Nincs segítség", blurb: "Csak a válaszok." },
+  { value: "minimal", label: "Minimális", blurb: "Néha egy apró terelés, ha elakadsz." },
+  { value: "progressive", label: "Fokozatos", blurb: "Egyre több segítség, ahogy fogynak a kérdések." },
 ];
 
 const BUDGETS = [20, 35, 50, 100];
 
-export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
+export default function RacerSetup({ versionLabel: _versionLabel }: { versionLabel: string }) {
   const router = useRouter();
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [clueMode, setClueMode] = useState<ClueMode>("none");
@@ -46,13 +47,13 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
       });
       const data = await res.json();
       if (!res.ok || !data.game_id) {
-        setError(data.message || "Could not start a game.");
+        setError(data.message || "Nem sikerült elindítani a játékot.");
         setBusy(false);
         return;
       }
       router.push(`/game/${data.game_id}`);
     } catch {
-      setError("Network error — please try again.");
+      setError("Hálózati hiba — próbáld újra.");
       setBusy(false);
     }
   }
@@ -60,24 +61,14 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
   const pill = (active: boolean) =>
     `min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
       active
-        ? "border-neutral-300 bg-neutral-100 text-neutral-900"
-        : "border-neutral-800 bg-neutral-900 text-neutral-300"
+        ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+        : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
     }`;
 
   return (
-    <main className="mx-auto flex w-full min-h-screen max-w-xl flex-col gap-6 px-4 py-10 sm:justify-center sm:px-6 sm:py-16">
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Barkóba</h1>
-          <span className="shrink-0 text-xs font-normal text-neutral-600">{versionLabel}</span>
-        </div>
-        <p className="mt-1 text-sm text-neutral-400">
-          The AI picks a secret. You have questions to find it.
-        </p>
-      </div>
-
+    <GameShell role="Az AI gondol valamire. Te fogsz kérdezni.">
       <div className="flex flex-col gap-2">
-        <span className="text-sm text-neutral-300">Difficulty</span>
+        <span className="text-sm text-[var(--ink)]">Nehézség</span>
         <div className="flex flex-wrap gap-2">
           {DIFFICULTIES.map((d) => (
             <button
@@ -90,14 +81,14 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
             </button>
           ))}
         </div>
-        <p className="text-xs text-neutral-500">
+        <p className="text-xs text-[var(--ink-soft)]">
           {DIFFICULTIES.find((d) => d.value === difficulty)?.blurb}
         </p>
       </div>
 
       {difficulty === "hard" && (
         <div className="flex flex-col gap-2">
-          <span className="text-sm text-neutral-300">Clues</span>
+          <span className="text-sm text-[var(--ink)]">Segítség</span>
           <div className="flex flex-wrap gap-2">
             {CLUE_MODES.map((c) => (
               <button
@@ -110,14 +101,14 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
               </button>
             ))}
           </div>
-          <p className="text-xs text-neutral-500">
+          <p className="text-xs text-[var(--ink-soft)]">
             {CLUE_MODES.find((c) => c.value === clueMode)?.blurb}
           </p>
         </div>
       )}
 
       <div className="flex flex-col gap-2">
-        <span className="text-sm text-neutral-300">Questions</span>
+        <span className="text-sm text-[var(--ink)]">Kérdések</span>
         <div className="flex flex-wrap gap-2">
           {BUDGETS.map((b) => (
             <button
@@ -135,20 +126,20 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
       <button
         onClick={() => void start()}
         disabled={busy}
-        className="min-h-11 rounded-md bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900 disabled:opacity-40"
+        className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
       >
-        {busy ? "The AI is choosing…" : "Start"}
+        {busy ? "Az AI választ…" : "Indulhat"}
       </button>
 
-      <a href="/compose" className="text-xs text-neutral-600 underline underline-offset-2">
-        Or set a secret yourself, and let the AI guess
+      <a href="/compose" className="text-xs text-[var(--ink-soft)] underline underline-offset-2">
+        Vagy gondolj te valamire, és az AI találja ki
       </a>
 
       {error && (
-        <div className="rounded-md border border-red-900/50 bg-red-950/30 p-3">
-          <p className="text-sm text-red-200">{error}</p>
+        <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
+          <p className="text-sm text-[var(--red)]">{error}</p>
         </div>
       )}
-    </main>
+    </GameShell>
   );
 }

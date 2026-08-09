@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import GameShell from "./components/GameShell";
 
 type ViewState =
   | { step: "entry" }
@@ -36,7 +37,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
         return;
       }
       if (!res.ok && data.error && data.error !== "validator_unavailable") {
-        setView({ step: "error", message: data.message || "Something went wrong." });
+        setView({ step: "error", message: data.message || "Valami hiba történt." });
         return;
       }
 
@@ -56,48 +57,42 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
           router.push(`/game/${data.game_id}`);
         }
       } else {
-        setView({ step: "error", message: "Unexpected response from server." });
+        setView({ step: "error", message: "Váratlan válasz a szervertől." });
       }
     } catch {
-      setView({ step: "error", message: "Network error — please try again." });
+      setView({ step: "error", message: "Hálózati hiba — próbáld újra." });
     }
   }
 
   return (
-    <main className="mx-auto flex w-full min-h-screen max-w-xl flex-col gap-6 px-4 py-10 sm:justify-center sm:px-6 sm:py-16">
-      <div className="min-w-0">
-        <div className="flex items-baseline gap-2">
-          <h1 className="text-2xl font-semibold tracking-tight">Barkóba</h1>
-          <span className="shrink-0 text-xs font-normal text-neutral-600">{versionLabel}</span>
-        </div>
-        <p className="mt-1 text-sm text-neutral-400">
-          Set a secret. The AI Racer starts completely blind and has {}
-          {view.step === "valid" ? view.maxQuestions : 20} questions to find it.
-        </p>
-      </div>
+    <GameShell role="Te gondolsz valamire. Az AI fogja kitalálni.">
+      <p className="text-sm text-[var(--ink-soft)]">
+        Gondolj valamire, és rögzítsd. Az AI teljesen vakon indul, és{" "}
+        {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.
+      </p>
 
       {(view.step === "entry" || view.step === "submitting") && (
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-neutral-300">Target</span>
+            <span className="text-[var(--ink)]">Amire gondolsz</span>
             <input
-              className="w-full min-w-0 rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 outline-none focus:border-neutral-500"
+              className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={target}
               onChange={(e) => setTarget(e.target.value)}
-              placeholder="e.g. handle"
+              placeholder="pl. fogantyú"
               disabled={view.step === "submitting"}
             />
           </label>
 
           <label className="flex flex-col gap-1 text-sm">
-            <span className="text-neutral-300">
-              Private clarification <span className="text-neutral-500">(optional)</span> — never shown to the Racer
+            <span className="text-[var(--ink)]">
+              Pontosítás <span className="text-[var(--ink-soft)]">(nem kötelező)</span> — az AI sosem látja
             </span>
             <textarea
-              className="h-24 w-full min-w-0 resize-none rounded-md border border-neutral-800 bg-neutral-900 px-3 py-2 text-neutral-100 outline-none focus:border-neutral-500"
+              className="h-24 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={clarification}
               onChange={(e) => setClarification(e.target.value)}
-              placeholder="Only if the target could mean more than one thing — e.g. the starting handle on the pull cord of my lawnmower"
+              placeholder="Csak ha a szó többfélét is jelenthet — pl. a fűnyíróm indítózsinórjának fogantyúja"
               disabled={view.step === "submitting"}
             />
           </label>
@@ -105,22 +100,22 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
           <button
             onClick={submit}
             disabled={view.step === "submitting" || !target}
-            className="min-h-11 rounded-md bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900 disabled:opacity-40"
+            className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
           >
-            {view.step === "submitting" ? "Validating…" : "Lock target"}
+            {view.step === "submitting" ? "Ellenőrzés…" : "Titok rögzítése"}
           </button>
         </div>
       )}
 
       {view.step === "clarification_required" && (
-        <div className="flex flex-col gap-4 rounded-md border border-amber-900/50 bg-amber-950/30 p-4">
-          <p className="text-sm text-amber-200">{view.message}</p>
-          <p className="text-xs text-neutral-500">
-            Refine your private clarification above and submit again.
+        <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-4">
+          <p className="text-sm text-[var(--ink)]">{view.message}</p>
+          <p className="text-xs text-[var(--ink-soft)]">
+            Pontosítsd fent, majd küldd be újra.
           </p>
           <button
             onClick={() => setView({ step: "entry" })}
-            className="min-h-11 self-start rounded-md border border-neutral-700 px-4 py-2.5 text-sm"
+            className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
           >
             Back to entry
           </button>
@@ -128,15 +123,15 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
       )}
 
       {view.step === "invalid" && (
-        <div className="flex flex-col gap-4 rounded-md border border-red-900/50 bg-red-950/30 p-4">
-          <p className="text-sm text-red-200">{view.message}</p>
+        <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
+          <p className="text-sm text-[var(--red)]">{view.message}</p>
           <button
             onClick={() => {
               setTarget("");
               setClarification("");
               setView({ step: "entry" });
             }}
-            className="min-h-11 self-start rounded-md border border-neutral-700 px-4 py-2.5 text-sm"
+            className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
           >
             Try a different target
           </button>
@@ -144,11 +139,11 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
       )}
 
       {view.step === "error" && (
-        <div className="flex flex-col gap-4 rounded-md border border-red-900/50 bg-red-950/30 p-4">
-          <p className="text-sm text-red-200">{view.message}</p>
+        <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
+          <p className="text-sm text-[var(--red)]">{view.message}</p>
           <button
             onClick={() => setView({ step: "entry" })}
-            className="min-h-11 self-start rounded-md border border-neutral-700 px-4 py-2.5 text-sm"
+            className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"
           >
             Back
           </button>
@@ -156,21 +151,21 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
       )}
 
       {view.step === "valid" && (
-        <div className="flex flex-col gap-3 rounded-md border border-emerald-900/50 bg-emerald-950/30 p-4">
-          <p className="text-sm text-emerald-200">
-            Target locked. Game ID: <code className="break-all text-xs">{view.gameId}</code>
+        <div className="flex flex-col gap-3 rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-4">
+          <p className="text-sm text-[var(--green)]">
+            A titok rögzítve. Játékazonosító: <code className="break-all text-xs">{view.gameId}</code>
           </p>
           {view.difficultyWarning && (
-            <p className="text-xs text-amber-300">⚠ {view.difficultyWarning}</p>
+            <p className="text-xs text-[var(--red)]">⚠ {view.difficultyWarning}</p>
           )}
           <button
             onClick={() => router.push(`/game/${view.gameId}`)}
-            className="min-h-11 self-start rounded-md bg-neutral-100 px-4 py-2.5 text-sm font-medium text-neutral-900"
+            className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
           >
             Start the game
           </button>
         </div>
       )}
-    </main>
+    </GameShell>
   );
 }

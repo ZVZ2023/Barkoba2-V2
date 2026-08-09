@@ -14,49 +14,49 @@ interface Props {
 }
 
 const HEADLINE: Record<string, string> = {
-  racer_correct: "The Racer got it.",
-  racer_incorrect: "The Racer missed. You win.",
-  composer_win_integrity_upheld: "The Racer conceded. You win.",
-  racer_win_integrity_violation: "Awarded to the Racer — integrity review.",
+  racer_correct: "Az AI eltalálta.",
+  racer_incorrect: "Az AI nem talált. Nyertél.",
+  composer_win_integrity_upheld: "Az AI feladta. Nyertél.",
+  racer_win_integrity_violation: "Az AI-nak ítélve — integritás-ellenőrzés.",
 };
 
 const SUBHEAD: Record<string, string> = {
-  racer_correct: "Named your target within the question limit.",
-  racer_incorrect: "Your answers held up under review.",
-  composer_win_integrity_upheld: "It ran out of room and gave up. Your answers held up under review.",
+  racer_correct: "A kérdéskereten belül megnevezte a titkod.",
+  racer_incorrect: "A válaszaid kiállták az ellenőrzést.",
+  composer_win_integrity_upheld: "Elfogytak a kérdései és feladta. A válaszaid kiállták az ellenőrzést.",
   racer_win_integrity_violation:
-    "The review found at least one answer that contradicted your target.",
+    "Az ellenőrzés legalább egy ellentmondó választ talált.",
 };
 
 export default function ResultPanel({ game, resolving, error, onRetry }: Props) {
   if (game.phase === "resolving") {
     return (
-      <section className="rounded-md border border-sky-900/50 bg-sky-950/30 p-4">
-        <p className="text-sm text-sky-200">
+      <section className="rounded-md border border-[var(--green)]/30 bg-[var(--green)]/6 p-4">
+        <p className="text-sm text-[var(--green)]">
           {game.final_action === "concede"
-            ? "The Racer has conceded."
-            : "The Racer has committed to a guess."}
+            ? "Az AI feladta."
+            : "Az AI tippelt."}
         </p>
         {game.final_guess_text && (
-          <p className="mt-1 break-words text-sm text-neutral-100">“{game.final_guess_text}”</p>
+          <p className="mt-1 break-words text-sm text-[var(--ink)]">“{game.final_guess_text}”</p>
         )}
 
         {error ? (
           <div className="mt-3 flex flex-col items-start gap-2">
-            <p className="text-sm text-red-300">{error}</p>
-            <p className="text-xs text-neutral-500">
-              Your game is unchanged — nothing has been decided yet.
+            <p className="text-sm text-[var(--red)]">{error}</p>
+            <p className="text-xs text-[var(--ink-soft)]">
+              A játékod változatlan — még nem dőlt el semmi.
             </p>
             <button
               onClick={onRetry}
-              className="min-h-11 rounded-md border border-neutral-600 px-4 py-2.5 text-sm text-neutral-200"
+              className="min-h-11 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm text-neutral-200"
             >
               Try again
             </button>
           </div>
         ) : (
-          <p className="mt-3 text-xs text-neutral-500">
-            {resolving ? "Adjudicating…" : "Waiting to adjudicate…"}
+          <p className="mt-3 text-xs text-[var(--ink-soft)]">
+            {resolving ? "Értékelés folyamatban…" : "Várakozás az értékelésre…"}
           </p>
         )}
       </section>
@@ -72,54 +72,54 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
     <section
       className={
         racerWon
-          ? "rounded-md border border-amber-900/50 bg-amber-950/20 p-5"
-          : "rounded-md border border-emerald-900/50 bg-emerald-950/20 p-5"
+          ? "rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-5"
+          : "rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-5"
       }
     >
-      <h2 className="text-lg font-semibold text-neutral-100">
-        {HEADLINE[game.result] ?? "Game complete."}
+      <h2 className="text-lg font-semibold text-[var(--ink)]">
+        {HEADLINE[game.result] ?? "A játék véget ért."}
       </h2>
-      <p className="mt-1 text-sm text-neutral-400">{SUBHEAD[game.result] ?? ""}</p>
+      <p className="mt-1 text-sm text-[var(--ink-soft)]">{SUBHEAD[game.result] ?? ""}</p>
 
-      <dl className="mt-4 flex flex-col gap-3 border-t border-neutral-800 pt-4 text-sm">
+      <dl className="mt-4 flex flex-col gap-3 border-t border-[var(--ink)]/15 pt-4 text-sm">
         <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-500">Your target</dt>
-          <dd className="mt-0.5 break-words text-neutral-100">{game.revealed_target}</dd>
+          <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">A te titkod</dt>
+          <dd className="mt-0.5 break-words text-[var(--ink)]">{game.revealed_target}</dd>
         </div>
 
         {game.final_action === "guess" && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-neutral-500">
-              The Racer&apos;s guess
+            <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+              Az AI tippje
             </dt>
-            <dd className="mt-0.5 break-words text-neutral-100">{game.final_guess_text}</dd>
+            <dd className="mt-0.5 break-words text-[var(--ink)]">{game.final_guess_text}</dd>
           </div>
         )}
 
         <div>
-          <dt className="text-xs uppercase tracking-wide text-neutral-500">Questions used</dt>
-          <dd className="mt-0.5 text-neutral-300">
+          <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Felhasznált kérdés</dt>
+          <dd className="mt-0.5 text-[var(--ink)]">
             {game.question_count} of {game.max_questions}
-            {game.ambiguous_count > 0 && ` · ${game.ambiguous_count} ambiguous`}
+            {game.ambiguous_count > 0 && ` · ${game.ambiguous_count} bizonytalan`}
           </dd>
         </div>
 
         {game.adjudication_notes && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-neutral-500">Adjudicator</dt>
-            <dd className="mt-0.5 break-words text-neutral-300">{game.adjudication_notes}</dd>
+            <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Értékelés</dt>
+            <dd className="mt-0.5 break-words text-[var(--ink)]">{game.adjudication_notes}</dd>
           </div>
         )}
 
         {game.integrity_notes && (
           <div>
-            <dt className="text-xs uppercase tracking-wide text-neutral-500">
-              Integrity review
+            <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+              Integritás-ellenőrzés
             </dt>
-            <dd className="mt-0.5 break-words text-neutral-300">{game.integrity_notes}</dd>
+            <dd className="mt-0.5 break-words text-[var(--ink)]">{game.integrity_notes}</dd>
             {game.integrity_flagged_turns && game.integrity_flagged_turns.length > 0 && (
-              <dd className="mt-1 text-xs text-amber-300">
-                Contradicting turns: {game.integrity_flagged_turns.map((t) => `#${t}`).join(", ")}
+              <dd className="mt-1 text-xs text-[var(--red)]">
+                Ellentmondó körök: {game.integrity_flagged_turns.map((t) => `#${t}`).join(", ")}
               </dd>
             )}
           </div>
@@ -128,9 +128,9 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
 
       <a
         href="/"
-        className="mt-5 inline-block min-h-11 rounded-md bg-neutral-100 px-5 py-3 text-sm font-medium text-neutral-900"
+        className="mt-5 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
       >
-        Play again
+        Új játék
       </a>
     </section>
   );

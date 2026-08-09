@@ -68,10 +68,10 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           setGame(data.game as GameRecord);
         }
         if (!res.ok) {
-          setError(data.message || "Something went wrong.");
+          setError(data.message || "Valami hiba történt.");
         }
       } catch {
-        setError("Network error — please try again.");
+        setError("Hálózati hiba — próbáld újra.");
       } finally {
         setBusy(false);
         setAmbiguousMode(false);
@@ -99,9 +99,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         });
         const data = await res.json();
         if (data.game) setGame(data.game as GameRecord);
-        if (!res.ok) setError(data.message || "Could not correct that answer.");
+        if (!res.ok) setError(data.message || "Nem sikerült javítani a választ.");
       } catch {
-        setError("Network error — please try again.");
+        setError("Hálózati hiba — próbáld újra.");
       } finally {
         setBusy(false);
         setCorrecting(null);
@@ -120,12 +120,12 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
       const data = await res.json();
       if (data.game) setGame(data.game as GameRecord);
       if (!res.ok) {
-        setResolveError(data.message || "Could not resolve the game.");
+        setResolveError(data.message || "Nem sikerült lezárni a játékot.");
         // Allow a retry: the route is idempotent and the phase is unchanged.
         resolveFired.current = false;
       }
     } catch {
-      setResolveError("Network error while resolving — please try again.");
+      setResolveError("Hálózati hiba a lezárásnál — próbáld újra.");
       resolveFired.current = false;
     } finally {
       setResolving(false);
@@ -161,33 +161,31 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
 
   return (
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="flex items-baseline justify-between gap-3 border-b border-neutral-800 pb-4">
-        <div className="min-w-0">
-          <div className="flex items-baseline gap-2">
-            <h1 className="text-xl font-semibold tracking-tight">Barkóba</h1>
-            <span className="shrink-0 text-xs font-normal text-neutral-600">
-              {versionLabel}
-            </span>
+      <header className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3">
+        <a href="/" className="flex min-w-0 items-center gap-2" aria-label="Barkóba főoldal">
+          <span
+            aria-hidden="true"
+            className="inline-block h-6 w-6 shrink-0 rounded-full border-[3px] border-[var(--ink)]/80"
+            style={{ borderRightColor: "transparent" }}
+          />
+          <span className="truncate text-base font-semibold tracking-tight">Barkóba</span>
+        </a>
+        <div className="shrink-0 text-right">
+          <div className="text-sm font-semibold tabular-nums">
+            {game.question_count} / {game.max_questions}
           </div>
-          <p className="mt-1 text-xs text-neutral-500">
-            You are the Composer. Answer honestly.
-          </p>
-        </div>
-        <div className="shrink-0 text-right text-xs text-neutral-400">
-          <div>
-            {game.question_count} / {game.max_questions} questions used
-          </div>
-          <div className="text-neutral-600">{questionsLeft} left</div>
-          <div className="mt-0.5 text-[10px] text-neutral-700">
-            # is the turn number, not the question count
-          </div>
+          <div className="text-xs text-[var(--ink-soft)]">{questionsLeft} maradt</div>
         </div>
       </header>
 
+      <p className="-mt-2 text-sm text-[var(--ink-soft)]">
+        <span className="font-medium text-[var(--ink)]">Te gondoltál valamire. Az AI kérdez.</span>
+      </p>
+
       <section className="flex flex-col gap-4">
         {turns.length === 0 && !pending && (
-          <p className="text-sm text-neutral-500">
-            {busy ? "The Racer is thinking…" : "Waiting for the Racer's opening question."}
+          <p className="text-sm text-[var(--ink-soft)]">
+            {busy ? "Az AI gondolkodik…" : "Várjuk az AI első kérdését."}
           </p>
         )}
 
@@ -196,20 +194,20 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             {entry.turn_type === "question" && entry.question_text && (
               <>
                 <div className="flex min-w-0 gap-3">
-                  <span className="w-6 shrink-0 pt-0.5 text-xs text-neutral-600 sm:w-8">
+                  <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
                     #{entry.turn_index}
                   </span>
-                  <p className="min-w-0 break-words text-sm text-neutral-100">{entry.question_text}</p>
+                  <p className="min-w-0 break-words text-sm text-[var(--ink)]">{entry.question_text}</p>
                 </div>
                 <div className="flex min-w-0 gap-3">
                   <span className="w-6 shrink-0 sm:w-8" />
                   <span
                     className={
                       entry.composer_response === "YES"
-                        ? "text-xs font-medium text-emerald-400"
+                        ? "text-xs font-medium text-[var(--green)]"
                         : entry.composer_response === "NO"
-                          ? "text-xs font-medium text-red-400"
-                          : "text-xs font-medium text-amber-400"
+                          ? "text-xs font-medium text-[var(--red)]"
+                          : "text-xs font-medium text-[var(--red)]"
                     }
                   >
                     {entry.composer_response}
@@ -218,7 +216,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                 {entry.ambiguous_explanation && (
                   <div className="flex min-w-0 gap-3">
                     <span className="w-6 shrink-0 sm:w-8" />
-                    <p className="min-w-0 break-words text-xs italic text-neutral-500">
+                    <p className="min-w-0 break-words text-xs italic text-[var(--ink-soft)]">
                       {entry.ambiguous_explanation}
                     </p>
                   </div>
@@ -234,9 +232,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                         setCorrectionExplanation(entry.ambiguous_explanation ?? "");
                       }}
                       disabled={busy}
-                      className="text-xs text-neutral-600 underline underline-offset-2 disabled:opacity-40"
+                      className="text-xs text-[var(--ink-soft)] underline underline-offset-2 disabled:opacity-40"
                     >
-                      Correct answer
+                      Válasz javítása
                     </button>
                   </div>
                 )}
@@ -244,16 +242,16 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                 {correcting === entry.turn_index && (
                   <div className="flex min-w-0 gap-3">
                     <span className="w-6 shrink-0 sm:w-8" />
-                    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-neutral-700 bg-neutral-900/60 p-3">
-                      <p className="text-xs text-neutral-400">
+                    <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-[var(--ink)]/25 bg-white/60 p-3">
+                      <p className="text-xs text-[var(--ink-soft)]">
                         {discardCount(game, entry.turn_index) > 0 ? (
                           <>
-                            Correcting this rewinds the game to turn {entry.turn_index} and
-                            discards the {discardCount(game, entry.turn_index)} turns after
-                            it. Questions used since then are given back.
+                            A javítás visszaállítja a játékot a(z) {entry.turn_index}. körre,
+                            és eldobja az utána következő {discardCount(game, entry.turn_index)} kört.
+                            Az azóta felhasznált kérdéseket visszakapod.
                           </>
                         ) : (
-                          <>Replace your answer to this question.</>
+                          <>Cseréld le a válaszod erre a kérdésre.</>
                         )}
                       </p>
                       {!correctionAmbiguousMode ? (
@@ -261,36 +259,36 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                           <button
                             onClick={() => void correctAnswer(entry.turn_index, "YES")}
                             disabled={busy}
-                            className="min-h-11 flex-1 rounded-md bg-emerald-900/60 px-3 py-2.5 text-sm font-medium text-emerald-100 disabled:opacity-40 sm:flex-none"
+                            className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-3 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                           >
                             Yes
                           </button>
                           <button
                             onClick={() => void correctAnswer(entry.turn_index, "NO")}
                             disabled={busy}
-                            className="min-h-11 flex-1 rounded-md bg-red-900/60 px-3 py-2.5 text-sm font-medium text-red-100 disabled:opacity-40 sm:flex-none"
+                            className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-3 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                           >
                             No
                           </button>
                           <button
                             onClick={() => setCorrectionAmbiguousMode(true)}
                             disabled={busy}
-                            className="min-h-11 flex-1 rounded-md border border-amber-800 px-3 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-40 sm:flex-none"
+                            className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-3 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
                           >
-                            Ambiguous
+                            Bizonytalan
                           </button>
                         </div>
                       ) : (
                         <div className="flex flex-col gap-2">
-                          <p className="text-xs text-neutral-400">
+                          <p className="text-xs text-[var(--ink-soft)]">
                             Say why a straight yes or no would mislead. Optional. The
                             Racer sees this note.
                           </p>
                           <textarea
-                            className="h-20 w-full min-w-0 resize-none rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500"
+                            className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                             value={correctionExplanation}
                             onChange={(e) => setCorrectionExplanation(e.target.value)}
-                            placeholder="e.g. it depends on whether you count the handle as part of it"
+                            placeholder="pl. attól függ, beleszámít-e a fogantyú"
                           />
                           <div className="flex flex-wrap gap-2">
                             <button
@@ -302,14 +300,14 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                                 )
                               }
                               disabled={busy}
-                              className="min-h-11 rounded-md bg-amber-900/60 px-4 py-2.5 text-sm font-medium text-amber-100 disabled:opacity-40"
+                              className="min-h-11 rounded-md bg-[var(--red)]/85 px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
                             >
                               Send ambiguous
                             </button>
                             <button
                               onClick={() => setCorrectionAmbiguousMode(false)}
                               disabled={busy}
-                              className="min-h-11 rounded-md border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300"
+                              className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
                             >
                               Back
                             </button>
@@ -323,7 +321,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                           setCorrectionExplanation("");
                         }}
                         disabled={busy}
-                        className="self-start text-xs text-neutral-500 underline underline-offset-2"
+                        className="self-start text-xs text-[var(--ink-soft)] underline underline-offset-2"
                       >
                         Cancel
                       </button>
@@ -334,29 +332,29 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             )}
 
             {entry.turn_type === "guess" && (
-              <div className="rounded-md border border-neutral-700 bg-neutral-900 p-3">
-                <p className="text-xs uppercase tracking-wide text-neutral-500">
-                  The Racer guesses
+              <div className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+                  Az AI tippje
                 </p>
-                <p className="mt-1 break-words text-sm text-neutral-100">{entry.guess_text}</p>
+                <p className="mt-1 break-words text-sm text-[var(--ink)]">{entry.guess_text}</p>
               </div>
             )}
 
             {entry.turn_type === "concede" && (
-              <div className="rounded-md border border-neutral-700 bg-neutral-900 p-3">
-                <p className="text-sm text-neutral-300">The Racer concedes.</p>
+              <div className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-3">
+                <p className="text-sm text-[var(--ink)]">Az AI feladta.</p>
               </div>
             )}
           </div>
         ))}
 
         {pending && pending.question_text && (
-          <div className="flex flex-col gap-3 rounded-md border border-neutral-700 bg-neutral-900/60 p-4">
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
             <div className="flex min-w-0 gap-3">
-              <span className="w-6 shrink-0 pt-0.5 text-xs text-neutral-600 sm:w-8">
+              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
                 #{pending.turn_index}
               </span>
-              <p className="min-w-0 break-words text-sm text-neutral-100">{pending.question_text}</p>
+              <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
             </div>
 
             {!ambiguousMode ? (
@@ -364,41 +362,41 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                 <button
                   onClick={() => void sendTurn("YES")}
                   disabled={busy}
-                  className="min-h-11 flex-1 rounded-md bg-emerald-900/60 px-4 py-2.5 text-sm font-medium text-emerald-100 disabled:opacity-40 sm:flex-none"
+                  className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
                   Yes
                 </button>
                 <button
                   onClick={() => void sendTurn("NO")}
                   disabled={busy}
-                  className="min-h-11 flex-1 rounded-md bg-red-900/60 px-4 py-2.5 text-sm font-medium text-red-100 disabled:opacity-40 sm:flex-none"
+                  className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
                   No
                 </button>
                 <button
                   onClick={() => setAmbiguousMode(true)}
                   disabled={busy}
-                  className="min-h-11 flex-1 rounded-md border border-amber-800 px-4 py-2.5 text-sm font-medium text-amber-200 disabled:opacity-40 sm:flex-none"
+                  className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
                 >
-                  Ambiguous
+                  Bizonytalan
                 </button>
               </div>
             ) : (
               <div className="flex flex-col gap-2 sm:pl-11">
-                <p className="text-xs text-neutral-400">
-                  Say why a straight yes or no would mislead. The Racer sees this note.
+                <p className="text-xs text-[var(--ink-soft)]">
+                  Írd le, miért lenne félrevezető az igen vagy a nem. Az AI látja ezt a megjegyzést.
                 </p>
                 <textarea
-                  className="h-20 w-full min-w-0 resize-none rounded-md border border-neutral-800 bg-neutral-950 px-3 py-2 text-sm text-neutral-100 outline-none focus:border-neutral-500"
+                  className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                   value={explanation}
                   onChange={(e) => setExplanation(e.target.value)}
-                  placeholder="e.g. it depends on whether you count the handle as part of it"
+                  placeholder="pl. attól függ, beleszámít-e a fogantyú"
                 />
                 <div className="flex gap-2">
                   <button
                     onClick={() => void sendTurn("AMBIGUOUS", explanation)}
                     disabled={busy}
-                    className="min-h-11 rounded-md bg-amber-900/60 px-4 py-2.5 text-sm font-medium text-amber-100 disabled:opacity-40"
+                    className="min-h-11 rounded-md bg-[var(--red)]/85 px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
                   >
                     Send ambiguous
                   </button>
@@ -408,7 +406,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                       setExplanation("");
                     }}
                     disabled={busy}
-                    className="min-h-11 rounded-md border border-neutral-700 px-4 py-2.5 text-sm text-neutral-300"
+                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
                   >
                     Cancel
                   </button>
@@ -420,7 +418,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         )}
 
         {busy && pending && (
-          <p className="text-sm text-neutral-500">The Racer is thinking…</p>
+          <p className="text-sm text-[var(--ink-soft)]">Az AI gondolkodik…</p>
         )}
       </section>
 
@@ -434,10 +432,17 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
       )}
 
       {error && (
-        <div className="rounded-md border border-red-900/50 bg-red-950/30 p-3">
-          <p className="text-sm text-red-200">{error}</p>
+        <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
+          <p className="text-sm text-[var(--red)]">{error}</p>
         </div>
       )}
+
+      <a
+        href="/"
+        className="mt-2 inline-flex min-h-11 items-center text-sm text-[var(--ink-soft)] underline-offset-2 hover:underline"
+      >
+        ← Vissza a Barkóba főoldalra
+      </a>
     </main>
   );
 }

@@ -3,6 +3,24 @@
 @tailwind utilities;
 
 /* ---------------------------------------------------------------------------
+   Barkóba palette. Defined once here so the gameplay screens and the
+   illustrated front door draw from the same four values rather than each
+   hard-coding a shade that drifts.
+
+   Parchment and ink come from the artwork itself; the green and red are the
+   restrained pair used on the front door buttons and step markers.
+--------------------------------------------------------------------------- */
+:root {
+  --parchment: #f6ece0;
+  --parchment-deep: #efe2d2;
+  --ink: #1f1b17;
+  --ink-soft: #5c534a;
+  --green: #1e3a24;
+  --green-soft: #2f5236;
+  --red: #8c2f24;
+}
+
+/* ---------------------------------------------------------------------------
    Mobile overflow containment.
 
    Root cause of the landing-screen clipping: `main` had `mx-auto max-w-xl` but

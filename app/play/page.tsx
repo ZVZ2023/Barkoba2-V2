@@ -1,0 +1,52 @@
+import type { Metadata } from "next";
+import Link from "next/link";
+import Stage from "../components/Stage";
+import SiteHeader from "../components/SiteHeader";
+import { copy } from "@/lib/ui/copy";
+
+// The one new screen between the front door and the two proven modes.
+// Nothing here touches the engine — both cards are links to entry points that
+// already exist and already work.
+
+export const metadata: Metadata = { title: "Barkóba — Új játék" };
+
+export default function PlayPage() {
+  return (
+    <>
+      <Stage />
+      <div className="flex min-h-screen w-full flex-col text-neutral-900">
+        <SiteHeader />
+        <main className="w-full flex-1 px-4 py-6 sm:px-6">
+          <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
+            <div>
+              <h1 className="text-2xl font-semibold tracking-tight">{copy.modes.title}</h1>
+              <p className="mt-1 text-sm text-neutral-700">{copy.modes.subtitle}</p>
+            </div>
+
+            <Link
+              href="/compose"
+              className="flex min-w-0 flex-col gap-1 rounded-xl border border-white/60 bg-white/75 p-5 shadow-sm backdrop-blur-sm"
+            >
+              <span className="text-lg font-semibold">{copy.modes.humanComposer.title}</span>
+              <span className="text-base text-neutral-800">{copy.modes.humanComposer.subtitle}</span>
+              <span className="text-sm text-neutral-600">{copy.modes.humanComposer.detail}</span>
+            </Link>
+
+            <Link
+              href="/play/ai"
+              className="flex min-w-0 flex-col gap-1 rounded-xl border border-white/60 bg-white/75 p-5 shadow-sm backdrop-blur-sm"
+            >
+              <span className="text-lg font-semibold">{copy.modes.aiComposer.title}</span>
+              <span className="text-base text-neutral-800">{copy.modes.aiComposer.subtitle}</span>
+              <span className="text-sm text-neutral-600">{copy.modes.aiComposer.detail}</span>
+            </Link>
+
+            <Link href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
+              {copy.modes.back}
+            </Link>
+          </div>
+        </main>
+      </div>
+    </>
+  );
+}
