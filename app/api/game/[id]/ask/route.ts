@@ -259,7 +259,6 @@ export async function POST(
         qaLog: game.qa_log.slice(0, -1),
         questionsAsked: Math.max(0, game.question_count - 1),
         maxQuestions: game.max_questions,
-        clueMode: game.clue_mode ?? "none",
         gameLanguage: game.game_language,
       });
     } catch (err) {
@@ -282,7 +281,6 @@ export async function POST(
     last.edit_reason = verdict.reasoning;
     last.composer_response = reanswer.answer;
     last.ambiguous_explanation = reanswer.ambiguous_explanation;
-    last.clue_text = reanswer.clue_text;
     last.racer_output_raw = JSON.stringify(reanswer);
 
     await saveGame(game);
@@ -345,7 +343,6 @@ export async function POST(
       qaLog: game.qa_log,
       questionsAsked: game.question_count,
       maxQuestions: game.max_questions,
-      clueMode: game.clue_mode ?? "none",
       gameLanguage: game.game_language,
     });
   } catch (err) {
@@ -366,7 +363,6 @@ export async function POST(
   entry.question_text = question;
   entry.composer_response = answer.answer;
   entry.ambiguous_explanation = answer.ambiguous_explanation;
-  entry.clue_text = answer.clue_text;
   entry.racer_output_raw = JSON.stringify(answer);
 
   game.qa_log.push(entry);

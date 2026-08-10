@@ -395,8 +395,8 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
 
             {entry.turn_type === "clue" && (
               <div className="rounded-md border border-[var(--blue)]/30 bg-[var(--blue)]/6 p-3">
-                <p className="text-xs uppercase tracking-wide text-[var(--blue)]">
-                  Súgó
+                <p className="whitespace-nowrap text-xs uppercase tracking-wide text-[var(--blue)]">
+                  SÚGÓ
                 </p>
                 <p className="mt-1 break-words text-sm text-[var(--blue)]">
                   {entry.clue_text ?? "Az AI súgót kért."}

@@ -83,3 +83,97 @@ test("the ratified V1 question budgets are unchanged", () => {
   const src = readFileSync("app/RacerSetup.tsx", "utf8");
   assert.match(src, /const BUDGETS = \[20, 35, 50, 100\];/);
 });
+
+// ---------------------------------------------------------------------------
+// TASK 11 — one help channel.
+//
+// Through 0.9.8.0 the ordinary answer call carried CLUE_GUIDANCE and its schema
+// required a clue_text field, so the Composer supplied a clue with every YES and
+// NO. That was an uncapped second help channel running beside the earned one,
+// and no test pinned it — which is precisely why it reached a field tester.
+// ---------------------------------------------------------------------------
+
+function answerFn(): string {
+  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  const start = src.indexOf("export async function answerAsComposer");
+  // Stop at the SÚGÓ doc block, not at its export line — the comment itself
+  // names CLUE_GUIDANCE, and including it made this assertion fail on prose.
+  const end = src.indexOf("/**\n * SÚGÓ", start);
+  assert.ok(start >= 0 && end > start, "could not isolate answerAsComposer");
+  return src.slice(start, end);
+}
+
+function clueFn(): string {
+  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  return src.slice(src.indexOf("export async function requestClueFromComposer"));
+}
+
+test("an ordinary answer is never given clue guidance", () => {
+  assert.doesNotMatch(answerFn(), /CLUE_GUIDANCE/, "clue policy must not steer ordinary answers");
+});
+
+test("the ordinary answer schema has no clue field to fill", () => {
+  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  const schema = src.slice(src.indexOf("const INPUT_SCHEMA"), src.indexOf("function renderTranscript"));
+  assert.doesNotMatch(schema, /clue_text:/, "asking for a clue is what produced one");
+  assert.match(schema, /required: \["reasoning", "answer", "ambiguous_explanation"\]/);
+});
+
+test("an ordinary answer returns no clue whatever the mode", () => {
+  assert.match(answerFn(), /clue_text: null/);
+});
+
+test("answering no longer takes a clue mode at all", () => {
+  // A parameter that no longer steers anything is an invitation to reconnect it.
+  const params = answerFn().slice(0, answerFn().indexOf("): Promise"));
+  assert.doesNotMatch(params, /clueMode/);
+});
+
+test("ordinary answers are not stored as clues", () => {
+  const src = readFileSync("app/api/game/[id]/ask/route.ts", "utf8");
+  assert.doesNotMatch(src, /clue_text = (answer|reanswer)\.clue_text/);
+});
+
+test("SÚGÓ keeps the full clue policy, including progressive strength", () => {
+  const fn = clueFn();
+  assert.match(fn, /CLUE_GUIDANCE\[params\.clueMode\]/, "the explicit path must keep its strength policy");
+  assert.match(fn, /Remaining: \$\{remaining\}/, "progressive calibrates on remaining budget");
+  assert.match(fn, /scrubClue\(/);
+});
+
+test("the Composer is told a YES or NO is the whole reply", () => {
+  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  assert.match(src, /A YES OR A NO IS A CLASSIFICATION, NOT A CONVERSATION\./);
+  assert.match(src, /the answer IS the whole reply/);
+  assert.match(src, /what to ask next/, "must forbid volunteering the next direction");
+});
+
+test("an AMBIGUOUS explanation may justify the split but not steer", () => {
+  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  assert.match(src, /AN AMBIGUOUS EXPLANATION JUSTIFIES THE AMBIGUITY AND NOTHING MORE\./);
+  assert.match(src, /Do not say WHICH members differ/);
+  // The explanation channel must still exist — removing it would make a genuine
+  // split indistinguishable from evasion.
+  assert.match(src, /ambiguous_explanation/);
+});
+
+test("the SÚGÓ label cannot wrap mid-word on a narrow screen", () => {
+  for (const path of ["app/game/[id]/RacerClient.tsx", "app/game/[id]/GameClient.tsx"]) {
+    const src = readFileSync(path, "utf8");
+    // The word also appears in comments; match the rendered label only.
+    const m = src.match(/<(span|p)([^>]*)>\s*\n?\s*SÚGÓ\s*\n?\s*<\//);
+    assert.ok(m, `${path} has no rendered SÚGÓ label`);
+    const tag = m[2] ?? "";
+    assert.match(tag, /whitespace-nowrap/, `${path}: SÚGÓ label may wrap`);
+    assert.doesNotMatch(tag, /\bw-6\b/, `${path}: label is still in the 24px turn-number column`);
+  }
+});
+
+test("the per-answer clue slot is gone from the transcript", () => {
+  const src = readFileSync("app/game/[id]/RacerClient.tsx", "utf8");
+  assert.doesNotMatch(
+    src,
+    /\{entry\.clue_text && \(/,
+    "rendering a clue beside an answer would re-legitimise the removed channel",
+  );
+});

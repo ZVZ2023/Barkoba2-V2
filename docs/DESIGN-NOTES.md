@@ -1380,3 +1380,61 @@ remain open and unaddressed.
 One clue credit. Zero questions, zero guesses. `question_count` is not
 incremented on a clue turn, the single final guess is untouched, and a clue is
 never recorded as an answer to anything.
+
+---
+
+## 20. `0.9.9.0` — one help channel
+
+### What the first Hard/Progressive field test found
+
+Ordinary IGEN and NEM answers arrived carrying explanatory text that materially
+narrowed the target: that it was not a physical object, that it concerned a
+bodily reaction, that emotion was involved. The text was accurate, well judged
+and genuinely useful. That is what made it a defect. It was unlimited free
+assistance running outside the earned clue-credit system, and it dissolved the
+deduction the game is made of.
+
+At question 10 the SÚGÓ button unlocked correctly and produced a proper clue —
+proving these were two independent pathways, and that only one of them was
+rationed.
+
+### Root cause
+
+Not model misbehaviour. The system was doing exactly what `0.6.x` specified.
+`answerAsComposer` injected `CLUE_GUIDANCE` into every ordinary answer, and its
+tool schema listed `clue_text` as a REQUIRED field. The progressive text said,
+in as many words, "you may add a short helpful clue to any answer, and your help
+should grow as the player's remaining questions shrink."
+
+Asked for a clue on every turn, the model supplied one. It was answering the
+question we kept putting to it.
+
+### The rule now
+
+    YES / NO   classification only. The answer is the whole reply.
+    IS-IS      explanation, scoped to why neither binary would be accurate.
+    SÚGÓ       deliberate strategic help. The only place it belongs.
+
+`minimal` and `progressive` now govern the strength of an EXPLICIT clue and
+nothing else. They no longer authorise anything on an ordinary answer.
+
+### Why the field was removed rather than the instruction
+
+A prompt rule saying "do not add a clue" while the schema still demands
+`clue_text` leaves the invitation standing and relies on the model declining it.
+`clue_text` is gone from the answer schema, `CLUE_GUIDANCE` is gone from the
+answer call, and `answerAsComposer` no longer accepts a `clueMode` at all — a
+parameter that steers nothing is an invitation to reconnect it later. The
+per-answer clue slot was removed from the transcript for the same reason.
+
+The AMBIGUOUS explanation survives, deliberately. Without it a genuine split is
+indistinguishable from evasion. It is now scoped: say THAT the category splits,
+not WHICH members fall on which side — the second is a clue wearing an
+explanation's clothes.
+
+### Note on how this shipped
+
+No test asserted that ordinary answers carry no clue, because until the field
+test that behaviour was the specification rather than the bug. The boundary is
+now pinned in `test/cluePolicy.test.ts`, including the schema shape — the thing
+that actually caused it.

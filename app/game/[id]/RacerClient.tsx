@@ -192,11 +192,14 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
 
         {turns.map((entry) =>
           entry.turn_type === "clue" ? (
-            <div key={entry.id} className="flex min-w-0 gap-3">
-              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--blue)] sm:w-8">
-                súgó
+            <div
+              key={entry.id}
+              className="flex flex-col gap-1 rounded-md border border-[var(--blue)]/25 bg-[var(--blue)]/6 px-2.5 py-2"
+            >
+              <span className="whitespace-nowrap text-xs uppercase tracking-wide text-[var(--blue)]">
+                SÚGÓ
               </span>
-              <p className="min-w-0 break-words rounded-md border border-[var(--blue)]/25 bg-[var(--blue)]/6 px-2.5 py-1.5 text-sm text-[var(--blue)]">
+              <p className="min-w-0 break-words text-sm text-[var(--blue)]">
                 {entry.clue_text}
               </p>
             </div>
@@ -305,14 +308,10 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
               </div>
             )}
 
-            {entry.clue_text && (
-              <div className="flex min-w-0 gap-3">
-                <span className="w-6 shrink-0 sm:w-8" />
-                <p className="min-w-0 break-words rounded-md border border-[var(--green)]/25 bg-[var(--green)]/6 px-2.5 py-1.5 text-xs text-[var(--green)]">
-                  {entry.clue_text}
-                </p>
-              </div>
-            )}
+            {/*
+              A clue no longer rides along with an answer — 0.9.9.0 removed that
+              channel. Clues appear as their own timeline entries above.
+            */}
           </div>
           )
         )}

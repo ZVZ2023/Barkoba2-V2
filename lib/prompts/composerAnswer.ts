@@ -53,9 +53,32 @@ The test that separates these: does the split fall INSIDE the locked target, or 
 
 AMBIGUOUS is unlimited and costs the player one question like any other. Do not hoard it, and do not hide behind it. Overusing it is the one genuinely unsporting thing you can do here, because it burns the player's budget while telling them nothing.
 
+A YES OR A NO IS A CLASSIFICATION, NOT A CONVERSATION.
+
+When your answer is YES or NO, the answer IS the whole reply. Say which one it is and stop. Do not add:
+- an explanation of why;
+- context, qualification, or elaboration;
+- anything that narrows what the target might be;
+- a correction of the player's apparent hypothesis;
+- a suggestion about what to ask next, or what territory to explore;
+- encouragement, commentary, or any other helpful aside.
+
+This is not a limit on how much you understand. It is a rule about which channel your help travels through. The player earns explicit clue requests, and when they spend one you may help them properly. Volunteering that same help inside an ordinary answer hands them for free what the game asks them to earn, and quietly removes the deduction the game is made of.
+
+If you find yourself wanting to add something useful to a YES or a NO: that is what a clue request is for. Wait to be asked.
+
+AN AMBIGUOUS EXPLANATION JUSTIFIES THE AMBIGUITY AND NOTHING MORE.
+
+AMBIGUOUS is the one answer that carries prose, because without it the player cannot tell a genuine split from evasion. That prose has exactly one job: to say why neither binary would have been accurate. It is not a licence to steer.
+
+Say that the property varies across the category, or that the question has two reasonable readings that disagree. Do not say WHICH members differ, name the sub-groups, or describe where the boundary falls — those facts narrow the search, and narrowing belongs to clue requests.
+
+GOOD: "This varies across the category, so neither a plain yes nor a plain no would be accurate."
+BAD: "This varies because some live in Africa and others in Antarctica." — that is a clue wearing an explanation's clothes.
+
 NEVER REVEAL THE TARGET IN ANYTHING THE PLAYER READS.
 
-Everything you write that reaches the player — the AMBIGUOUS explanation and the clue — must be safe to read at any point in the game. In them you must not:
+Everything you write that reaches the player — the AMBIGUOUS explanation, and a clue when one is explicitly requested — must be safe to read at any point in the game. In them you must not:
 - name the target;
 - use an obvious synonym or equivalent for it;
 - name subtypes, breeds, models or examples of it, which identify it just as surely;
@@ -118,13 +141,13 @@ const INPUT_SCHEMA: Record<string, unknown> = {
       description:
         "If AMBIGUOUS: one sentence on why a binary answer would mislead. Null otherwise. Shown to the player.",
     },
-    clue_text: {
-      type: ["string", "null"],
-      description:
-        "An optional short steer, only if the clue mode permits one. Null when it does not, and null whenever no clue is warranted. Never names the target.",
-    },
   },
-  required: ["reasoning", "answer", "ambiguous_explanation", "clue_text"],
+  // No clue field. Removed in 0.9.9.0: while the model was ASKED for a clue on
+  // every answer it reliably supplied one, which made ordinary YES/NO replies a
+  // second, uncapped help channel running alongside the earned one. The field
+  // test found it immediately. Taking the field away is what closes it — a
+  // prompt rule alone would leave the invitation standing.
+  required: ["reasoning", "answer", "ambiguous_explanation"],
 };
 
 function renderTranscript(qaLog: QuestionLogEntry[]): string {
@@ -159,7 +182,6 @@ export async function answerAsComposer(params: {
   qaLog: QuestionLogEntry[];
   questionsAsked: number;
   maxQuestions: number;
-  clueMode: ClueMode;
   gameLanguage: GameLanguage;
 }): Promise<ComposerAnswerResult> {
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
@@ -177,8 +199,6 @@ export async function answerAsComposer(params: {
           params.modifiers ? `MODIFIERS: ${params.modifiers}` : "MODIFIERS: none",
           "",
           GRANULARITY_RULE[params.granularity],
-          "",
-          CLUE_GUIDANCE[params.clueMode],
           "",
           `Questions used: ${params.questionsAsked} of ${params.maxQuestions}. Remaining after this one: ${remaining}.`,
           "",
@@ -204,20 +224,16 @@ export async function answerAsComposer(params: {
 
   const rawExplanation =
     answer === "AMBIGUOUS" ? (result.ambiguous_explanation || "").trim() || null : null;
-  const rawClue =
-    params.clueMode === "none" ? null : (result.clue_text || "").trim() || null;
 
   // The prompt above already forbids disclosure. Field Test #2 showed a prompt
   // rule is not an invariant — the model was told, and disclosed anyway. This
   // is the check that makes the guarantee hold regardless.
   const explanation = scrubExplanation(rawExplanation, params.target);
-  const clue = scrubClue(rawClue, params.target);
 
-  if (explanation.redacted || clue.redacted) {
+  if (explanation.redacted) {
     // eslint-disable-next-line no-console
     console.warn(
-      `[barkoba] Composer text disclosed the target and was redacted ` +
-        `(explanation=${explanation.redacted}, clue=${clue.redacted}). ` +
+      "[barkoba] An AMBIGUOUS explanation disclosed the target and was redacted. " +
         "The answer itself was kept; only the visible prose was replaced."
     );
   }
@@ -226,7 +242,8 @@ export async function answerAsComposer(params: {
     reasoning: result.reasoning ?? "",
     answer,
     ambiguous_explanation: explanation.value,
-    clue_text: clue.value,
+    // Ordinary answers no longer carry clues. SÚGÓ is the only help channel.
+    clue_text: null,
   };
 }
 
