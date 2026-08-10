@@ -72,13 +72,17 @@ Write revised_question and guess_text in the language of the game, which you wil
 
 This exchange is internal. Your opponent never sees it and is not waiting on it.`;
 
-function turnInputSchema(forceFinal: boolean): Record<string, unknown> {
+function turnInputSchema(forceFinal: boolean, clueAvailable: boolean): Record<string, unknown> {
   return {
     type: "object",
     properties: {
       action: {
         type: "string",
-        enum: forceFinal ? ["guess", "concede"] : ["question", "guess", "concede"],
+        enum: forceFinal
+          ? ["guess", "concede"]
+          : clueAvailable
+            ? ["question", "clue", "guess", "concede"]
+            : ["question", "guess", "concede"],
         description: forceFinal
           ? "No questions remain. You must guess or concede."
           : "What you are doing this turn.",
@@ -151,6 +155,12 @@ function renderLanguage(state: RacerPublicState): string {
   return `Language of this game: ${name}. Write your question, guess, and rationale in ${name}.`;
 }
 
+function renderClues(state: RacerPublicState): string {
+  if (state.clues.length === 0) return "Clues given so far: none.";
+  const rows = state.clues.map((c) => `Clue (after turn ${c.turn_index}): ${c.clue}`);
+  return ["Clues the Composer has given you — treat these as reliable:", ...rows].join("\n");
+}
+
 function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
   if (forceFinal) {
     return `You have used all ${state.max_questions} questions. This is your final turn: guess or concede.`;
@@ -163,6 +173,10 @@ export async function runRacerTurn(
   options: { forceFinal: boolean }
 ): Promise<RacerTurnOutput> {
   const { forceFinal } = options;
+  // Eligibility only. The Racer is never told to take a clue, and the prompt
+  // below says so explicitly — an available credit is an option, not an
+  // instruction. No other part of its strategy is touched by this feature.
+  const clueAvailable = !forceFinal && state.clue_credits_available > 0;
 
   const result = await callAnthropicTool<RacerTurnOutput>({
     model: env.modelRacer(),
@@ -178,6 +192,11 @@ export async function runRacerTurn(
           "Transcript so far:",
           renderTranscript(state),
           "",
+          renderClues(state),
+          clueAvailable
+            ? `You may request a clue this turn: action "clue". You have ${state.clue_credits_available} clue request(s) available. It costs no question and no guess, and the Composer will answer it in words rather than yes/no.\n\nBeing allowed to ask is not a reason to ask. Spend one only when you judge that a clue would materially help — when the transcript has stopped narrowing, or you are choosing between hypotheses that your own questions cannot separate. If your next question would make good progress on its own, ask it instead. An unspent credit is not wasted; it keeps accumulating.`
+            : "You cannot request a clue this turn.",
+          "",
           forceFinal
             ? "Make your final move."
             : "Take your turn.",
@@ -186,7 +205,7 @@ export async function runRacerTurn(
     ],
     toolName: "submit_turn",
     toolDescription: "Submit your move for this turn.",
-    inputSchema: turnInputSchema(forceFinal),
+    inputSchema: turnInputSchema(forceFinal, clueAvailable),
     maxTokens: 512,
   });
 
@@ -194,10 +213,14 @@ export async function runRacerTurn(
   // question_text alongside action="question". Normalize rather than trust.
   const action = forceFinal && result.action === "question" ? "guess" : result.action;
 
+  // A model can pick "clue" even when the schema did not offer it. Refuse it
+  // rather than mint a credit that was never earned.
+  const safeAction = action === "clue" && !clueAvailable ? "question" : action;
+
   return {
-    action,
-    question_text: action === "question" ? (result.question_text ?? null) : null,
-    guess_text: action === "guess" ? (result.guess_text ?? result.question_text ?? null) : null,
+    action: safeAction,
+    question_text: safeAction === "question" ? (result.question_text ?? null) : null,
+    guess_text: safeAction === "guess" ? (result.guess_text ?? result.question_text ?? null) : null,
     rationale: result.rationale ?? "",
   };
 }

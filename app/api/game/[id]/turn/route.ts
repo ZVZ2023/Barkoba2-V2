@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getGame, saveGame } from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
+import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
 import { detectGuess } from "@/lib/guessDetector";
 import { consumeModelCall } from "@/lib/callBudget";
@@ -154,6 +155,19 @@ export async function POST(
     // this guard is the only thing standing between a double-fire and a
     // corrupted log.
     // -----------------------------------------------------------------------
+    return respond(game);
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 1b — an outstanding clue request blocks the Racer.
+  //
+  // When the Racer spends a credit it is waiting on a human, exactly as it
+  // waits on an answer. findPendingEntry only recognises unanswered QUESTIONS,
+  // so without this the Racer would take another turn immediately and the
+  // Composer would never get to write the clue.
+  // -------------------------------------------------------------------------
+  if (pendingClueRequest(game)) {
+    await saveGame(game);
     return respond(game);
   }
 

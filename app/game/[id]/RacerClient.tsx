@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 import EvaluationState from "@/app/components/EvaluationState";
 
@@ -37,6 +38,10 @@ const RESULT_HEADLINE: Record<string, string> = {
   racer_win_integrity_violation: "Neked ítélve — integritás-ellenőrzés.",
 };
 
+function clueTurns(game: GameRecord): QuestionLogEntry[] {
+  return game.qa_log.filter((e) => e.turn_type === "clue" && e.clue_text);
+}
+
 function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   return game.qa_log.filter((e) => e.turn_type === "question" && e.composer_response);
 }
@@ -51,6 +56,26 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveFired = useRef(false);
+
+  // SÚGÓ. Derived from the record on every render, so the control cannot
+  // disagree with what the server will allow.
+  const clueOn = cluesEnabled(game);
+  const cluesLeft = clueCreditsAvailable(game);
+
+  const askForClue = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/game/${game.game_id}/clue`, { method: "POST" });
+      const data = await res.json();
+      if (data.game) setGame(data.game as GameRecord);
+      if (!res.ok) setError(data.message || "Valami hiba történt.");
+    } catch {
+      setError("Nem sikerült súgót kérni.");
+    } finally {
+      setBusy(false);
+    }
+  }, [game.game_id]);
 
   const send = useCallback(
     async (body: Record<string, unknown>) => {
@@ -107,7 +132,12 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
     void resolveGame();
   }, [game.phase, resolveGame]);
 
-  const turns = answeredTurns(game);
+  // Questions and clues share one timeline so a clue appears where it happened.
+  // A clue that is not visible in the transcript is a clue the player cannot
+  // reason about afterwards.
+  const turns = [...answeredTurns(game), ...clueTurns(game)].sort(
+    (a, b) => a.turn_index - b.turn_index
+  );
   const remaining = Math.max(0, game.max_questions - game.question_count);
   const live = game.phase === "questioning";
 
@@ -160,7 +190,17 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           </p>
         )}
 
-        {turns.map((entry) => (
+        {turns.map((entry) =>
+          entry.turn_type === "clue" ? (
+            <div key={entry.id} className="flex min-w-0 gap-3">
+              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--blue)] sm:w-8">
+                súgó
+              </span>
+              <p className="min-w-0 break-words rounded-md border border-[var(--blue)]/25 bg-[var(--blue)]/6 px-2.5 py-1.5 text-sm text-[var(--blue)]">
+                {entry.clue_text}
+              </p>
+            </div>
+          ) : (
           <div key={entry.id} className="flex flex-col gap-1.5">
             <div className="flex min-w-0 gap-3">
               <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
@@ -274,7 +314,8 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
               </div>
             )}
           </div>
-        ))}
+          )
+        )}
 
         {busy && <p className="text-sm text-[var(--ink-soft)]">Gondolkodik…</p>}
 
@@ -292,18 +333,32 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                   placeholder="pl. Fizikai tárgy?"
                   disabled={busy}
                 />
-                <div className="flex flex-wrap gap-2">
+                <div className="flex gap-2">
                   <button
                     onClick={() => void send({ question })}
                     disabled={busy || !question.trim()}
-                    className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
+                    className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-3 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
                   >
                     Kérdezek
                   </button>
+                  {clueOn && (
+                    <button
+                      onClick={() => void askForClue()}
+                      disabled={busy || cluesLeft < 1}
+                      title={
+                        cluesLeft > 0
+                          ? `${cluesLeft} súgó áll rendelkezésedre`
+                          : "Még nincs súgód"
+                      }
+                      className="min-h-11 flex-1 rounded-md border border-[var(--blue)]/50 px-3 py-2.5 text-sm font-medium text-[var(--blue)] disabled:opacity-30"
+                    >
+                      Súgó
+                    </button>
+                  )}
                   <button
                     onClick={() => setGuessMode(true)}
                     disabled={busy}
-                    className="min-h-11 flex-1 rounded-md border border-[var(--green)]/50 px-4 py-2.5 text-sm font-medium text-[var(--green)] disabled:opacity-40 sm:flex-none"
+                    className="min-h-11 flex-1 rounded-md border border-[var(--red)]/60 px-3 py-2.5 text-sm font-medium text-[var(--red)] disabled:opacity-40"
                   >
                     Tippelek
                   </button>
@@ -314,13 +369,31 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                 <p className="text-sm text-[var(--ink)]">
                   Elfogytak a kérdések. Ideje tippelni.
                 </p>
-                <button
-                  onClick={() => setGuessMode(true)}
-                  disabled={busy}
-                  className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
-                >
-                  Tippelek
-                </button>
+                {/*
+                  A credit earned by the LAST question is still spendable. SÚGÓ
+                  rewards the deduction, so answering question 20 of 20 earns a
+                  clue that may be used before the final guess — the guess is
+                  what closes the door, not the question budget.
+                */}
+                <div className="flex gap-2">
+                  {clueOn && cluesLeft > 0 && (
+                    <button
+                      onClick={() => void askForClue()}
+                      disabled={busy}
+                      title={`${cluesLeft} súgó áll rendelkezésedre`}
+                      className="min-h-11 flex-1 rounded-md border border-[var(--blue)]/50 px-3 py-2.5 text-sm font-medium text-[var(--blue)] disabled:opacity-30"
+                    >
+                      Súgó
+                    </button>
+                  )}
+                  <button
+                    onClick={() => setGuessMode(true)}
+                    disabled={busy}
+                    className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
+                  >
+                    Tippelek
+                  </button>
+                </div>
               </div>
             )}
           </div>

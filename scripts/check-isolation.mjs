@@ -34,6 +34,7 @@ const PERMITTED_SECRET_IMPORTERS = [
   "app/api/game/[id]/resolve/route.ts", // getSecretForAdjudication, at resolution
   "lib/prompts/validator.ts", // (reserved) pre-game validation
   "app/api/game/[id]/ask/route.ts", // getSecretForAnswering, every AI-Composer turn
+  "app/api/game/[id]/clue/route.ts", // getSecretForAnswering, explicit SÚGÓ request (0.9.8.0)
   "lib/prompts/composerTarget.ts", // (reserved) produces the secret
   "lib/prompts/composerAnswer.ts", // (reserved) answers against the secret
   "lib/prompts/adjudicator.ts", // (reserved) judges the guess

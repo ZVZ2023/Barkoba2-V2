@@ -1306,3 +1306,77 @@ the same level along a different line.
 Both benchmarks are **open**. Neither blocks V1. Neither has been fixed,
 mitigated, or worked around in prompt text. If a later version claims to
 improve Racer reasoning, these are the first two games to replay.
+
+---
+
+## 19. `0.9.8.0` — SÚGÓ, the explicit clue action
+
+### Why the feature needed an action at all
+
+The clue system shipped in `0.6.x` and worked exactly as designed: `clue_mode`
+of `minimal` or `progressive` put a clue policy into the Composer's prompt, and
+the Composer could attach `clue_text` to any answer.
+
+Field play showed the flaw, which was not in the policy but in the trigger. A
+clue could only ride along with an answer, and the model volunteered one
+unreliably. A player who wanted help had no way to ask for it: typing "give me
+a clue" into the question box is correctly rejected, because it is not a yes/no
+question. The assistance existed and was unreachable.
+
+`0.9.8.0` adds the trigger and changes none of the policy. `CLUE_GUIDANCE`,
+the granularity rule, the transcript renderer and `scrubClue` are the same ones
+answering has always used. There is deliberately no second clue architecture.
+
+### Credits are derived, never stored
+
+`lib/clueCredits.ts` computes everything from state the engine already keeps:
+
+    earned    = floor(question_count / 10)
+    used      = number of qa_log entries with turn_type "clue"
+    available = earned - used
+
+No counter is persisted. A stored counter is a second source of truth that can
+drift from the transcript, and drift in a scarce resource is precisely the bug
+a player notices and remembers. Deriving also makes the feature backward
+compatible at no cost: a record written before `0.9.8.0` contains no clue turns,
+so it reports zero used and behaves correctly without migration.
+
+Credits accumulate. Not spending the credit earned at question 10 does not
+forfeit it — at question 20 the player holds two.
+
+### One route, two directions
+
+`POST /api/game/[id]/clue` serves both, because the credit rule and the
+transcript entry are identical and only the author of the text differs.
+
+**AI Composer → human Racer.** The human presses SÚGÓ. The route checks
+eligibility, calls `requestClueFromComposer`, and passes the result through
+`scrubClue` — the same deterministic guard as every other Composer-authored
+visible string. A clue is the one output whose entire purpose is to narrow the
+search, which is exactly why it must not be the one output that skips the
+check. The credit is spent by writing the log entry, so a failed model call
+costs the player nothing.
+
+**Human Composer → AI Racer.** The Racer chooses `action: "clue"` on its own
+turn, which appends a clue entry with no text. That entry blocks the Racer in
+`turn/route.ts` the same way an unanswered question does — without that block
+the Racer would take another turn immediately and the human would never get to
+write the clue. The human's text is stored unscrubbed: the guard exists to stop
+the model revealing a secret it was entrusted with, and a human deciding how
+much to give away about their own target is playing the game, not breaching it.
+
+### Eligibility is not obligation
+
+The Racer's action enum contains `clue` only when a credit exists, and the
+prompt says plainly that being allowed to ask is not a reason to ask. If the
+model returns `clue` when none was offered, the code refuses it rather than
+minting a credit that was never earned.
+
+No other part of Racer strategy was touched. The two deferred benchmarks in §18
+remain open and unaddressed.
+
+### What a clue costs
+
+One clue credit. Zero questions, zero guesses. `question_count` is not
+incremented on a clue turn, the single final guess is untouched, and a clue is
+never recorded as an answer to anything.

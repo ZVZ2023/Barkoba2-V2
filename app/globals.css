@@ -18,6 +18,9 @@
   --green: #1e3a24;
   --green-soft: #2f5236;
   --red: #8c2f24;
+  /* SÚGÓ. Assistance reads as neither the primary action nor the irreversible
+     one, so it needs its own hue rather than a shade of green or red. */
+  --blue: #1f3d63;
 }
 
 /* ---------------------------------------------------------------------------

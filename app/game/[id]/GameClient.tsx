@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { pendingClueRequest } from "@/lib/clueCredits";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -55,6 +56,29 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   const resolveFired = useRef(false);
 
   const pending = pendingQuestion(game);
+  // The Racer spent a credit and is waiting on words, not on YES/NO.
+  const clueWanted = pendingClueRequest(game);
+  const [clueText, setClueText] = useState("");
+
+  const sendClue = useCallback(async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/game/${game.game_id}/clue`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ clue_text: clueText }),
+      });
+      const data = await res.json();
+      if (data.game) setGame(data.game as GameRecord);
+      if (!res.ok) setError(data.message || "Valami hiba történt.");
+      else setClueText("");
+    } catch {
+      setError("Nem sikerült elküldeni a súgót.");
+    } finally {
+      setBusy(false);
+    }
+  }, [clueText, game.game_id]);
 
   const sendTurn = useCallback(
     async (answer?: ComposerAnswer, ambiguousExplanation?: string) => {
@@ -158,6 +182,8 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   useEffect(() => {
     if (game.phase !== "questioning") return;
     if (pendingQuestion(game)) return;
+    // A clue request is just as much a turn awaiting the human as a question is.
+    if (pendingClueRequest(game)) return;
     if (busy) return;
     if (autoTurnFor.current === game.qa_log.length) return;
     autoTurnFor.current = game.qa_log.length;
@@ -367,6 +393,17 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
               </div>
             )}
 
+            {entry.turn_type === "clue" && (
+              <div className="rounded-md border border-[var(--blue)]/30 bg-[var(--blue)]/6 p-3">
+                <p className="text-xs uppercase tracking-wide text-[var(--blue)]">
+                  Súgó
+                </p>
+                <p className="mt-1 break-words text-sm text-[var(--blue)]">
+                  {entry.clue_text ?? "Az AI súgót kért."}
+                </p>
+              </div>
+            )}
+
             {entry.turn_type === "concede" && (
               <div className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-3">
                 <p className="text-sm text-[var(--ink)]">Az AI feladta.</p>
@@ -374,6 +411,31 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             )}
           </div>
         ))}
+
+        {clueWanted && (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--blue)]/35 bg-[var(--blue)]/6 p-4">
+            <p className="text-sm text-[var(--blue)]">
+              Az AI súgót kért. Segíts neki — ez nem számít bele a kérdéseibe.
+            </p>
+            <textarea
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--blue)]"
+              value={clueText}
+              onChange={(e) => setClueText(e.target.value)}
+              placeholder="pl. Nem a lakásban keresd."
+              disabled={busy}
+            />
+            <button
+              onClick={() => void sendClue()}
+              disabled={busy || !clueText.trim()}
+              className="min-h-11 self-start rounded-md bg-[var(--blue)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+            >
+              Súgok
+            </button>
+          </div>
+        )}
 
         {pending && pending.question_text && (
           <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">

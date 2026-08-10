@@ -1,6 +1,7 @@
+import { randomUUID } from "crypto";
 import { getKV } from "./kv";
 import { env } from "./env";
-import type { GameRecord } from "./types";
+import type { GameRecord, QuestionLogEntry } from "./types";
 
 // ---------------------------------------------------------------------------
 // Public game state only. This module has no import of secretStore.ts and
@@ -88,4 +89,39 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
 
 export async function saveGame(record: GameRecord): Promise<void> {
   await getKV().set(gameKey(record.game_id), record, env.gameTtlSeconds());
+}
+
+
+/**
+ * A blank log entry. turn/ and ask/ each carry their own local copy of this
+ * literal, written before there was a third caller; they are deliberately not
+ * refactored here — changing two working routes to remove duplication is not a
+ * trade worth making in a release candidate. New callers use this one.
+ */
+export function newLogEntry(turnIndex: number): QuestionLogEntry {
+  return {
+    id: randomUUID(),
+    turn_index: turnIndex,
+    turn_type: "question",
+    racer_output_raw: "",
+    question_text: null,
+    guess_text: null,
+    composer_response: null,
+    ambiguous_explanation: null,
+    guess_detector_flagged: false,
+    guess_detector_method: null,
+    guess_intent_outcome: null,
+    clue_text: null,
+    original_question_text: null,
+    edit_status: null,
+    edit_reason: null,
+    ambiguous_consumed_credit: false,
+    timestamp: new Date().toISOString(),
+    quality_score: null,
+    information_gain: null,
+    strategy_classification: null,
+    integrity_flag: null,
+    confidence: null,
+    latency_ms: null,
+  };
 }

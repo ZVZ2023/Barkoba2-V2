@@ -1,4 +1,10 @@
-import type { GameRecord, RacerPublicState, RacerTranscriptTurn } from "./types";
+import { clueCreditsAvailable } from "./clueCredits";
+import type {
+  GameRecord,
+  RacerClueTurn,
+  RacerPublicState,
+  RacerTranscriptTurn,
+} from "./types";
 
 // ---------------------------------------------------------------------------
 // The narrowing boundary.
@@ -27,7 +33,19 @@ export function toRacerPublicState(game: GameRecord): RacerPublicState {
     });
   }
 
+  // Clues the Composer has already given. They are part of what the Racer
+  // legitimately knows — withholding them would make the Racer reason against a
+  // transcript the player can see and it cannot.
+  const clues: RacerClueTurn[] = [];
+  for (const entry of game.qa_log) {
+    if (entry.turn_type !== "clue") continue;
+    if (!entry.clue_text) continue;
+    clues.push({ turn_index: entry.turn_index, clue: entry.clue_text });
+  }
+
   return {
+    clues,
+    clue_credits_available: clueCreditsAvailable(game),
     question_count: game.question_count,
     max_questions: game.max_questions,
     questions_remaining: Math.max(0, game.max_questions - game.question_count),

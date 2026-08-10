@@ -142,7 +142,7 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
             disabled={view.step === "submitting" || !target}
             className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
           >
-            {view.step === "submitting" ? "Ellenőrzés…" : "Titok rögzítése"}
+            {view.step === "submitting" ? "Ellenőrzés…" : "Célpont rögzítése"}
           </button>
         </div>
       )}

@@ -69,7 +69,13 @@ export type TargetGranularity = "generic_type" | "specific_instance";
  */
 export type GameLanguage = "hu" | "en";
 
-export type RacerAction = "question" | "guess" | "concede";
+/**
+ * "clue" joined this union in 0.9.8.0 rather than becoming a parallel concept:
+ * a clue occupies a turn in the transcript so it needs a turn_type, and the AI
+ * Racer selects it the same way it selects question or guess. It is never an
+ * answer and never a guess — it spends a clue credit and nothing else.
+ */
+export type RacerAction = "question" | "guess" | "concede" | "clue";
 
 export type GuessDetectorMethod = "heuristic" | "classifier";
 
@@ -351,6 +357,19 @@ export interface RacerPublicState {
   /** Language the Racer must play in. Carries no information about the target. */
   game_language: GameLanguage;
   transcript: RacerTranscriptTurn[];
+  /**
+   * Clues already given, in turn order. Empty when the game has no clue mode,
+   * and empty for every record written before 0.9.8.0 — clue turns simply do
+   * not exist in those logs, so nothing needs migrating.
+   */
+  clues: RacerClueTurn[];
+  /** Clue requests still available. Zero means the action is not offered at all. */
+  clue_credits_available: number;
+}
+
+export interface RacerClueTurn {
+  turn_index: number;
+  clue: string;
 }
 
 export interface RacerTurnOutput {

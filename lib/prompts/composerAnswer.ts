@@ -229,3 +229,99 @@ export async function answerAsComposer(params: {
     clue_text: clue.value,
   };
 }
+
+
+/**
+ * SÚGÓ — an explicit clue request (0.9.8.0).
+ *
+ * Until now a clue could only ride along with an answer, which meant the player
+ * had no way to ask for one and the model volunteered them unreliably. This is
+ * the explicit trigger. It deliberately reuses the existing clue policy
+ * (CLUE_GUIDANCE), the existing granularity rule, the existing transcript
+ * renderer and the existing disclosure guard — a clue requested on purpose must
+ * obey exactly the same limits as one offered spontaneously.
+ *
+ * It answers no question and returns no verdict. The only output is clue text.
+ */
+const CLUE_REQUEST_SCHEMA = {
+  type: "object" as const,
+  properties: {
+    reasoning: {
+      type: "string",
+      description:
+        "Private working notes: what the player already knows, and what is genuinely worth steering them toward. Never shown.",
+    },
+    clue_text: {
+      type: "string",
+      description:
+        "The clue itself, one or two sentences, in the game language. Never names the target and never leaves only one word to say.",
+    },
+  },
+  required: ["reasoning", "clue_text"],
+};
+
+export async function requestClueFromComposer(params: {
+  target: string;
+  definition: string;
+  granularity: TargetGranularity;
+  modifiers: string | null;
+  qaLog: QuestionLogEntry[];
+  questionsAsked: number;
+  maxQuestions: number;
+  clueMode: ClueMode;
+  gameLanguage: GameLanguage;
+}): Promise<{ clue_text: string | null; redacted: boolean }> {
+  if (params.clueMode === "none") return { clue_text: null, redacted: false };
+
+  const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
+  const remaining = Math.max(0, params.maxQuestions - params.questionsAsked);
+
+  const result = await callAnthropicTool<{ reasoning?: string; clue_text?: string }>({
+    model: env.modelRacer(),
+    system: COMPOSER_ANSWER_SYSTEM_PROMPT,
+    messages: [
+      {
+        role: "user",
+        content: [
+          `SECRET TARGET: ${params.target}`,
+          `DEFINITION: ${params.definition}`,
+          params.modifiers ? `MODIFIERS: ${params.modifiers}` : "MODIFIERS: none",
+          "",
+          GRANULARITY_RULE[params.granularity],
+          "",
+          CLUE_GUIDANCE[params.clueMode],
+          "",
+          `Questions used: ${params.questionsAsked} of ${params.maxQuestions}. Remaining: ${remaining}.`,
+          "",
+          "Transcript so far:",
+          renderTranscript(params.qaLog),
+          "",
+          "THE PLAYER HAS SPENT A CLUE CREDIT AND ASKED YOU DIRECTLY FOR HELP.",
+          "This is not a question to answer. Give a clue and nothing else.",
+          "Because they asked, a clue is warranted — do not return an empty one.",
+          "Calibrate it to the clue mode above and to how much budget is left.",
+          "Never name the target, never name an obvious equivalent of it, and never",
+          "reduce the game to a single word they merely have to say.",
+          "",
+          `Write the clue in ${language}.`,
+        ].join("\n"),
+      },
+    ],
+    toolName: "submit_clue",
+    toolDescription: "Give the player a clue about the locked target.",
+    inputSchema: CLUE_REQUEST_SCHEMA,
+    maxTokens: 512,
+  });
+
+  const raw = (result.clue_text || "").trim() || null;
+
+  // Same deterministic guard as every other Composer-authored visible string.
+  // A clue is the one output whose whole purpose is to narrow the search, which
+  // is exactly why it must not be the one output that skips the check.
+  const clue = scrubClue(raw, params.target);
+  if (clue.redacted) {
+    // eslint-disable-next-line no-console
+    console.warn("[barkoba] A requested clue disclosed the target and was redacted.");
+  }
+  return { clue_text: clue.value, redacted: clue.redacted };
+}
