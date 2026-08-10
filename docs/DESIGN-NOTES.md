@@ -1657,3 +1657,70 @@ break the tolerance added in 0.9.5.0.
 adjudicator got this right in the field; the fixture exists to keep it that way.
 Note that the fixture corpus is exercised only by `npm run eval:adjudicator`,
 which has still never been run against a real key.
+
+## 24. V2.5 Game Intelligence benchmark — compound questions
+
+Recorded from the MuShu field test on `2.1.1.2`. **Not addressed, and deliberately
+so** — this is question-construction discipline, not a reasoning or adjudication
+failure, and it belongs with the Racer-intelligence work deferred to V2.5
+alongside the §18 benchmarks.
+
+### What happened
+
+The Racer produced questions that are not binary propositions at all:
+
+    "Fish, amphibian, reptile, bird or mammal?"
+    "Does the target live in the wild, or under human care, for example on a
+     farm or at home?"
+
+These force IS-IS by construction. No single YES or NO can represent them
+faithfully, so the answer carries almost no information and the question is
+spent.
+
+### The Composer discipline this established
+
+The human Composer did **not** repair the malformed questions by volunteering
+which clause was true. A neutral IS-IS was given instead.
+
+That is the correct behaviour and worth stating as a principle:
+
+> A malformed compound question must not be rewarded with extra semantic
+> information supplied by the Composer.
+
+Repairing it for the Racer would hide the defect, hand over information the
+question did not earn, and make the weakness unmeasurable — the Racer would
+appear to handle compound questions well because a human quietly fixed them.
+
+### The encouraging half
+
+After the ambiguous answer the Racer recovered by decomposing the problem into
+atomic questions, and its reasoning immediately improved:
+
+    #11  lives wild?              NO
+    #12  lives under human care?  YES
+    #13  farm animal?             NO
+    #14  horse?                   NO
+    #15  domestic companion/pet?  YES
+    #16  dog?                     YES  -> guess
+
+So the capability is present; the discipline to use it consistently is not. That
+distinction matters for V2.5: the work is constraining question FORM, not
+teaching the Racer to reason.
+
+### What a fix would have to demonstrate
+
+That the Racer emits one proposition per question without being told which
+clause a previous compound question failed on — and that it does so from the
+first question, not only after an IS-IS has already cost it a turn.
+
+### Status
+
+Open. Does not block V2.1. Third entry in the deferred Racer-intelligence set,
+after Red Citroën C4 and My Left Leg.
+
+### Adjudication evidence from the same game
+
+`cat-7` (MuShu → "dog") joins `inst-6` (My left ear → "ear") as the second
+real-game confirmation that identifying the right category does not identify the
+locked target. Two hard games, same principle, correct both times. The
+adjudication architecture was not changed in response — it was working.
