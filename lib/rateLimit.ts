@@ -43,3 +43,22 @@ export function extractClientIp(headers: Headers): string {
   }
   return headers.get("x-real-ip") || "unknown";
 }
+
+
+/**
+ * Recovery attempts — V2.1.3.0.
+ *
+ * Honest framing: against 120 bits of entropy this is not what stops an
+ * attacker; the entropy is. It exists to stop enumeration noise, log spam and
+ * trivial denial of service. Tighter than game creation because nobody
+ * legitimately types a recovery code ten times in an hour.
+ */
+export async function checkRecoveryRateLimit(ip: string): Promise<RateLimitResult> {
+  const limit = 10;
+  if (env.rateLimitDisabled()) return { allowed: true, limit, remaining: limit };
+
+  const hourBucket = new Date().toISOString().slice(0, 13);
+  const count = await getKV().incrWithExpiry(`ratelimit:recover:${ip}:${hourBucket}`, 60 * 60);
+
+  return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
+}

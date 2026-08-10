@@ -16,6 +16,13 @@ export interface KVClient {
   get<T>(key: string): Promise<T | null>;
   set<T>(key: string, value: T, ttlSeconds?: number): Promise<void>;
   incrWithExpiry(key: string, ttlSeconds: number): Promise<number>;
+  /**
+   * Added in 2.1.3.0. Nothing in Barkoba had ever removed a key before —
+   * TTLs did all the work. Durable identity has no TTL, so deleting a claimed
+   * Player needs an explicit operation. Kept to exactly that: no pattern
+   * delete, no scan, no bulk.
+   */
+  del(key: string): Promise<void>;
 }
 
 class UpstashKV implements KVClient {
@@ -36,6 +43,10 @@ class UpstashKV implements KVClient {
     } else {
       await this.client.set(key, value);
     }
+  }
+
+  async del(key: string): Promise<void> {
+    await this.client.del(key);
   }
 
   async incrWithExpiry(key: string, ttlSeconds: number): Promise<number> {
@@ -81,6 +92,10 @@ class InMemoryKV implements KVClient {
       value,
       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : null,
     });
+  }
+
+  async del(key: string): Promise<void> {
+    this.store.delete(key);
   }
 
   async incrWithExpiry(key: string, ttlSeconds: number): Promise<number> {
@@ -143,6 +158,10 @@ class NamespacedKV implements KVClient {
 
   incrWithExpiry(key: string, ttlSeconds: number): Promise<number> {
     return this.inner.incrWithExpiry(namespacedKey(key), ttlSeconds);
+  }
+
+  del(key: string): Promise<void> {
+    return this.inner.del(namespacedKey(key));
   }
 }
 

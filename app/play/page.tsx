@@ -1,3 +1,4 @@
+import RecoverPrompt from "../components/RecoverPrompt";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Stage from "../components/Stage";
@@ -51,7 +52,10 @@ export default function PlayPage() {
               </span>
             </div>
           </div>
-        </main>
+        
+        <RecoverPrompt />
+
+      </main>
       </div>
     </>
   );

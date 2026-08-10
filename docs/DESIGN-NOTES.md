@@ -1804,3 +1804,108 @@ Mildly positive. Because the name is signed over the player id, it travels with
 that identity when a credential eventually claims it — no orphan record to
 reconcile, no schema to migrate. The only loss mode is the pre-existing one:
 clear the cookies, lose the player and the name together.
+
+## 26. `2.1.3.0` — claiming and recovering a Player
+
+Completes V2.1. An anonymous Player can optionally protect their identity and
+recover the SAME identity on another device. Still no registration, no email, no
+password, no vendor.
+
+### Why a recovery code and not a passkey
+
+Passkeys were the better mechanism on friction and security, and were rejected
+for one reason: a passkey is cryptographically bound to the domain it was
+registered on. Barkóba's permanent production domain is not settled, so every
+claimed identity would have been orphaned by a later move, with no migration
+path. A printed string is bound to nothing.
+
+If the domain settles, passkeys remain the natural upgrade — and can be added
+alongside, since both resolve to the same `player_id`.
+
+### The code
+
+    BARKOBA-XXXX-XXXX-XXXX-XXXX-XXXX-XXXX
+
+15 random bytes = 120 bits. 24 Crockford base32 characters x 5 bits = 120 bits.
+Those numbers are equal deliberately: 15 bytes divides evenly into base32, so
+there is no truncation and no padding remainder, and the entropy quoted is the
+entropy generated. An earlier draft of this design claimed 160 bits for a
+25-character code that actually carried 125 — the arithmetic is now pinned by a
+test.
+
+Crockford excludes I, L, O and U, so nothing is ambiguous read aloud. The
+`BARKOBA` prefix carries no entropy; it exists so a player who finds the string
+in a note months later knows what it is.
+
+### Storage
+
+    player:<playerId>    { display_name, created_at, claimed_at, recovery_key }
+    recovery:<sha256>    { player_id }
+
+Both with NO TTL — the first thing in Barkóba that must never expire.
+
+The raw code is never stored. The key IS the SHA-256 of the normalized code, so
+recovery is a direct lookup rather than a search, and there is no comparison
+step and therefore no timing side channel.
+
+**Unsalted, unkeyed, and correct.** The usual objection to a fast hash applies
+to LOW-entropy secrets that can be enumerated offline — the password problem. A
+120-bit random code has no enumerable space, so hash speed is irrelevant. Salting
+would break the design outright, since the hash must be derivable from the code
+alone to serve as the key. And because no server secret participates,
+**recovery survives any future rotation of `PLAYER_ID_SECRET`** — an earlier
+draft used an HMAC and would have tied permanent recovery to a rotatable key.
+
+`recovery_key` is stored on the player record so deletion can remove both
+records directly. Redis cannot search values cheaply and a scan would degrade
+with every player.
+
+### Normalization
+
+People retype these from paper: lowercase, no dashes, extra spaces, O/0
+confusion. All of it is normalized before hashing. Rejecting a legitimate code
+is the worst possible failure for a credential that cannot be reissued, so the
+variants are pinned by test.
+
+Order matters: the prefix is stripped BEFORE the O to 0 substitution, or
+"BARKOBA" becomes "BARK0BA" and stops matching.
+
+### Ordering in the two write paths
+
+Claim writes the recovery record first: a crash between the writes leaves a code
+resolving to a player that does not exist yet, and recovery simply reports "not
+found". Delete removes the recovery record first: a crash leaves an unreachable
+player record, which is inert. Both orders are chosen so the surviving artefact
+is the harmless one.
+
+### No rotation in V2.1
+
+Re-claiming is refused rather than issuing a second code. Silently invalidating
+a code the player may have written down is the fastest way to destroy trust in a
+recovery mechanism. Rotation is a deliberate future decision, not an oversight.
+
+### Name precedence
+
+For a claimed Player the durable `display_name` is authoritative and the cookie
+is cache — that is what makes the name travel to a new device. Anonymous players
+keep the cookie-only name unchanged.
+
+### Deletion
+
+On the same small protected-player surface, not a profile page. Removes both
+records and clears both cookies: the player asked to be forgotten, so the local
+identity goes too and they return as a newcomer.
+
+### Known limitation
+
+V1 and V2 keys are separated by `KV_NAMESPACE=v2:`, but both lanes still share
+one Upstash free-tier resource. That was acceptable for 24-hour game state. It
+is less comfortable now that a lost key means a lost person rather than a lost
+game. A dedicated V2 database is increasingly desirable — not a V2.1 blocker,
+and no migration work is authorized.
+
+### The honest risk
+
+A bearer code is exactly as strong as the player's ability to keep it. There is
+no reset, because there is nothing to reset it against. The UI says so before
+generating the code rather than after.

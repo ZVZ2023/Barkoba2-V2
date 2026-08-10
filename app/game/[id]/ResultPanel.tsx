@@ -1,5 +1,6 @@
 "use client";
 
+import ClaimPrompt from "@/app/components/ClaimPrompt";
 import type { GameRecord } from "@/lib/types";
 
 // This component is quarantined from secretStore by scripts/check-isolation.mjs.
@@ -95,6 +96,8 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
             <dd className="mt-0.5 break-words text-[var(--ink)]">{game.final_guess_text}</dd>
           </div>
         )}
+
+        <ClaimPrompt />
 
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Felhasznált kérdés</dt>

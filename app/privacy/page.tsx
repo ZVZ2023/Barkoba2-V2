@@ -97,6 +97,32 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      <Section heading="Ha megvéded a játékosodat">
+        <p>
+          Alapesetben minden a böngésződben marad, és a szervereinken nem őrzünk meg
+          rólad semmit a játék 24 órás állapotán túl. Ha viszont a játék végén úgy
+          döntesz, hogy megvéded a játékosodat, akkor ehhez tartósan eltárolunk három
+          dolgot:
+        </p>
+        <Bullets
+          items={[
+            "A játékosod azonosítóját — ugyanazt a véletlen számot, ami eddig is csak a böngésződben volt.",
+            "A megadott megszólítást, ha adtál meg ilyet. Enélkül másik eszközön nem tudnánk visszaadni.",
+            "A helyreállító kódod ellenőrzőjét. Magát a kódot nem tároljuk el sehol: csak egy olyan matematikai lenyomatot, amiből a kód nem állítható vissza. Ezért nem is tudjuk neked újra megmutatni, ha elveszik.",
+          ]}
+        />
+        <p>
+          Ez nem regisztráció: nincs e-mail cím, nincs jelszó, és nincs fiók. A
+          helyreállító kód birtokosa férhet hozzá a játékoshoz, ezért érdemes ugyanúgy
+          vigyázni rá, mint egy kulcsra.
+        </p>
+        <p>
+          Bármikor törölheted a védett játékosodat a játék végi képernyőn. A törlés
+          végleges: a tárolt azonosító, a név és a helyreállító kód ellenőrzője is
+          megszűnik, a kódod többé nem működik, és újként indulsz tovább.
+        </p>
+      </Section>
+
       <Section heading="Amit nem tudunk pontosan megállapítani">
         <p>
           Az alkalmazást tárhelyszolgáltató üzemelteti, amely a saját rendszerében

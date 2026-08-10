@@ -45,6 +45,10 @@ const PERMITTED_SECRET_IMPORTERS = [
 const QUARANTINED = [
   "lib/playerIdentity.ts",
   "app/api/player/name/route.ts",
+  "app/api/player/claim/route.ts",
+  "app/api/player/recover/route.ts",
+  "lib/playerStore.ts",
+  "lib/recoveryCode.ts",
   "middleware.ts",
   "lib/prompts/racer.ts",
   "lib/racerState.ts",
