@@ -51,10 +51,17 @@ export default function PlayPage() {
                 {formatVersionLabel(getAppVersion())}
               </span>
             </div>
-          </div>
-        
-        <RecoverPrompt />
 
+            {/*
+              Returning-player recovery. Must stay INSIDE the max-w-2xl column:
+              as a bare child of <main> it escaped the centred content area and
+              rendered clipped against the left viewport edge, which made the
+              only route back to a protected Player effectively invisible.
+            */}
+            <div className="min-w-0 border-t border-neutral-900/10 pt-4">
+              <RecoverPrompt />
+            </div>
+          </div>
       </main>
       </div>
     </>

@@ -17,6 +17,13 @@ export const metadata: Metadata = { title: "Adatvédelem — Barkóba" };
 // analytics, advertising or third-party tracking script exists; both cookies
 // are functional and neither is used to track anyone across sites.
 //
+// CORRECTED AGAIN IN 2.1.3.1. The substance above was right, but the page still
+// framed itself as describing "V1" while documenting V2.1 identity protection,
+// recovery codes and deletion — a public page contradicting its own version
+// label. The framing is now version-neutral ("jelenleg telepített változat") on
+// purpose: a hardcoded milestone number is what went stale here twice, and the
+// visible build number already lives in the footer via getAppVersion().
+//
 // Claims that could NOT be verified from the repository — what the hosting
 // provider logs, how long those logs live — are described as unknown rather
 // than asserted. Saying "we store nothing" would have been false.
@@ -25,11 +32,11 @@ export default function PrivacyPage() {
   return (
     <ContentPage
       title="Adatvédelem"
-      lead="Ez az oldal azt írja le, amit a Barkóba jelenlegi V1 változatának kódjából egyértelműen meg lehet állapítani."
+      lead="Ez az oldal azt írja le, amit a Barkóba jelenleg telepített változatának kódjából egyértelműen meg lehet állapítani."
     >
       <Section heading="Nincs regisztráció">
         <p>
-          A Barkóba V1 nem kér és nem kezel felhasználói fiókot, jelszót, e-mail-címet vagy
+          A Barkóba nem kér és nem kezel felhasználói fiókot, jelszót, e-mail-címet vagy
           profilt. Nem kell bejelentkezni a játékhoz.
         </p>
       </Section>
@@ -135,7 +142,7 @@ export default function PrivacyPage() {
 
       <Section heading="Ez a jelenlegi állapot">
         <p>
-          Ez a V1 változatra vonatkozó tájékoztatás. Ha később fiókok, mentett játékok
+          Ez a jelenleg telepített változatra vonatkozó tájékoztatás. Ha később fiókok, mentett játékok
           vagy többszereplős funkciók készülnek, ez az oldal frissülni fog. A szöveg nem
           jogi szakértő által ellenőrzött dokumentum.
         </p>
