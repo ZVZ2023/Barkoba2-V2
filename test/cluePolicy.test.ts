@@ -93,18 +93,35 @@ test("the ratified V1 question budgets are unchanged", () => {
 // and no test pinned it — which is precisely why it reached a field tester.
 // ---------------------------------------------------------------------------
 
+/**
+ * Source with comments stripped.
+ *
+ * These tests isolate one function and assert on what it contains, so the
+ * boundary between functions has to be found by slicing. Two things kept
+ * breaking that: doc comments mention the very identifiers being asserted
+ * against, and an anchor containing a raw "\n" does not exist in a CRLF
+ * checkout — indexOf returns -1 and the slice silently inspects the wrong
+ * region. It passed on LF and failed on Windows.
+ *
+ * Removing comments fixes both at once: the remaining anchors are code, and no
+ * anchor needs to span a line break at all.
+ */
+function sourceWithoutComments(path: string): string {
+  return readFileSync(path, "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^[ \t]*\/\/.*$/gm, "");
+}
+
 function answerFn(): string {
-  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  const src = sourceWithoutComments("lib/prompts/composerAnswer.ts");
   const start = src.indexOf("export async function answerAsComposer");
-  // Stop at the SÚGÓ doc block, not at its export line — the comment itself
-  // names CLUE_GUIDANCE, and including it made this assertion fail on prose.
-  const end = src.indexOf("/**\n * SÚGÓ", start);
+  const end = src.indexOf("export async function requestClueFromComposer", start);
   assert.ok(start >= 0 && end > start, "could not isolate answerAsComposer");
   return src.slice(start, end);
 }
 
 function clueFn(): string {
-  const src = readFileSync("lib/prompts/composerAnswer.ts", "utf8");
+  const src = sourceWithoutComments("lib/prompts/composerAnswer.ts");
   return src.slice(src.indexOf("export async function requestClueFromComposer"));
 }
 

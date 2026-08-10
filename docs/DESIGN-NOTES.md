@@ -1536,3 +1536,53 @@ nothing.
 Rate limiting still keys on IP. Moving it onto `player_id` would make the limit
 resettable by clearing a cookie. The game engine, adjudication, SÚGÓ, budgets
 and Racer behaviour are untouched.
+
+## 22. `2.1.1.1` — KV namespace isolation
+
+### Why this was not optional
+
+Upstash would not permit a second free database, so V1 and V2 share one. That
+was accepted as a temporary infrastructure compromise, and sharing the STORE was
+tolerable — game and secret keys are UUID-scoped and cannot collide.
+
+Sharing the COUNTERS was not tolerable, and separate Anthropic API keys did not
+cover it. Two of the four key families are counters:
+
+    ratelimit:create:<ip>:<hour>     guest limit, shared per IP
+    budget:racercalls:<date>         daily AI spend ceiling
+    budget:resolvecalls:<date>       daily AI spend ceiling
+
+The ceilings live in KV, not at the vendor. `callBudget` fails closed. So V2
+traffic could drive the shared counter to its limit and V1 would then refuse to
+start games — with V1's own Anthropic key untouched and full. The binding
+constraint was never the vendor quota; it was Barkóba's own counter.
+
+That directly contradicted the lifeboat rule that V2 must not be capable of
+degrading V1's AI availability.
+
+### The fix, and why it is one wrapper
+
+Every KV operation already funnels through `getKV()`. Wrapping the returned
+client is therefore the entire change: `NamespacedKV` prefixes the key and
+delegates. The four key builders in `gameStore`, `secretStore`, `rateLimit` and
+`callBudget` are untouched and structurally cannot forget to apply it — a fifth
+key family added later inherits the namespace for free.
+
+`KV_NAMESPACE` defaults to empty, which reproduces V1's key shapes byte for
+byte. **V1 therefore needs no change and no redeploy**, which is what made this
+safe to land in the V2 lane alone. V2 sets `v2:`.
+
+The prefix is read on every call rather than captured at construction, because
+`getKV()` memoizes its client — a captured prefix would freeze the namespace for
+the life of the process and silently ignore configuration. There is a test for
+exactly that.
+
+### Known limitation — deliberately not solved
+
+This separates the DATA, not the ACCOUNT. Free-tier command and storage quotas
+remain shared, so V2 can still exhaust V1's database allowance. Fixing that
+requires a second Upstash database and is recorded here as an open
+infrastructure item, not a code problem.
+
+Existing V2 keys written before this change are orphaned. They expire on the
+normal 24-hour TTL; nothing needs migrating.

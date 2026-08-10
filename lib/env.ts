@@ -54,6 +54,16 @@ export const env = {
 
   // Upstash Redis — if absent, kv.ts falls back to an in-memory store
   // suitable for local dev only (state does not survive a restart/redeploy).
+  /**
+   * Prefix applied to every KV key. Empty by default, which reproduces the
+   * exact key shapes V1 has always written — an unset namespace is
+   * byte-for-byte V1-compatible, so V1 never has to be redeployed.
+   *
+   * V2 sets "v2:" so the two lanes can share one Upstash database without
+   * sharing game state, rate-limit counters, or daily AI spend ceilings.
+   */
+  kvNamespace: () => process.env.KV_NAMESPACE || "",
+
   upstashUrl: () => process.env.UPSTASH_REDIS_REST_URL || null,
   upstashToken: () => process.env.UPSTASH_REDIS_REST_TOKEN || null,
 };

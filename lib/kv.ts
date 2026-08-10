@@ -104,6 +104,48 @@ export function isPersistentKvConfigured(): boolean {
   return Boolean(env.upstashUrl() && env.upstashToken());
 }
 
+/**
+ * Apply the configured namespace to a key.
+ *
+ * Read lazily on every call rather than captured at construction, because
+ * getKV() memoizes its client — a prefix captured once would freeze the
+ * namespace for the life of the process and quietly ignore configuration.
+ */
+export function namespacedKey(key: string): string {
+  return `${env.kvNamespace()}${key}`;
+}
+
+/**
+ * V2.1.1.1 — namespace isolation.
+ *
+ * V1 and V2 share one Upstash database (a known, temporary infrastructure
+ * compromise). Sharing the STORE was tolerable; sharing the COUNTERS was not.
+ * `budget:racercalls:<date>` is the daily AI spend ceiling, and callBudget
+ * fails closed — so V2 traffic could drive the shared counter to its limit and
+ * V1 would then refuse to start games, with its own Anthropic key untouched and
+ * full. Separate API keys never covered that, because the binding constraint is
+ * Barkóba's own counter rather than anything at the vendor.
+ *
+ * Every KV operation already funnels through getKV(), so wrapping the client is
+ * the entire fix: the four key builders in gameStore, secretStore, rateLimit
+ * and callBudget are untouched and cannot forget to apply it.
+ */
+class NamespacedKV implements KVClient {
+  constructor(private readonly inner: KVClient) {}
+
+  get<T>(key: string): Promise<T | null> {
+    return this.inner.get<T>(namespacedKey(key));
+  }
+
+  set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    return this.inner.set(namespacedKey(key), value, ttlSeconds);
+  }
+
+  incrWithExpiry(key: string, ttlSeconds: number): Promise<number> {
+    return this.inner.incrWithExpiry(namespacedKey(key), ttlSeconds);
+  }
+}
+
 let cachedClient: KVClient | null = null;
 
 export function getKV(): KVClient {
@@ -113,7 +155,7 @@ export function getKV(): KVClient {
   const token = env.upstashToken();
 
   if (url && token) {
-    cachedClient = new UpstashKV(url, token);
+    cachedClient = new NamespacedKV(new UpstashKV(url, token));
   } else {
     if (process.env.NODE_ENV === "production") {
       // eslint-disable-next-line no-console
@@ -123,7 +165,7 @@ export function getKV(): KVClient {
           "requests reliably. Configure Upstash before real deployment."
       );
     }
-    cachedClient = new InMemoryKV();
+    cachedClient = new NamespacedKV(new InMemoryKV());
   }
 
   return cachedClient;
