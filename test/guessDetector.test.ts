@@ -211,3 +211,90 @@ test("Hungarian frames are narrow enough to not fire on English play", () => {
     );
   }
 });
+
+// ---------------------------------------------------------------------------
+// V2.1.1.2 — candidate identification.
+//
+// The "My left ear" field test exposed the gap: "Is it the ear?" scored ZERO.
+// No proper noun, no quotes, no possessive, no explicit frame — so it read as
+// an ordinary narrowing question and cost one question rather than the one
+// guess. That is the exact case this module's header says it exists to catch.
+//
+// The discriminator is DEFINITENESS, not interrogative form:
+//   "Is it a vehicle?"    indefinite -> which CATEGORY. Not a guess.
+//   "Is it the bicycle?"  definite   -> which ONE. Functionally a guess.
+//
+// Flagging does NOT consume the guess. It hands the turn to the existing
+// intent-resolution step, which remains authoritative.
+// ---------------------------------------------------------------------------
+
+const CANDIDATE_QUESTIONS = [
+  "Is it the ear?",
+  "Is it the bicycle?",
+  "Is that the handle?",
+  "Is the target the ear?",
+  "Is the answer the bicycle?",
+  "Is it your left ear?",
+  "A fül az?",
+  "A bal füled az?",
+  "A célpont a fül?",
+  "A célpont az orr?",
+  "Ez a fül?",
+];
+
+const CATEGORY_QUESTIONS = [
+  "Is it a sensory organ?",
+  "Is it a vehicle?",
+  "Is it made of metal?",
+  "Is it alive?",
+  "Is it the type of thing you own?",
+  "Is it the kind of tool?",
+  "Is it the sort of thing you use daily?",
+  "Is it the same as a car?",
+  "Is it bigger than your hand?",
+  "Is it in your house?",
+  "Does it have moving parts?",
+  "Can it fit in a pocket?",
+  "Ez egy jármű?",
+  "Ez egy érzékszerv?",
+  "Ez egy fajta fül?",
+  "Fémből készült?",
+  "Élőlény?",
+  "Ez valamilyen szerszám?",
+];
+
+for (const q of CANDIDATE_QUESTIONS) {
+  test(`names a candidate, so it is flagged: ${q}`, () => {
+    assert.equal(detectGuess(q).flagged, true, `${q} scored ${detectGuess(q).score}`);
+  });
+}
+
+for (const q of CATEGORY_QUESTIONS) {
+  test(`asks about a category or property, so it is not flagged: ${q}`, () => {
+    assert.equal(detectGuess(q).flagged, false, `${q} scored ${detectGuess(q).score}`);
+  });
+}
+
+test("a bare noun fragment is left alone", () => {
+  // "Fül?" and "Élőlény?" are the same shape; nothing lexical separates a
+  // candidate from a category here, and guessing would break the fragment
+  // tolerance added in 0.9.5.0.
+  assert.equal(detectGuess("Fül?").flagged, false);
+  assert.equal(detectGuess("Élőlény?").flagged, false);
+});
+
+test("category vocabulary disqualifies the candidate shape outright", () => {
+  // Not merely offset by the hedge: other rules can suppress hedging, so the
+  // shape itself must not count when the noun phrase names a class.
+  const r = detectGuess("Is it the kind of tool?");
+  assert.ok(!r.matched.includes("candidate_identification"), r.matched.join(","));
+  assert.equal(r.flagged, false);
+});
+
+test("flagging a candidate question does not by itself decide anything", () => {
+  // The detector reports; resolveGuessIntent decides. This pins that the rule
+  // added here changed detection only.
+  const r = detectGuess("Is it the ear?");
+  assert.equal(r.flagged, true);
+  assert.ok(r.matched.includes("candidate_identification"));
+});

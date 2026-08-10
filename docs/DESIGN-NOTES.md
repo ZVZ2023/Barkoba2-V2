@@ -1586,3 +1586,74 @@ infrastructure item, not a code problem.
 
 Existing V2 keys written before this change are orphaned. They expire on the
 normal 24-hour TTL; nothing needs migrating.
+
+## 23. `2.1.1.2` — candidate identification in the Guess Detector
+
+### The gap
+
+The "My left ear" field test ended with the Racer asking, in sequence, whether
+the target was the eye, the nose, then the ear. Each cost one question. None was
+flagged.
+
+The detector is a pure function, so this was provable without recovering the
+game record: every plausible phrasing scores **zero**. Not near the threshold of
+3 — no rule fires at all. "Is it the ear?" has no proper noun, no quoted span,
+no possessive construction and no explicit guess frame, which was the entire
+basis on which the detector scored guess-likeness.
+
+That contradicted the module's own stated purpose — catching an output declared
+as a question whose text is functionally a guess — and its stated bias that
+over-flagging is the safe direction.
+
+**No rule was violated.** The `confirm_guess` / `continue_questioning` machinery
+behaved correctly; it was simply never reached. The gap was in detection.
+
+The harm in this particular game was nil: the Racer went on to declare a real
+guess and adjudication correctly rejected "ear" as insufficiently specific. The
+risk is the inverse case. With a common-noun target, "A bicikli az?" scores zero,
+is answered YES, and the Racer has confirmed the target for the price of one
+ordinary question with no adjudication ever run.
+
+### The rule
+
+The discriminator is **definiteness**, not interrogative form:
+
+    "Is it a vehicle?"      indefinite  -> which CATEGORY. Not a guess.
+    "Is it the bicycle?"    definite    -> which ONE. Functionally a guess.
+
+Hungarian marks the same distinction with the same two words — "egy" for the
+category reading, "a"/"az" for the identifying one — so one idea covers both
+languages instead of two rule sets.
+
+Weight 3, which reaches the threshold alone. Three limits keep it narrow:
+
+1. **The noun phrase must end the question**, at most three tokens. "Is it the
+   kind of tool used in gardening?" runs past that and does not match.
+2. **Strong category vocabulary disqualifies the shape outright.** Relying on
+   the -2 hedge was not enough, because other rules can suppress hedging.
+3. **It is not counted as naming evidence**, so hedges still apply to it.
+
+Possessive determiners count as identifying alongside "the": "Is it your left
+ear?" names which one just as definitely. On the Hungarian side the same
+pattern absorbs adjectives and possessive suffixes, which closes the observed
+"A bal füled az?" weakness without a separate rule.
+
+### What did not change
+
+Detection only. A flag still costs nothing but an internal re-prompt, still
+never reaches the human Composer, and `resolveGuessIntent` remains authoritative
+over whether the guess is consumed. Racer strategy is untouched. The
+compound-question / IS-IS observation stays deferred to V2.5.
+
+### Bare fragments are deliberately excluded
+
+"Fül?" and "Élőlény?" are the same shape — one is a candidate, one is a
+category — and nothing lexical separates them. Flagging fragments would also
+break the tolerance added in 0.9.5.0.
+
+### Regression fixture
+
+`inst-6`: target "My left ear", guess "ear", expected **incorrect**. The live
+adjudicator got this right in the field; the fixture exists to keep it that way.
+Note that the fixture corpus is exercised only by `npm run eval:adjudicator`,
+which has still never been run against a real key.

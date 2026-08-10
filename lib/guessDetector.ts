@@ -49,6 +49,7 @@ export const WEIGHTS = {
   properNounAdditional: 1, // added once if two or more distinct proper nouns
   specificInstance: 2,
   quotedString: 2,
+  candidateIdentification: 3,
   possessiveDeictic: 1,
   possessiveSuffixHu: 2,
   categoryHedge: -2,
@@ -116,6 +117,68 @@ export const SPECIFIC_INSTANCE_PATTERNS_HU: RegExp[] = [
 /** "a/az + noun carrying the 2nd-person possessive -d": "a fűnyíród". */
 export const POSSESSIVE_SUFFIX_PATTERNS_HU: RegExp[] = [
   new RegExp(`\\b(?:a|az)\\s+${HU_WORD}{3,}d\\b`, "i"),
+];
+
+// --- Candidate identification ----------------------------------------------
+//
+// The gap the "My left ear" field test exposed. "Is it the ear?" scored ZERO:
+// no proper noun, no quotes, no possessive, no explicit frame. It read as an
+// ordinary narrowing question and cost one question rather than the one guess —
+// exactly the case this module's header says it exists to catch.
+//
+// THE DISCRIMINATOR IS DEFINITENESS, not interrogative form.
+//
+//   "Is it a vehicle?"      indefinite -> asks which CATEGORY. Not a guess.
+//   "Is it the bicycle?"    definite   -> names WHICH ONE. Functionally a guess.
+//
+// Hungarian marks the same distinction with the same two words: "egy" for the
+// category reading ("Ez egy jármű?"), "a"/"az" for the identifying one ("A fül
+// az?"). So one idea covers both languages rather than two rule sets.
+//
+// Two deliberate limits keep this narrow:
+//
+// 1. The noun phrase must END the question (at most three tokens). "Is it the
+//    kind of tool used in gardening?" runs past that and does not match.
+// 2. This is NOT counted as naming evidence, so category hedges still offset
+//    it. A strong hedge takes 3 down to 1, below the threshold. That is what
+//    protects "Is it the type of thing you own?" from flagging.
+//
+// A bare fragment ("Fül?") is deliberately NOT matched. "Élőlény?" has the same
+// shape and is a category question; nothing lexical separates them, and guessing
+// would break the fragment tolerance added in 0.9.5.0.
+
+/** Up to three tokens of noun phrase, then the end of the question. */
+const NP_TAIL_EN = "(?:[\\w-]+\\s+){0,2}[\\w-]+\\s*\\??\\s*$";
+const NP_TAIL_HU = `(?:${HU_WORD}+\\s+){0,2}${HU_WORD}+\\s*\\??\\s*$`;
+
+export const CANDIDATE_IDENTIFICATION_EN: RegExp[] = [
+  // "Is it the ear?"  ·  "Is that the bicycle?"  ·  "Was it the handle?"
+  // "the" and the possessives are equally identifying: "Is it the ear?" and
+  // "Is it your left ear?" both name which one. "a"/"an" is excluded — that is
+  // the category reading and must stay unflagged.
+  new RegExp(
+    `\\b(?:is|was)\\s+(?:it|that|this)\\s+(?:the|your|my|his|her|its|their)\\s+${NP_TAIL_EN}`,
+    "i"
+  ),
+  // "Is the target the ear?"  ·  "Is the answer the bicycle?"
+  new RegExp(
+    `\\b(?:is|was)\\s+the\\s+(?:target|answer|thing|object|word)\\s+(?:a|an|the)\\s+${NP_TAIL_EN}`,
+    "i"
+  ),
+];
+
+export const CANDIDATE_IDENTIFICATION_HU: RegExp[] = [
+  // "A fül az?"  ·  "A bal füled az?"   (adjectives and possessive suffixes
+  // both ride along here, which closes the "A bal füled az?" weakness without
+  // a separate rule.)
+  new RegExp(`^\\s*(?:a|az)\\s+(?:${HU_WORD}+\\s+){0,2}${HU_WORD}+\\s+az\\s*\\??\\s*$`, "i"),
+  // "A célpont a fül?"  ·  "A válasz az orr?"
+  new RegExp(
+    `\\b(?:a|az)\\s+(?:célpont|válasz|megfejtés|megoldás|titok)\\s+(?:a|az)\\s+${NP_TAIL_HU}`,
+    "i"
+  ),
+  // "Ez a fül?" — but never "Ez egy jármű?", which is the category reading.
+  new RegExp(`\\bez\\s+(?:a|az)\\s+${NP_TAIL_HU}`, "i"),
 ];
 
 /** Reference to a specific thing the Composer possesses. Weak signal alone. */
@@ -249,6 +312,19 @@ export function detectGuess(questionText: string): GuessDetectionResult {
   if (hasQuotedString) {
     score += WEIGHTS.quotedString;
     matched.push("quoted_string");
+  }
+
+  // Strong category vocabulary disqualifies the shape outright. "Is it the kind
+  // of tool?" is grammatically definite but asks about a CLASS, and the -2 hedge
+  // cannot be relied on to offset it — other rules can suppress hedging.
+  const namesACategory = CATEGORY_HEDGE_STRONG.some((re) => re.test(text));
+  const hasCandidateId =
+    !namesACategory &&
+    (CANDIDATE_IDENTIFICATION_EN.some((re) => re.test(text)) ||
+      CANDIDATE_IDENTIFICATION_HU.some((re) => re.test(text)));
+  if (hasCandidateId) {
+    score += WEIGHTS.candidateIdentification;
+    matched.push("candidate_identification");
   }
 
   if (POSSESSIVE_DEICTIC_PATTERNS_EN.some((re) => re.test(text))) {
