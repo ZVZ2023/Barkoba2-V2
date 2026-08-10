@@ -1,5 +1,6 @@
 "use client";
 
+import ThinkingState from "./components/ThinkingState";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClueMode, Difficulty } from "@/lib/types";
@@ -67,6 +68,10 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
 
   return (
     <GameShell role="Az AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
+      {busy ? (
+        <ThinkingState note="Kiválaszt valamit, amire gondol. Mindjárt kezdhetsz kérdezni." />
+      ) : (
+      <>
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Nehézség</span>
         <div className="flex flex-wrap gap-2">
@@ -139,6 +144,8 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
         <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
           <p className="text-sm text-[var(--red)]">{error}</p>
         </div>
+      )}
+      </>
       )}
     </GameShell>
   );

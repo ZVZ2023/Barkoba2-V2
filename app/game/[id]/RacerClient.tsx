@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
+import { questionNumbers } from "@/lib/questionNumbers";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 import EvaluationState from "@/app/components/EvaluationState";
 
@@ -135,6 +136,9 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   // Questions and clues share one timeline so a clue appears where it happened.
   // A clue that is not visible in the transcript is a clue the player cannot
   // reason about afterwards.
+  // Displayed question numbers count questions only, so the transcript agrees
+  // with the header counter even after a clue has taken a turn slot.
+  const numbers = questionNumbers(game.qa_log);
   const turns = [...answeredTurns(game), ...clueTurns(game)].sort(
     (a, b) => a.turn_index - b.turn_index
   );
@@ -207,7 +211,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           <div key={entry.id} className="flex flex-col gap-1.5">
             <div className="flex min-w-0 gap-3">
               <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                #{entry.turn_index}
+                #{numbers.get(entry.id) ?? entry.turn_index}
               </span>
               <p className="min-w-0 break-words text-sm text-[var(--ink)]">
                 {entry.question_text}

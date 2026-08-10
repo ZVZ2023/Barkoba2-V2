@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
+import { questionNumbers } from "@/lib/questionNumbers";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -190,6 +191,8 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
     void sendTurn();
   }, [game, busy, sendTurn]);
 
+  // See lib/questionNumbers.ts — turn_index is an identifier, not a count.
+  const numbers = questionNumbers(game.qa_log);
   const turns = answeredTurns(game);
   const questionsLeft = Math.max(0, game.max_questions - game.question_count);
 
@@ -244,7 +247,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
               <>
                 <div className="flex min-w-0 gap-3">
                   <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                    #{entry.turn_index}
+                    #{numbers.get(entry.id) ?? entry.turn_index}
                   </span>
                   <p className="min-w-0 break-words text-sm text-[var(--ink)]">{entry.question_text}</p>
                 </div>
@@ -295,7 +298,8 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                       <p className="text-xs text-[var(--ink-soft)]">
                         {discardCount(game, entry.turn_index) > 0 ? (
                           <>
-                            A javítás visszaállítja a játékot a(z) {entry.turn_index}. körre,
+                            A javítás visszaállítja a játékot a(z){" "}
+                            {numbers.get(entry.id) ?? entry.turn_index}. kérdésre,
                             és eldobja az utána következő {discardCount(game, entry.turn_index)} kört.
                             Az azóta felhasznált kérdéseket visszakapod.
                           </>
@@ -441,7 +445,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
             <div className="flex min-w-0 gap-3">
               <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                #{pending.turn_index}
+                #{numbers.get(pending.id) ?? pending.turn_index}
               </span>
               <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
             </div>

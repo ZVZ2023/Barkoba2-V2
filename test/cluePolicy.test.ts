@@ -177,3 +177,68 @@ test("the per-answer clue slot is gone from the transcript", () => {
     "rendering a clue beside an answer would re-legitimise the removed channel",
   );
 });
+
+// ---------------------------------------------------------------------------
+// Question numbering — display only, engine untouched.
+// ---------------------------------------------------------------------------
+
+test("displayed question numbers count questions, not log entries", async () => {
+  const { questionNumbers } = await import("../lib/questionNumbers");
+  const log = [
+    { id: "a", turn_type: "question" },
+    { id: "b", turn_type: "question" },
+    { id: "c", turn_type: "clue" },
+    { id: "d", turn_type: "question" },
+    { id: "e", turn_type: "guess" },
+  ] as never;
+  const n = questionNumbers(log);
+  assert.equal(n.get("a"), 1);
+  assert.equal(n.get("b"), 2);
+  assert.equal(n.get("d"), 3, "a clue must not push the next question to #4");
+  assert.equal(n.has("c"), false, "clue turns get no question number");
+  assert.equal(n.has("e"), false, "a guess is not a numbered question");
+});
+
+test("the transcript number agrees with the header counter after a clue", async () => {
+  const { questionNumbers } = await import("../lib/questionNumbers");
+  // 12 charged questions with one clue between them: the last question is the
+  // 12th, and must be labelled #12 even though its turn_index is 13.
+  const log = [];
+  for (let i = 1; i <= 6; i++) log.push({ id: `q${i}`, turn_type: "question" });
+  log.push({ id: "clue", turn_type: "clue" });
+  for (let i = 7; i <= 12; i++) log.push({ id: `q${i}`, turn_type: "question" });
+  const n = questionNumbers(log as never);
+  assert.equal(n.get("q12"), 12, "header says 12/20, so the transcript must say #12");
+});
+
+test("the clients display the question number, never the raw turn index", () => {
+  for (const path of ["app/game/[id]/RacerClient.tsx", "app/game/[id]/GameClient.tsx"]) {
+    const src = readFileSync(path, "utf8");
+    assert.doesNotMatch(src, /#\{entry\.turn_index\}/, `${path} shows the raw log index`);
+    assert.match(src, /questionNumbers\(game\.qa_log\)/);
+  }
+});
+
+test("turn_index is still what the correction API addresses", () => {
+  // The display change must not have altered which turn a correction targets.
+  const src = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
+  assert.match(src, /turn_index: turnIndex/);
+  assert.match(src, /correctAnswer\(entry\.turn_index, "YES"\)/);
+});
+
+test("starting a game replaces the form rather than merely disabling it", () => {
+  // Duplicate starts are prevented by there being no second button to press.
+  const racer = readFileSync("app/RacerSetup.tsx", "utf8");
+  assert.match(racer, /busy \? \(\s*<ThinkingState/);
+  const composer = readFileSync("app/ComposerEntry.tsx", "utf8");
+  assert.match(composer, /view\.step === "submitting" && \(\s*<ThinkingState/);
+  assert.doesNotMatch(composer, /disabled=\{view\.step === "submitting"/, "dead guard left behind");
+});
+
+test("the thinking state announces itself and needs no timer to clear", () => {
+  const src = readFileSync("app/components/ThinkingState.tsx", "utf8");
+  assert.match(src, /Az AI gondolkodik…/);
+  assert.match(src, /role="status"/);
+  assert.match(src, /aria-live="polite"/);
+  assert.doesNotMatch(src, /setTimeout|useEffect|useState/, "it must clear by unmounting, not on a clock");
+});

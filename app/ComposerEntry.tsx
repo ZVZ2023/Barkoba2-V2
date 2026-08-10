@@ -1,5 +1,6 @@
 "use client";
 
+import ThinkingState from "./components/ThinkingState";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import GameShell from "./components/GameShell";
@@ -105,7 +106,11 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
         {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.
       </p>
 
-      {(view.step === "entry" || view.step === "submitting") && (
+      {view.step === "submitting" && (
+        <ThinkingState note="Ellenőrzi, hogy a célpont játszható-e, aztán indul a játék." />
+      )}
+
+      {view.step === "entry" && (
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-[var(--ink)]">Amire gondolsz</span>
@@ -117,7 +122,6 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
               value={target}
               onChange={(e) => setTarget(e.target.value)}
               placeholder="pl. fogantyú"
-              disabled={view.step === "submitting"}
             />
           </label>
 
@@ -133,16 +137,15 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
               value={clarification}
               onChange={(e) => setClarification(e.target.value)}
               placeholder="Csak ha a szó többfélét is jelenthet — pl. a fűnyíróm indítózsinórjának fogantyúja"
-              disabled={view.step === "submitting"}
             />
           </label>
 
           <button
             onClick={() => void submit()}
-            disabled={view.step === "submitting" || !target}
+            disabled={!target}
             className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
           >
-            {view.step === "submitting" ? "Ellenőrzés…" : "Célpont rögzítése"}
+            Célpont rögzítése
           </button>
         </div>
       )}
