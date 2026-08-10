@@ -136,3 +136,106 @@ export function playerIdFromHeaders(headers: Headers): string | null {
   const v = headers.get(PLAYER_HEADER);
   return v && ID_SHAPE.test(v) ? v : null;
 }
+
+
+// ---------------------------------------------------------------------------
+// V2.1.2.0 - optional display name.
+//
+// Kept in its own cookie rather than folded into bk_player, so identity and
+// display data stay independently replaceable: changing a name never re-issues
+// the identity, and "identity is not a profile" holds in the storage layout and
+// not only in the prose.
+//
+// The signature covers playerId AND name together. That binds the name to one
+// identity - it cannot be edited client-side, and it cannot be lifted onto a
+// different player.
+//
+// One cookie carries three states, so there is no second flag to drift:
+//
+//   absent                 never asked      -> show the prompt
+//   present, empty name    asked, skipped   -> never ask again
+//   present, with a name   named            -> use it
+//
+// There is no players table and no durable record. The cookie is the whole
+// mechanism, exactly as with the identity itself.
+// ---------------------------------------------------------------------------
+
+export const PLAYER_NAME_COOKIE = "bk_player_name";
+
+/** Long enough for a real name or a handle, short enough to render anywhere. */
+export const MAX_PLAYER_NAME_LENGTH = 40;
+
+/** Control characters: invisible, break layout and log output, never wanted. */
+// eslint-disable-next-line no-control-regex
+const CONTROL_CHARS = /[\x00-\x1F\x7F]/g;
+
+/**
+ * A display name is free text from a stranger. Control characters are stripped,
+ * surrounding whitespace dropped, length capped. Nothing else is filtered:
+ * there is no moderation in V2.1 because the name is visible only to the player
+ * who chose it. That changes the moment Human-vs-Human arrives in V2.3.
+ */
+export function sanitizePlayerName(raw: string): string {
+  return raw.replace(CONTROL_CHARS, "").trim().slice(0, MAX_PLAYER_NAME_LENGTH);
+}
+
+/** UTF-8 safe. Hungarian accents are guaranteed input; raw non-ASCII in a cookie is not. */
+function encodeName(name: string): string {
+  return base64url(new TextEncoder().encode(name));
+}
+
+function decodeName(encoded: string): string | null {
+  try {
+    const padded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+    const binary = atob(padded + "=".repeat((4 - (padded.length % 4)) % 4));
+    const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+    return new TextDecoder().decode(bytes);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * The separator is a NUL, which sanitizePlayerName strips and a player id
+ * cannot contain. No pair of (id, name) can therefore be re-partitioned into a
+ * different pair carrying the same signature.
+ */
+async function signName(playerId: string, name: string): Promise<string> {
+  return sign(`${playerId}\x00${name}`);
+}
+
+/** Cookie value: `<base64url(name)>.<signature>`. An empty name means "skipped". */
+export async function issuePlayerNameCookie(playerId: string, name: string): Promise<string> {
+  const clean = sanitizePlayerName(name);
+  return `${encodeName(clean)}.${await signName(playerId, clean)}`;
+}
+
+export interface PlayerNameState {
+  /** Have we already asked this player? If false, show the prompt. */
+  asked: boolean;
+  /** The chosen name, or null when they skipped or were never asked. */
+  name: string | null;
+}
+
+/**
+ * Read the name cookie for a given player. A value we did not sign, or one
+ * signed for a different player, is treated as absent - the player is asked
+ * again rather than shown a name they never chose.
+ */
+export async function readPlayerName(
+  playerId: string | null,
+  value: string | undefined
+): Promise<PlayerNameState> {
+  if (!playerId || !value || !identityConfigured()) return { asked: false, name: null };
+
+  const dot = value.lastIndexOf(".");
+  if (dot < 0) return { asked: false, name: null };
+
+  const decoded = decodeName(value.slice(0, dot));
+  if (decoded === null) return { asked: false, name: null };
+
+  const expected = await signName(playerId, decoded);
+  if (!constantTimeEqual(value.slice(dot + 1), expected)) return { asked: false, name: null };
+
+  return { asked: true, name: decoded.length > 0 ? decoded : null };
+}

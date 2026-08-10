@@ -21,7 +21,15 @@ import {
  * so including them costs nothing.
  */
 export const config = {
-  matcher: ["/", "/compose", "/play/ai", "/game/:path*", "/api/game/:path*"],
+  matcher: [
+    "/",
+    "/compose",
+    "/play/ai",
+    "/game/:path*",
+    "/api/game/:path*",
+    // 2.1.2.0: the name route needs the acting player on the request.
+    "/api/player/:path*",
+  ],
 };
 
 export async function middleware(req: NextRequest) {

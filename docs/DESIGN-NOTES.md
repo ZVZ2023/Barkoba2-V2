@@ -1724,3 +1724,83 @@ after Red Citroën C4 and My Left Leg.
 real-game confirmation that identifying the right category does not identify the
 locked target. Two hard games, same principle, correct both times. The
 adjudication architecture was not changed in response — it was working.
+
+## 25. `2.1.2.0` — optional display name
+
+### What it is, and what it deliberately is not
+
+After choosing a role and before game setup, a first-time player is asked once:
+*"Hogy szólítsunk?"* — enter a name, or skip. That is the whole feature.
+
+It is **not** registration. No email, no password, no account, no recovery, no
+profile page, no name editing. It gives the existing anonymous Player a
+human-friendly label and nothing else.
+
+### Storage: a second signed cookie, no record anywhere
+
+`bk_player_name` = `<base64url(name)>.<HMAC(playerId + NUL + name)>`
+
+The signature covers the id **and** the name together, which binds the name to
+one identity: it cannot be edited client-side and cannot be lifted onto another
+player. Base64url because Hungarian accents are guaranteed input and raw
+non-ASCII in a cookie value is not safe.
+
+Kept separate from `bk_player` on purpose. Identity and display data stay
+independently replaceable — changing a name never re-issues the identity — and
+the "identity is not a profile" separation then holds in the storage layout
+rather than only in the prose.
+
+**One cookie carries three states**, so there is no second flag to drift out of
+sync:
+
+    absent                never asked      -> ask
+    present, empty name   asked, skipped   -> never ask again
+    present, with a name  named            -> use it
+
+The skip **writes the cookie too**. That is what makes skipping a real answer
+rather than a dismissal that returns on every visit.
+
+No players table, no durable record, nothing that forces the V2.2 persistence
+decision. `GameRecord` deliberately does **not** gain a `player_name` field:
+attaching a name to a game is historical-record design and belongs to V2.2.
+
+### Where it is asked
+
+`/compose` and `/play/ai` — the first screens after the role choice on `/play`.
+Both were already `force-dynamic` server components, so the gate reads the
+httpOnly cookies with no new plumbing. The middleware matcher gained
+`/api/player/:path*`, without which the name route would see no acting player.
+
+Skip is styled at the same weight as continuing: same size, same row, equal
+width. A quiet grey skip beside a bright primary button is a dark pattern, and
+this is the first thing a new player meets — before they have seen the game or
+have any reason to give us anything.
+
+### Privacy page: a correction, not an addition
+
+`/privacy` stated that no cookie handling existed in the code. **That was true
+of V1 and became false in `2.1.1.0`**, when the identity cookie shipped and the
+page was not updated with it. The page now discloses both cookies, what each is
+for, and that neither is analytics, advertising or cross-site tracking — because
+neither is. A test asserts the old claim cannot come back.
+
+The standard this restores is the one set when the page was written: never claim
+we collect nothing unless the implementation proves it.
+
+### Name handling
+
+Optional, capped at 40 characters, trimmed, control characters stripped,
+rendered through normal React escaping. No moderation, because the name is
+currently visible only to the player who chose it.
+
+**That changes at V2.3.** The moment Human↔Human ships, a chosen name becomes
+visible to a stranger and impersonation and abuse become real concerns. The
+trigger for moderation is V2.3, not V2.4 — recorded here so it is not
+discovered late.
+
+### Effect on later identity claiming
+
+Mildly positive. Because the name is signed over the player id, it travels with
+that identity when a credential eventually claims it — no orphan record to
+reconcile, no schema to migrate. The only loss mode is the pre-existing one:
+clear the cookies, lose the player and the name together.

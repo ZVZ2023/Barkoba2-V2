@@ -1,3 +1,10 @@
+import { cookies } from "next/headers";
+import {
+  PLAYER_COOKIE,
+  PLAYER_NAME_COOKIE,
+  readPlayerName,
+  verifyPlayerCookie,
+} from "@/lib/playerIdentity";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import RacerSetup from "../../RacerSetup";
 
@@ -10,6 +17,27 @@ import RacerSetup from "../../RacerSetup";
 
 export const dynamic = "force-dynamic";
 
-export default function Page() {
-  return <RacerSetup versionLabel={formatVersionLabel(getAppVersion())} />;
+
+/**
+ * Should this player be asked for a display name?
+ *
+ * Server-side because the cookies are httpOnly - a client component cannot see
+ * them, which is the point. Asked exactly once per anonymous Player: the skip
+ * writes the cookie too, so a skipped player is never asked again.
+ */
+async function shouldAskForName(): Promise<boolean> {
+  const jar = cookies();
+  const playerId = await verifyPlayerCookie(jar.get(PLAYER_COOKIE)?.value);
+  if (!playerId) return false; // identity unavailable - nothing to attach a name to
+  const state = await readPlayerName(playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
+  return !state.asked;
+}
+
+export default async function Page() {
+  return (
+    <RacerSetup
+      versionLabel={formatVersionLabel(getAppVersion())}
+      askForName={await shouldAskForName()}
+    />
+  );
 }

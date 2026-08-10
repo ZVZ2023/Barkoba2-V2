@@ -1,6 +1,7 @@
 "use client";
 
 import ThinkingState from "./components/ThinkingState";
+import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClueMode, Difficulty } from "@/lib/types";
@@ -24,12 +25,13 @@ const CLUE_MODES: { value: ClueMode; label: string; blurb: string }[] = [
 
 const BUDGETS = [20, 35, 50, 100];
 
-export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
+export default function RacerSetup({ versionLabel, askForName = false }: { versionLabel: string; askForName?: boolean }) {
   const router = useRouter();
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [clueMode, setClueMode] = useState<ClueMode>("none");
   const [budget, setBudget] = useState(20);
   const [busy, setBusy] = useState(false);
+  const [naming, setNaming] = useState(askForName);
   const [error, setError] = useState<string | null>(null);
 
   async function start() {
@@ -68,7 +70,9 @@ export default function RacerSetup({ versionLabel }: { versionLabel: string }) {
 
   return (
     <GameShell role="Az AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
-      {busy ? (
+      {naming ? (
+        <NamePrompt onDone={() => setNaming(false)} />
+      ) : busy ? (
         <ThinkingState note="Kiválaszt valamit, amire gondol. Mindjárt kezdhetsz kérdezni." />
       ) : (
       <>

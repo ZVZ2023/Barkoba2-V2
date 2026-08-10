@@ -1,6 +1,7 @@
 "use client";
 
 import ThinkingState from "./components/ThinkingState";
+import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import GameShell from "./components/GameShell";
@@ -40,11 +41,14 @@ function PrivateTargetNote() {
   );
 }
 
-export default function ComposerEntry({ versionLabel }: { versionLabel: string }) {
+export default function ComposerEntry({ versionLabel, askForName = false }: { versionLabel: string; askForName?: boolean }) {
   const router = useRouter();
   const [target, setTarget] = useState("");
   const [clarification, setClarification] = useState("");
   const [view, setView] = useState<ViewState>({ step: "entry" });
+  // Asked once, before setup. Resolved locally after the answer so the form
+  // appears immediately rather than after a round trip.
+  const [naming, setNaming] = useState(askForName);
 
   async function submit(force = false) {
     setView({ step: "submitting" });
@@ -110,7 +114,9 @@ export default function ComposerEntry({ versionLabel }: { versionLabel: string }
         <ThinkingState note="Ellenőrzi, hogy a célpont játszható-e, aztán indul a játék." />
       )}
 
-      {view.step === "entry" && (
+      {naming && <NamePrompt onDone={() => setNaming(false)} />}
+
+      {!naming && view.step === "entry" && (
         <div className="flex flex-col gap-4">
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-[var(--ink)]">Amire gondolsz</span>

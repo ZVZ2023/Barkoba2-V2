@@ -9,7 +9,13 @@ export const metadata: Metadata = { title: "Adatvédelem — Barkóba" };
 //   lib/secretStore.ts — secret:<id>, same TTL
 //   lib/callBudget.ts  — aggregate counters, no personal data
 //   lib/anthropic.ts   — game text is sent to api.anthropic.com
-// No cookies, analytics, localStorage or third-party scripts were found.
+//   lib/playerIdentity.ts / middleware.ts — two functional cookies (V2)
+//
+// CORRECTED IN 2.1.2.0. This page previously stated that no cookie handling
+// existed. That was true of V1 and became false in 2.1.1.0, when the anonymous
+// Player identity cookie shipped — the page was not updated with it. No
+// analytics, advertising or third-party tracking script exists; both cookies
+// are functional and neither is used to track anyone across sites.
 //
 // Claims that could NOT be verified from the repository — what the hosting
 // provider logs, how long those logs live — are described as unknown rather
@@ -68,9 +74,26 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="Sütik és követés">
+      <Section heading="Sütik">
         <p>
-          A kódban nem található sütikezelés, analitika, hirdetési vagy követőszkript.
+          A Barkóba két sütit használ, és mindkettő a játék működéséhez kell. Egyik sem
+          szolgál analitikára, hirdetésre vagy oldalak közötti követésre — ilyen szkript
+          nincs a kódban.
+        </p>
+        <Bullets
+          items={[
+            "Egy azonosító süti, amely egy véletlenszerű, önmagában semmit el nem áruló számot tárol. Ez az, ami alapján ugyanaz a böngésző visszatéréskor ugyanaz a játékos marad. Nincs benne név, e-mail cím vagy bármi, ami rád mutatna.",
+            "Egy név süti, de csak akkor, ha megadsz egy megszólítást — vagy ha a kérdést kihagyod. A kihagyást is el kell tárolnunk, különben minden alkalommal újra megkérdeznénk.",
+          ]}
+        />
+        <p>
+          Nincs regisztráció, nincs jelszó, és nincs fiók. A sütik a böngésződben élnek:
+          ha törlöd őket, a hozzájuk tartozó játékos és a megadott név is elvész, és
+          újként indulsz. Másik eszközön nem lehet visszaszerezni őket.
+        </p>
+        <p>
+          A megadott név szabadon választható, nem kell a valódi nevednek lennie, és
+          jelenleg csak neked jelenik meg.
         </p>
       </Section>
 
