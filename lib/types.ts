@@ -231,6 +231,19 @@ export type GameResult =
  */
 export interface GameRecord {
   game_id: string;
+  /**
+   * V2.1.1 — the anonymous Player who started this game, or null.
+   *
+   * A REFERENCE, not a foreign key: there is no players table for it to point
+   * at. The identity lives in a signed cookie held by the client, and this
+   * field records which one acted here, inside game state that already expires
+   * on its own. That is deliberate — V2.1.1 must not choose the durable store
+   * that belongs to V2.2.
+   *
+   * Null is normal and always will be: identity may be unconfigured, and games
+   * created before V2.1.1 never had it.
+   */
+  player_id: string | null;
   phase: GamePhase;
   created_at: string;
   expires_at: string;

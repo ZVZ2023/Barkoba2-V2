@@ -22,6 +22,7 @@ export async function createGame(
 
   const record: GameRecord = {
     game_id: gameId,
+    player_id: null,
     phase: "pending_validation",
     created_at: now.toISOString(),
     expires_at: expires.toISOString(),
@@ -72,6 +73,7 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.revealed_target === undefined) record.revealed_target = null;
   // Correction/rewind fields, added in 0.3.2.0.
   if (typeof record.private_target !== "boolean") record.private_target = false;
+  if (record.player_id === undefined) record.player_id = null;
   if (record.difficulty === undefined) record.difficulty = null;
   if (record.clue_mode === undefined) record.clue_mode = null;
   if (!Array.isArray(record.corrections)) record.corrections = [];

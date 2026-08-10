@@ -1438,3 +1438,101 @@ No test asserted that ordinary answers carry no clue, because until the field
 test that behaviour was the specification rather than the bug. The boundary is
 now pinned in `test/cluePolicy.test.ts`, including the schema shape — the thing
 that actually caused it.
+
+---
+
+# V2 — development lane
+
+Everything above documents V1, which is signed off and frozen at commit
+`8792b83` (`VERSION` 0.9.10.0). V1 remains the lifeboat: a known-good fallback
+that V2 work must never destabilise. V2 runs from its own branch, its own Vercel
+project, its own Upstash database and its own Anthropic key, so a V2 failure
+cannot consume V1's state or its model budget.
+
+## 21. `2.1.1.0` — anonymous persistent Player identity
+
+### What exists after this increment
+
+A visitor arrives and is silently given a stable Player identity. No
+registration, no username, no password, no profile. They play immediately. On
+returning from the same browser they are recognised as the same Player. From a
+different browser they are someone new. Clearing cookies loses the identity, and
+at this stage that is acceptable.
+
+### The Player is a signed cookie, not a record
+
+There is no `players` table, no player store, and no durable identity data
+anywhere. The identity IS the cookie:
+
+    bk_player = <128-bit hex id>.<HMAC-SHA256(id)>
+
+The signature is what makes it real. A bare random id in a cookie is
+client-asserted — anyone can set it to anything. Today nothing is attached to a
+Player so forging one gains nothing, but `V2.4` attaches credits and
+entitlements to this identifier, and an id that was ever forgeable is a bad
+foundation for that. Signing costs a few lines now; retrofitting it later would
+invalidate every player already in the wild.
+
+This also keeps V2.1.1 out of the persistence decision that belongs to `V2.2`.
+Nothing durable is written, so nothing has to be migrated when that decision is
+made.
+
+### Web Crypto, not node:crypto
+
+`lib/playerIdentity.ts` is imported by `middleware.ts`, which Next runs on the
+Edge runtime where `node:crypto` does not exist. `crypto.subtle` and
+`crypto.getRandomValues` do, and are also present in Node 22, so one
+implementation serves middleware, route handlers and tests.
+
+### Two trust boundaries
+
+**The cookie is verified, never assumed.** A tampered, truncated or
+foreign-signed value returns null and is treated exactly like no cookie: the
+visitor gets a fresh identity rather than an error. A cookie signed by the V1
+deployment's key does not validate here, which is what keeps the two lanes'
+identities from mixing.
+
+**The inward header is stripped before it is set.** Middleware sets the cookie
+on the RESPONSE, so on a visitor's very first request the browser has not
+received it yet and a route handler would see nobody. Middleware therefore also
+forwards the id inward on `x-bk-player`. That header is trustworthy only because
+middleware unconditionally deletes any inbound copy first — before every return
+path, including the one taken when identity is unconfigured.
+
+### Missing secret disables identity rather than weakening it
+
+With no `PLAYER_ID_SECRET` the middleware mints nothing and every game runs with
+`player_id: null`. The alternative — minting unsigned ids — would produce
+exactly the forgeable identifier this design exists to prevent. A misconfigured
+deployment loses identity and keeps a working game.
+
+### Where the acting Player is recorded
+
+One nullable field, `GameRecord.player_id`. It is a reference, not a foreign
+key: there is nothing for it to point at. It lives inside game state that
+already expires on its own schedule.
+
+Null is normal and always will be — identity may be unconfigured, and games
+created before this increment never had it.
+
+### The attachment point, and nothing else
+
+The stable, unforgeable, server-verifiable Player ID is the attachment point.
+Later milestones hang credentials, player type (Human/AI/Hybrid), profiles,
+durable game records, relationships and entitlements off it. None of those are
+built here, and no table, service, screen or abstraction was created in
+anticipation of them.
+
+### Matcher scope
+
+Middleware runs on `/`, `/compose`, `/play/ai`, `/game/*` and `/api/game/*`.
+`/about`, `/contact`, `/privacy`, `/rules` and `/play` are statically rendered
+and are deliberately excluded — running middleware over them would make them
+per-request for no benefit. `/` was already dynamic, so including it costs
+nothing.
+
+### Deliberately unchanged
+
+Rate limiting still keys on IP. Moving it onto `player_id` would make the limit
+resettable by clearing a cookie. The game engine, adjudication, SÚGÓ, budgets
+and Racer behaviour are untouched.

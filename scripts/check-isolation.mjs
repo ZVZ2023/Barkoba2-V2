@@ -43,6 +43,8 @@ const PERMITTED_SECRET_IMPORTERS = [
 
 /** Modules that must be structurally incapable of reaching the secret. */
 const QUARANTINED = [
+  "lib/playerIdentity.ts",
+  "middleware.ts",
   "lib/prompts/racer.ts",
   "lib/racerState.ts",
   "lib/gameStore.ts",

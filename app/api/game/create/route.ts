@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+import { playerIdFromHeaders } from "@/lib/playerIdentity";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame } from "@/lib/gameStore";
@@ -31,6 +32,10 @@ const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 const QUESTION_BUDGETS = [20, 35, 50, 100];
 
 export async function POST(req: NextRequest) {
+  // V2.1.1 — who is acting. Null whenever identity is unconfigured; the game is
+  // fully playable either way, which is why nothing below branches on it.
+  const playerId = playerIdFromHeaders(req.headers);
+
   // Refuse to start a game that cannot survive its own second request. On a
   // serverless host without Upstash, creation succeeds and every turn then
   // 404s from a different instance — a symptom that points nowhere near its
@@ -151,6 +156,7 @@ export async function POST(req: NextRequest) {
     await lockSecret(aiGameId);
 
     const aiGame = await createGame(aiGameId, {
+      player_id: playerId,
       phase: "questioning",
       max_questions: budgetChoice,
       game_language: "hu",
@@ -228,6 +234,7 @@ export async function POST(req: NextRequest) {
   // M1-M2 has no edit path between VALID and the first Racer question anyway.
   await lockSecret(gameId);
   const game = await createGame(gameId, {
+    player_id: playerId,
     phase: "questioning",
     max_questions: maxQuestions,
     private_target: validation.private_knowledge,

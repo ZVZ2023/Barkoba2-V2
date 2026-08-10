@@ -180,6 +180,7 @@ import type { GameRecord } from "../lib/types";
 function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): GameRecord {
   return {
     game_id: "g",
+    player_id: null,
     phase: "questioning",
     created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(),
