@@ -23,17 +23,28 @@ export async function GET() {
     branch: v.branch,
     environment: v.environment,
     deployment_id: v.deploymentId,
-    // V2.2.0.1 — whether THIS runtime will record games, and if not, why.
+    // Whether THIS runtime will record games — and if not, why.
     //
-    // Booleans and a reason code only. The connection string and the raw flag
-    // value never leave the process, so this is safe on a public endpoint.
+    // 2.2.0.0: no way to answer "is the corpus on?" without inspecting Redis
+    //          and hunting function logs.
+    // 2.2.0.1: answered that, but only checked PRESENCE of DATABASE_URL, so a
+    //          string the driver rejects still reported "ready".
+    // 2.2.0.2: reports validity, the specific shape fault, and the host and
+    //          database the runtime would actually write to — so a deployment
+    //          pointed at the wrong Neon branch is visible before a game is
+    //          played rather than after the rows fail to appear.
     //
-    // Exists because 2.2.0.0 shipped with no way to answer "is the corpus on?"
-    // without inspecting Redis and hunting through function logs.
+    // SAFE TO SERVE PUBLICLY: host and database name only. No username, no
+    // password, no query parameters, no part of the raw string. The problem
+    // field names a SHAPE ("wrapped_in_quotes"), never content.
     corpus: {
       configured: corpus.configured,
       enabled: corpus.enabled,
       database_url_present: corpus.databaseUrlPresent,
+      database_url_valid: corpus.databaseUrlValid,
+      database_url_problem: corpus.databaseUrlProblem,
+      host: corpus.host,
+      database: corpus.database,
       reason: corpus.reason,
     },
     served_at: new Date().toISOString(),

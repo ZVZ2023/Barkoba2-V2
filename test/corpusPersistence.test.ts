@@ -41,7 +41,9 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
 beforeEach(() => {
   calls = [];
   failNext = false;
-  process.env.DATABASE_URL = "postgresql://fake/db";
+  // Must include a username: since 2.2.0.2 the config gate validates the URL,
+  // and a username-less string is correctly rejected before any write.
+  process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   __setSqlClientForTests(fakeSql);
 });

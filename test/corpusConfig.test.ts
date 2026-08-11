@@ -24,6 +24,14 @@ import type { GameRecord, QuestionLogEntry } from "../lib/types";
 //   2. Being off was unobservable from outside the process.
 // ---------------------------------------------------------------------------
 
+/**
+ * A structurally valid connection string. Must have a username: since 2.2.0.2
+ * the config check validates the URL rather than merely detecting it, so
+ * "postgresql://x/y" is now correctly reported as invalid and would mask the
+ * flag behaviour these tests are about.
+ */
+const VALID_URL = "postgresql://u:p@db.example.tld/neondb";
+
 const SAVED = { db: process.env.DATABASE_URL, flag: process.env.CORPUS_ENABLED };
 
 beforeEach(() => {
@@ -45,7 +53,7 @@ const ACCEPTED = ["true", "TRUE", "True", " true ", '"true"', "'true'", "1", "ye
 
 for (const value of ACCEPTED) {
   test(`CORPUS_ENABLED=${JSON.stringify(value)} enables the corpus`, () => {
-    process.env.DATABASE_URL = "postgresql://x/y";
+    process.env.DATABASE_URL = VALID_URL;
     process.env.CORPUS_ENABLED = value;
     const s = corpusConfigStatus();
     assert.equal(s.enabled, true, `${JSON.stringify(value)} should read as true`);
@@ -58,7 +66,7 @@ const REJECTED = ["false", "no", "0", "off", "", "   ", "enabled", "truthy"];
 
 for (const value of REJECTED) {
   test(`CORPUS_ENABLED=${JSON.stringify(value)} does NOT enable the corpus`, () => {
-    process.env.DATABASE_URL = "postgresql://x/y";
+    process.env.DATABASE_URL = VALID_URL;
     process.env.CORPUS_ENABLED = value;
     assert.equal(corpusConfigStatus().enabled, false);
   });
@@ -75,7 +83,7 @@ test("reason distinguishes a missing DATABASE_URL", () => {
 });
 
 test("reason distinguishes an unset flag from a wrong one", () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
 
   // Unset — the shipped default, not a mistake.
   assert.equal(corpusConfigStatus().reason, "flag_unset");
@@ -86,11 +94,15 @@ test("reason distinguishes an unset flag from a wrong one", () => {
 });
 
 test("the fully configured case reports ready", () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
   process.env.CORPUS_ENABLED = "true";
   assert.deepEqual(corpusConfigStatus(), {
     configured: true,
     databaseUrlPresent: true,
+    databaseUrlValid: true,
+    databaseUrlProblem: null,
+    host: "db.example.tld",
+    database: "neondb",
     enabled: true,
     reason: "ready",
   });
@@ -180,7 +192,7 @@ function captureWarnings(): { lines: string[]; restore: () => void } {
 }
 
 test("a QUALIFYING game skipped by the gate now logs why", async () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
   process.env.CORPUS_ENABLED = "ture"; // the exact class of typo that hid the bug
 
   const nineQuestions = [...Array(9)].map((_, i) => entry({ turn_index: i + 1 }));
@@ -199,7 +211,7 @@ test("a QUALIFYING game skipped by the gate now logs why", async () => {
 });
 
 test("the warning fires once per runtime, not once per turn", async () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
   process.env.CORPUS_ENABLED = "false";
 
   const cap = captureWarnings();
@@ -210,7 +222,7 @@ test("the warning fires once per runtime, not once per turn", async () => {
 });
 
 test("a NON-qualifying game stays silent — nothing was lost", async () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
   process.env.CORPUS_ENABLED = "false";
 
   const cap = captureWarnings();
@@ -222,7 +234,7 @@ test("a NON-qualifying game stays silent — nothing was lost", async () => {
 });
 
 test("the intended default — flag unset — still warns when evidence is dropped", async () => {
-  process.env.DATABASE_URL = "postgresql://x/y";
+  process.env.DATABASE_URL = VALID_URL;
 
   const cap = captureWarnings();
   await recordGameState(game([entry()]));

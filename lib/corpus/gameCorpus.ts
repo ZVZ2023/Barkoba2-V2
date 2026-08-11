@@ -56,6 +56,10 @@ function warnGatedOnce(reason: CorpusConfigReason): void {
     no_database_url:
       "DATABASE_URL is not visible to this runtime. Check it is scoped to this " +
       "environment, then redeploy — env changes do not reach a running deployment.",
+    invalid_database_url:
+      "DATABASE_URL is present but the driver cannot use it. GET /api/version " +
+      "reports corpus.database_url_problem with the specific shape fault " +
+      "(surrounding quotes and a `psql '...'` dashboard copy are the usual two).",
     flag_unset:
       "CORPUS_ENABLED is not set. This is the shipped default; set it to 'true' " +
       "and redeploy to begin recording.",
@@ -391,16 +395,25 @@ export async function recordGameState(game: GameRecord): Promise<CorpusOutcome> 
   }
   if (!qualifies) return "below_threshold";
 
-  const sql = getSql();
-  if (!sql) return "disabled";
-
   try {
+    // getSql() MUST be inside this try. neon() throws when the connection
+    // string is malformed — quotes kept from a copy-paste, a `psql '...'`
+    // dashboard prefix, a missing username. On 2.2.0.1 that throw escaped
+    // recordGameState entirely: it landed in saveGame's last-resort catch, so
+    // the game was never queued for replay and the evidence became
+    // unrecoverable rather than merely delayed. A connection failure is a
+    // corpus write failure and has to be handled like one.
+    const sql = getSql();
+    if (!sql) return "disabled";
+
     await syncGame(sql, game);
     // Clearing a prior deferral is best-effort: if it fails the worst outcome
     // is one redundant, idempotent replay later.
     await removePending(game.game_id).catch(() => undefined);
     return "written";
   } catch (err) {
+    // Covers both failure modes: could not connect, and could not write. The
+    // searchable token stays "corpus write failed" so existing runbooks hold.
     // eslint-disable-next-line no-console
     console.error(`[barkoba] corpus write failed for ${game.game_id}:`, err);
     try {
@@ -493,7 +506,17 @@ export async function reconcileOpportunistically(
   const report: ReconcileReport = { replayed: 0, droppedExpired: 0, swept: 0 };
   if (!isCorpusConfigured()) return report;
 
-  const sql = getSql();
+  // Same reasoning as recordGameState: neon() can throw on a malformed
+  // connection string, and reconciliation must degrade quietly rather than
+  // propagate into the request that triggered it.
+  let sql: SqlClient | null;
+  try {
+    sql = getSql();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] corpus reconcile: could not create a client:", err);
+    return report;
+  }
   if (!sql) return report;
 
   try {

@@ -137,11 +137,16 @@ export async function saveGame(record: GameRecord): Promise<void> {
   try {
     await recordGameState(record);
   } catch (err) {
-    // Belt and braces. recordGameState already contains its own failure
-    // handling; this exists so that a defect inside it can still never
-    // propagate into gameplay. A game must not fail because history did.
+    // LAST-RESORT BUG BOUNDARY. A game must not fail because history did.
+    //
+    // recordGameState now handles connection AND write failures internally,
+    // queueing them for replay, so reaching this line means a genuine defect
+    // rather than an operational problem. Until 2.2.0.2 it also caught
+    // malformed-connection-string throws from getSql(), which looked like a
+    // safety net working and was in fact evidence being lost: nothing was
+    // queued for replay. If this ever fires again, treat it as a bug report.
     // eslint-disable-next-line no-console
-    console.error("[barkoba] corpus hook raised unexpectedly:", err);
+    console.error("[barkoba] corpus hook raised unexpectedly (this is a defect):", err);
   }
 }
 
