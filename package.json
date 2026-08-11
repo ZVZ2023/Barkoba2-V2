@@ -12,8 +12,8 @@
     "check:isolation": "node scripts/check-isolation.mjs",
     "verify": "npm run check:isolation && npm run test && npm run typecheck && npm run build",
     "eval:adjudicator": "tsx scripts/evalAdjudicator.ts",
-    "migrate": "node scripts/migrate.mjs",
-    "migrate:status": "node scripts/migrate.mjs --status"
+    "migrate": "tsx scripts/migrate.ts",
+    "migrate:status": "tsx scripts/migrate.ts --status"
   },
   "dependencies": {
     "@neondatabase/serverless": "^1.1.0",

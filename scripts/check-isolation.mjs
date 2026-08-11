@@ -52,6 +52,8 @@ const QUARANTINED = [
   "lib/corpus/gameCorpus.ts",
   "lib/corpus/db.ts",
   "lib/corpus/pendingQueue.ts",
+  "lib/corpus/sqlStatements.ts",
+  "scripts/migrate.ts",
   "lib/playerIdentity.ts",
   "app/api/player/name/route.ts",
   "app/api/player/claim/route.ts",
