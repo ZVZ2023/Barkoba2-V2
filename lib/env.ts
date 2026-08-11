@@ -12,6 +12,26 @@ function required(name: string): string {
   return v;
 }
 
+/**
+ * Parse a boolean-ish environment variable.
+ *
+ * WHY THIS IS NOT `=== "true"`: a value typed into a hosting dashboard picks up
+ * whatever the person's clipboard or keyboard produced — `True`, `TRUE`,
+ * `"true"` with the quotes kept, or a trailing space or newline. A strict
+ * comparison silently reads every one of those as `false`, and a feature that
+ * silently does nothing is the hardest kind of failure to diagnose. It cost a
+ * full production test cycle on 2.2.0.0.
+ *
+ * Being permissive here loses nothing: there is no value that should mean
+ * "true" but must be rejected.
+ */
+function booleanFlag(name: string): boolean {
+  const raw = process.env[name];
+  if (!raw) return false;
+  const v = raw.trim().toLowerCase().replace(/^["']|["']$/g, "").trim();
+  return v === "true" || v === "1" || v === "yes" || v === "on";
+}
+
 function optionalInt(name: string, fallback: number): number {
   const v = process.env[name];
   if (!v) return fallback;
@@ -81,7 +101,11 @@ export const env = {
    * single row is written, and the switch is the fastest possible rollback if
    * corpus writes ever misbehave in production — no redeploy, no revert.
    */
-  corpusEnabled: () => process.env.CORPUS_ENABLED === "true",
+  corpusEnabled: () => booleanFlag("CORPUS_ENABLED"),
+
+  /** Is the variable present at all, whatever its value? Diagnostics only. */
+  corpusEnabledIsSet: () => typeof process.env.CORPUS_ENABLED === "string"
+    && process.env.CORPUS_ENABLED.trim().length > 0,
 
   /**
    * Provenance stamp on every corpus row. Not a legal consent basis: it records

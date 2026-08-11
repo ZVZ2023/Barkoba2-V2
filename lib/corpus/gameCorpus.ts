@@ -1,4 +1,10 @@
-import { getSql, isCorpusConfigured, type SqlClient } from "./db";
+import {
+  getSql,
+  isCorpusConfigured,
+  corpusConfigStatus,
+  type CorpusConfigReason,
+  type SqlClient,
+} from "./db";
 import { enqueuePending, claimBatch, removePending } from "./pendingQueue";
 import { env } from "../env";
 import { getAppVersion } from "../appVersion";
@@ -29,6 +35,41 @@ import type { GameRecord, QuestionLogEntry } from "../types";
 // ---------------------------------------------------------------------------
 
 export type CorpusOutcome = "disabled" | "below_threshold" | "written" | "deferred";
+
+/**
+ * Once per runtime instance. A 20-question game would otherwise log the same
+ * configuration fact twenty times, which is how a signal becomes noise.
+ */
+let gatedWarningEmitted = false;
+
+/** Test seam so each case starts from a clean slate. Not used in production. */
+export function __resetCorpusWarnings(): void {
+  gatedWarningEmitted = false;
+}
+
+function warnGatedOnce(reason: CorpusConfigReason): void {
+  if (gatedWarningEmitted) return;
+  gatedWarningEmitted = true;
+
+  const advice: Record<CorpusConfigReason, string> = {
+    ready: "",
+    no_database_url:
+      "DATABASE_URL is not visible to this runtime. Check it is scoped to this " +
+      "environment, then redeploy — env changes do not reach a running deployment.",
+    flag_unset:
+      "CORPUS_ENABLED is not set. This is the shipped default; set it to 'true' " +
+      "and redeploy to begin recording.",
+    flag_not_enabled:
+      "CORPUS_ENABLED is set but does not read as true (a stray quote, space or " +
+      "capital?). Accepted values: true, 1, yes, on.",
+  };
+
+  // eslint-disable-next-line no-console
+  console.warn(
+    `[barkoba] CORPUS DISABLED — a qualifying game was NOT recorded. ` +
+      `reason=${reason}. ${advice[reason]}`
+  );
+}
 
 /**
  * THE PRESERVATION THRESHOLD (approved: option B).
@@ -334,8 +375,21 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
  * NEVER THROWS.
  */
 export async function recordGameState(game: GameRecord): Promise<CorpusOutcome> {
-  if (!isCorpusConfigured()) return "disabled";
-  if (!hasPreservableEvidence(game)) return "below_threshold";
+  const qualifies = hasPreservableEvidence(game);
+  const status = corpusConfigStatus();
+
+  if (!status.configured) {
+    // THE SIGNAL THAT WAS MISSING ON 2.2.0.0.
+    //
+    // A game containing real evidence just went unrecorded. Previously this
+    // path returned silently, so the only externally visible symptom was an
+    // empty corpus table with nothing anywhere to explain it. Now it says so,
+    // once per runtime instance — once, because a 20-question game would
+    // otherwise print this twenty times and turn a signal into noise.
+    if (qualifies) warnGatedOnce(status.reason);
+    return "disabled";
+  }
+  if (!qualifies) return "below_threshold";
 
   const sql = getSql();
   if (!sql) return "disabled";

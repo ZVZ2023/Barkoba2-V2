@@ -31,6 +31,56 @@ export interface SqlClient {
 }
 
 /**
+ * WHY THIS EXISTS: on 2.2.0.0 the corpus wrote nothing in production and there
+ * was no way to tell why. `isCorpusConfigured()` returned a bare boolean, the
+ * skip path logged nothing, and "switched off", "misconfigured" and "never
+ * called" were indistinguishable from outside the process. Diagnosis needed a
+ * Redis inspection and a log hunt to answer a yes/no question.
+ *
+ * A reason code costs nothing and makes the state observable — see
+ * /api/version, which reports it without ever exposing the connection string.
+ */
+export type CorpusConfigReason =
+  /** Configured and switched on. Writes will be attempted. */
+  | "ready"
+  /** No DATABASE_URL in this runtime. */
+  | "no_database_url"
+  /** CORPUS_ENABLED is not set at all. This is the intended default. */
+  | "flag_unset"
+  /** CORPUS_ENABLED is set but does not read as true — a typo or stray quote. */
+  | "flag_not_enabled";
+
+export interface CorpusConfigStatus {
+  configured: boolean;
+  databaseUrlPresent: boolean;
+  enabled: boolean;
+  reason: CorpusConfigReason;
+}
+
+/**
+ * Why corpus persistence is, or is not, active in THIS runtime.
+ *
+ * Deliberately reports only booleans and a reason code. The connection string
+ * and the raw flag value never leave the process.
+ */
+export function corpusConfigStatus(): CorpusConfigStatus {
+  const databaseUrlPresent = Boolean(env.databaseUrl());
+  const enabled = env.corpusEnabled();
+  const flagIsSet = env.corpusEnabledIsSet();
+
+  let reason: CorpusConfigReason = "ready";
+  if (!databaseUrlPresent) reason = "no_database_url";
+  else if (!enabled) reason = flagIsSet ? "flag_not_enabled" : "flag_unset";
+
+  return {
+    configured: databaseUrlPresent && enabled,
+    databaseUrlPresent,
+    enabled,
+    reason,
+  };
+}
+
+/**
  * Is durable corpus persistence both configured AND switched on?
  *
  * Two conditions, not one. A configured DATABASE_URL with CORPUS_ENABLED unset
@@ -38,7 +88,7 @@ export interface SqlClient {
  * migrate, deploy, verify, and only then switch writes on.
  */
 export function isCorpusConfigured(): boolean {
-  return Boolean(env.databaseUrl()) && env.corpusEnabled();
+  return corpusConfigStatus().configured;
 }
 
 let cached: SqlClient | null = null;
