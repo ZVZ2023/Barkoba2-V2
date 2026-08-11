@@ -26,20 +26,26 @@ interface Recorded {
 
 let calls: Recorded[] = [];
 let failNext = false;
+/** Statement arrays submitted through sql.transaction(), newest last. */
+let transactions: number[] = [];
 
 function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   const text = strings.join("?");
   calls.push({ sql: text, values });
   if (failNext) return Promise.reject(new Error("neon unavailable"));
-  // The games upsert is the only statement whose result is consumed.
-  if (text.includes("INSERT INTO corpus.games")) {
-    return Promise.resolve([{ corpus_game_id: "11111111-2222-3333-4444-555555555555" }]);
-  }
-  return Promise.resolve([]);
+  return Promise.resolve([] as Record<string, unknown>[]);
 }
+
+// Since 2.2.0.3 the whole record is written as ONE transaction, so the fake has
+// to model that rather than a sequence of independent statements.
+fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => {
+  transactions.push(queries.length);
+  return Promise.all(queries);
+};
 
 beforeEach(() => {
   calls = [];
+  transactions = [];
   failNext = false;
   // Must include a username: since 2.2.0.2 the config gate validates the URL,
   // and a username-less string is correctly rejected before any write.
@@ -274,6 +280,95 @@ test("replaying an identical sync issues the same statements and never throws", 
   assert.deepEqual(calls.map((c) => c.sql), firstShape);
 });
 
+// --- atomicity: the 2.2.0.2 partial-record defect ---------------------------
+
+test("the whole record is written as ONE transaction, not a sequence", async () => {
+  const g = game({
+    phase: "complete",
+    result: "composer_win_integrity_upheld",
+    final_action: "concede",
+    integrity_verdict: "upheld",
+    revealed_target: "kanál",
+  });
+  assert.equal(await recordGameState(g), "written");
+
+  assert.equal(transactions.length, 1, "exactly one transaction per sync");
+  assert.equal(
+    calls.length,
+    transactions[0],
+    "every statement must be inside that transaction — a statement outside it " +
+      "is one that can commit while a later one fails, which is how a " +
+      "'completed' game ended up with no resolution row"
+  );
+});
+
+test("a concede game persists BOTH target and resolution in that transaction", async () => {
+  // The exact production shape: 15 questions, turn 16 concede, integrity upheld.
+  const qa = [...Array(15)].map((_, i) => entry({ turn_index: i + 1 }));
+  qa.push(entry({ turn_index: 16, turn_type: "concede", question_text: null, composer_response: null }));
+
+  const g = game({
+    qa_log: qa,
+    question_count: 15,
+    phase: "complete",
+    result: "composer_win_integrity_upheld",
+    final_action: "concede",
+    final_guess_text: null,
+    adjudicator_verdict: null,
+    integrity_verdict: "upheld",
+    revealed_target: "kanál",
+    revealed_definition: "evőeszköz",
+    revealed_granularity: "generic_type",
+  });
+
+  assert.equal(await recordGameState(g), "written");
+  const text = issued();
+  assert.match(text, /INSERT INTO corpus\.game_targets/, "target row missing — the 2.2.0.2 defect");
+  assert.match(text, /INSERT INTO corpus\.game_resolutions/, "resolution row missing");
+});
+
+test("children resolve the parent by subquery, never by a returned id", async () => {
+  await recordGameState(game({ phase: "complete", revealed_target: "x" }));
+  const children = calls.filter((c) => !/INSERT INTO corpus\.games/.test(c.sql));
+
+  assert.ok(children.length > 0);
+  for (const c of children) {
+    assert.match(
+      c.sql,
+      /SELECT corpus_game_id FROM corpus\.games\s+WHERE operational_game_id/,
+      `child statement must look the parent up: ${c.sql.slice(0, 60)}`
+    );
+  }
+  // RETURNING would imply a value flowing between statements, which a
+  // non-interactive transaction cannot do.
+  assert.doesNotMatch(issued(), /RETURNING corpus_game_id/);
+});
+
+test("the parent upsert is the FIRST statement in the transaction", async () => {
+  await recordGameState(game({ phase: "complete", revealed_target: "x" }));
+  assert.match(
+    calls[0]!.sql,
+    /INSERT INTO corpus\.games/,
+    "every child depends on the parent being visible, so it must run first"
+  );
+});
+
+test("array parameters are sent as Postgres literals, not JSON", async () => {
+  // `[1,2]` cannot cast to integer[]; `{1,2}` can.
+  const g = game({
+    phase: "complete",
+    final_action: "guess",
+    adjudicator_verdict: "incorrect",
+    integrity_verdict: "violated",
+    integrity_flagged_turns: [3, 7],
+    revealed_target: "x",
+  });
+  await recordGameState(g);
+  const flat = calls.flatMap((c) => c.values);
+  assert.ok(flat.includes("{3,7}"), "expected a Postgres array literal");
+  assert.equal(flat.includes("[3,7]" as unknown as SqlValue), false);
+});
+
 // --- static guards on the SQL that idempotency actually depends on ----------
 //
 // The application cannot enforce these; PostgreSQL does. What this file CAN do
@@ -298,6 +393,19 @@ test("migration keeps turn_id as the natural idempotency key", () => {
 test("migration keeps finalized evidence immutable", () => {
   assert.match(MIGRATION, /games_immutable_once_finalized/);
   assert.match(MIGRATION, /turns_immutable_once_finalized/);
+});
+
+test("0002 lets a finalized turn be re-synced when nothing changes", () => {
+  // Without this, replay and repair are impossible for exactly the games that
+  // need them: full-state sync UPDATEs every existing turn, and the 0001
+  // trigger raised on any UPDATE of a finalized game — even a no-op — rolling
+  // the whole repair transaction back.
+  const m2 = readFileSync("migrations/0002_repairable_finalized_turns.sql", "utf8");
+  assert.match(m2, /CREATE OR REPLACE FUNCTION corpus\.reject_finalized_turn_mutation/);
+  assert.match(m2, /ROW\(NEW\.\*\) IS DISTINCT FROM ROW\(OLD\.\*\)/);
+  assert.match(m2, /RAISE EXCEPTION/, "a REAL change to finalized evidence must still raise");
+  // Trigger body only — no schema change.
+  assert.doesNotMatch(m2, /CREATE TABLE|ALTER TABLE|DROP TABLE|CREATE INDEX/);
 });
 
 test("immutability still permits the player_id unlink that deletion needs", () => {

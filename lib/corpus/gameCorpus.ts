@@ -219,11 +219,52 @@ function lastActivityAt(game: GameRecord): string {
 // The write itself.
 // ---------------------------------------------------------------------------
 
+/** Postgres array literal, e.g. {1,2}. The HTTP driver sends params as text, so a
+ *  raw JS array would arrive as JSON `[1,2]` and fail to cast. */
+function pgArray(values: readonly (string | number)[] | null): string | null {
+  return values && values.length > 0 ? `{${values.join(",")}}` : null;
+}
+
+/**
+ * Write a game's entire durable record as ONE atomic transaction.
+ *
+ * WHY THIS SHAPE — the 2.2.0.2 production defect.
+ *
+ * This used to be six sequential auto-committing statements. A completed game
+ * wrote its `games` row and 16 `game_turns` rows, then stopped: no target row,
+ * no resolution row, and a `corpus.games` row permanently claiming
+ * `lifecycle_state='completed'`. Anything that interrupts the sequence —
+ * a raised statement, or the serverless invocation ending when the player
+ * switched away mid-resolve — leaves a half-written record that nothing
+ * detects and nothing repairs.
+ *
+ * HOW THE PARENT ID IS RESOLVED WITHOUT `RETURNING`.
+ *
+ * `sql.transaction()` is NON-INTERACTIVE: it takes a static array, so a value
+ * returned by one statement cannot be fed to the next. Every child statement
+ * therefore looks the parent up by the operational id, which is UNIQUE:
+ *
+ *     (SELECT corpus_game_id FROM corpus.games WHERE operational_game_id = $1)
+ *
+ * That is safe because the statements run in order, in one transaction, on one
+ * session — so the upsert at index 0 is visible to every statement after it.
+ * Migration 0001 already proved both properties against live Neon: it applied
+ * 26 statements in one transaction where `CREATE INDEX` depended on a table
+ * created two statements earlier and `CREATE TRIGGER` on a function created
+ * two statements before that.
+ *
+ * The subquery yields NULL if the parent is somehow absent, which violates the
+ * child's NOT NULL and rolls the whole transaction back — failing loudly and
+ * atomically rather than writing another partial record.
+ */
 async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
   const life = deriveLifecycle(game);
   const version = getAppVersion();
+  const turns = buildTurnRows(game);
+  const statements: Promise<Record<string, unknown>[]>[] = [];
 
-  const rows = await sql`
+  // Index 0. Every statement below resolves its parent through this row.
+  statements.push(sql`
     INSERT INTO corpus.games (
       operational_game_id, player_id, app_version, commit_sha,
       composer_kind, racer_kind, difficulty, clue_mode, game_language,
@@ -252,33 +293,32 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       -- finalized_at is write-once: a retried resolve must not move the moment
       -- the game became history.
       finalized_at       = COALESCE(corpus.games.finalized_at, EXCLUDED.finalized_at)
-    RETURNING corpus_game_id
-  `;
-
-  const corpusGameId = rows[0]?.corpus_game_id as string | undefined;
-  if (!corpusGameId) throw new Error("corpus: games upsert returned no id");
-
-  const turns = buildTurnRows(game);
+  `);
 
   if (turns.length > 0) {
     // Demote rewound turns FIRST, as their own statement. The partial unique
     // index on (corpus_game_id, turn_index) WHERE branch='main' means a new
     // main turn cannot be inserted at an index an old main turn still occupies.
-    // Doing this in one combined statement would depend on row processing order
-    // inside ON CONFLICT, which is not a guarantee worth relying on.
+    //
+    // Ordered array position is what guarantees this. It is also why a
+    // data-modifying CTE was rejected as the alternative design: CTEs all see
+    // the same snapshot and their side-effect order is unspecified, so
+    // demote-before-upsert could not be expressed at all.
     const abandonedIds = turns.filter((t) => t.branch === "abandoned").map((t) => t.turn_id);
     if (abandonedIds.length > 0) {
-      await sql`
+      statements.push(sql`
         UPDATE corpus.game_turns SET branch = 'abandoned'
-        WHERE corpus_game_id = ${corpusGameId}
-          AND turn_id = ANY(${abandonedIds}::uuid[])
-      `;
+        WHERE corpus_game_id =
+                (SELECT corpus_game_id FROM corpus.games
+                  WHERE operational_game_id = ${game.game_id}::uuid)
+          AND turn_id = ANY(${pgArray(abandonedIds)}::uuid[])
+      `);
     }
 
-    // One round trip for every turn. jsonb_to_recordset rather than a
-    // constructed multi-row VALUES list: one bound parameter, explicit column
-    // types, and no string building anywhere near user text.
-    await sql`
+    // jsonb_to_recordset rather than a constructed multi-row VALUES list: one
+    // bound parameter, explicit column types, and no string building anywhere
+    // near user text.
+    statements.push(sql`
       INSERT INTO corpus.game_turns (
         turn_id, corpus_game_id, turn_index, branch, turn_type, actor,
         question_text, guess_text, clue_text, composer_response,
@@ -287,7 +327,10 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         raw_output, occurred_at
       )
       SELECT
-        t.turn_id, ${corpusGameId}::uuid, t.turn_index, t.branch, t.turn_type, t.actor,
+        t.turn_id,
+        (SELECT corpus_game_id FROM corpus.games
+          WHERE operational_game_id = ${game.game_id}::uuid),
+        t.turn_index, t.branch, t.turn_type, t.actor,
         t.question_text, t.guess_text, t.clue_text, t.composer_response,
         t.ambiguous_explanation, t.guess_detector_flagged, t.guess_detector_method,
         t.guess_intent_outcome, t.original_question_text, t.edit_status, t.edit_reason,
@@ -309,15 +352,17 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         edit_status            = EXCLUDED.edit_status,
         edit_reason            = EXCLUDED.edit_reason,
         raw_output             = EXCLUDED.raw_output
-    `;
+    `);
   }
 
   if (game.corrections.length > 0) {
-    await sql`
+    statements.push(sql`
       INSERT INTO corpus.game_corrections (
         corpus_game_id, turn_index, from_answer, to_answer, discarded_turns, occurred_at
       )
-      SELECT ${corpusGameId}::uuid, c.turn_index, c.from_answer, c.to_answer,
+      SELECT (SELECT corpus_game_id FROM corpus.games
+               WHERE operational_game_id = ${game.game_id}::uuid),
+             c.turn_index, c.from_answer, c.to_answer,
              c.discarded_turns, c.occurred_at
       FROM jsonb_to_recordset(${JSON.stringify(
         game.corrections.map((c) => ({
@@ -332,37 +377,44 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         discarded_turns integer, occurred_at timestamptz
       )
       ON CONFLICT ON CONSTRAINT game_corrections_identity DO NOTHING
-    `;
+    `);
   }
 
   // Target metadata exists only once the game legitimately declassified it.
   if (game.revealed_target) {
-    await sql`
+    statements.push(sql`
       INSERT INTO corpus.game_targets (
         corpus_game_id, target, definition, granularity, modifiers, locked_at
-      ) VALUES (
-        ${corpusGameId}, ${game.revealed_target}, ${game.revealed_definition},
-        ${game.revealed_granularity}, ${game.revealed_modifiers}, ${game.revealed_locked_at}
       )
+      SELECT (SELECT corpus_game_id FROM corpus.games
+               WHERE operational_game_id = ${game.game_id}::uuid),
+             ${game.revealed_target}, ${game.revealed_definition},
+             ${game.revealed_granularity}, ${game.revealed_modifiers},
+             ${game.revealed_locked_at}::timestamptz
       ON CONFLICT (corpus_game_id) DO NOTHING
-    `;
+    `);
   }
 
   if (game.phase === "complete") {
-    await sql`
+    statements.push(sql`
       INSERT INTO corpus.game_resolutions (
         corpus_game_id, final_action, final_guess_text,
         adjudicator_verdict, adjudicator_confidence, adjudication_notes,
         integrity_verdict, integrity_notes, integrity_flagged_turns, resolved_at
-      ) VALUES (
-        ${corpusGameId}, ${game.final_action}, ${game.final_guess_text},
-        ${game.adjudicator_verdict}, ${game.adjudication_confidence},
-        ${game.adjudication_notes}, ${game.integrity_verdict}, ${game.integrity_notes},
-        ${game.integrity_flagged_turns}, ${new Date().toISOString()}
       )
+      SELECT (SELECT corpus_game_id FROM corpus.games
+               WHERE operational_game_id = ${game.game_id}::uuid),
+             ${game.final_action}, ${game.final_guess_text},
+             ${game.adjudicator_verdict}, ${game.adjudication_confidence},
+             ${game.adjudication_notes}, ${game.integrity_verdict}, ${game.integrity_notes},
+             ${pgArray(game.integrity_flagged_turns)}::integer[],
+             ${new Date().toISOString()}::timestamptz
       ON CONFLICT (corpus_game_id) DO NOTHING
-    `;
+    `);
   }
+
+  // ONE transaction. Either the whole record lands or none of it does.
+  await sql.transaction(statements);
 }
 
 /**
@@ -491,7 +543,29 @@ export interface ReconcileReport {
   replayed: number;
   droppedExpired: number;
   swept: number;
+  /** Partial historical records completed from the still-live Redis game. */
+  repaired: number;
+  /** Detected as partial but no longer repairable — Redis has expired them. */
+  unrepairable: number;
 }
+
+/**
+ * THE COMPLETENESS INVARIANT.
+ *
+ * A game recorded as `completed` must also have a resolution row, and — because
+ * resolving is exactly the moment the target is declassified — a target row.
+ * Both are written by the same sync as the parent, so a `completed` parent
+ * without them means the write was interrupted partway.
+ *
+ * That state is impossible by intent and perfectly legal by schema. Nothing
+ * detected it until a manual COUNT(*) found one in production: 1 game, 16
+ * turns, 0 targets, 0 resolutions, lifecycle 'completed'. The sweep could never
+ * have found it either, because the sweep only looks at 'in_progress' rows.
+ *
+ * Returns the OPERATIONAL ids, because that is what Redis is keyed by and
+ * repair means re-syncing from the live game.
+ */
+const INCOMPLETE_LIMIT = 20;
 
 /**
  * `loadGame` is injected rather than imported so this module never depends on
@@ -503,7 +577,13 @@ export interface ReconcileReport {
 export async function reconcileOpportunistically(
   loadGame: (id: string) => Promise<GameRecord | null>
 ): Promise<ReconcileReport> {
-  const report: ReconcileReport = { replayed: 0, droppedExpired: 0, swept: 0 };
+  const report: ReconcileReport = {
+    replayed: 0,
+    droppedExpired: 0,
+    swept: 0,
+    repaired: 0,
+    unrepairable: 0,
+  };
   if (!isCorpusConfigured()) return report;
 
   // Same reasoning as recordGameState: neon() can throw on a malformed
@@ -556,6 +636,59 @@ export async function reconcileOpportunistically(
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] corpus sweep failed:", err);
+  }
+
+  // -------------------------------------------------------------------------
+  // REPAIR PASS — complete partial historical records.
+  //
+  // Runs after replay and sweep because it is the only pass that can fix a
+  // record already marked 'completed'. Re-syncing is safe and idempotent: the
+  // parent upsert is a no-op, turns re-write identically (permitted since
+  // migration 0002), and the missing target and resolution rows are inserted.
+  // -------------------------------------------------------------------------
+  try {
+    const incomplete = await sql`
+      SELECT g.operational_game_id
+        FROM corpus.games g
+        LEFT JOIN corpus.game_resolutions r USING (corpus_game_id)
+        LEFT JOIN corpus.game_targets     t USING (corpus_game_id)
+       WHERE g.lifecycle_state = 'completed'
+         AND (r.corpus_game_id IS NULL OR t.corpus_game_id IS NULL)
+       ORDER BY g.finalized_at DESC
+       LIMIT ${INCOMPLETE_LIMIT}
+    `;
+
+    for (const row of incomplete) {
+      const operationalId = String(row.operational_game_id);
+      const live = await loadGame(operationalId).catch(() => null);
+
+      if (!live) {
+        // Redis has expired the source. The record stays partial and stays
+        // visible to this query, which is the honest outcome: it is counted,
+        // not hidden, and never silently "fixed" with invented data.
+        report.unrepairable += 1;
+        continue;
+      }
+
+      const outcome = await recordGameState(live);
+      if (outcome === "written") {
+        report.repaired += 1;
+        // eslint-disable-next-line no-console
+        console.warn(`[barkoba] corpus: repaired partial record for ${operationalId}`);
+      }
+    }
+
+    if (report.unrepairable > 0) {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] corpus: ${report.unrepairable} partial record(s) can no longer be ` +
+          `repaired — the source game has left Redis. They remain queryable as ` +
+          `completed games missing a resolution or target row.`
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] corpus repair pass failed:", err);
   }
 
   return report;

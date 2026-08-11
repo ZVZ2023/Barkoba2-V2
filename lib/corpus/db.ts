@@ -28,6 +28,13 @@ export type SqlValue = string | number | boolean | null | Date | number[] | obje
  */
 export interface SqlClient {
   (strings: TemplateStringsArray, ...values: SqlValue[]): Promise<Record<string, unknown>[]>;
+  /**
+   * Submit an array of queries as a single non-interactive Postgres
+   * transaction. Non-interactive means the array is static: no value returned
+   * by one statement can be fed into the next. Statements execute in array
+   * order on one session, so each sees the effects of those before it.
+   */
+  transaction(queries: Promise<Record<string, unknown>[]>[]): Promise<unknown>;
 }
 
 /**
