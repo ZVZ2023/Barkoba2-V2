@@ -167,7 +167,17 @@ export async function POST(
   game.adjudication_notes = null;
   game.integrity_notes = null;
   game.integrity_flagged_turns = null;
+  game.adjudicator_verdict = null;
+  game.integrity_verdict = null;
+  game.adjudication_confidence = null;
   game.revealed_target = null;
+  // A game that is live again has declassified nothing. Clearing every
+  // revealed_* field together keeps declassification all-or-nothing; leaving
+  // one behind would mean a playable game carrying target metadata.
+  game.revealed_definition = null;
+  game.revealed_granularity = null;
+  game.revealed_modifiers = null;
+  game.revealed_locked_at = null;
   game.phase = "questioning";
 
   await saveGame(game);

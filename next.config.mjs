@@ -17,6 +17,16 @@ const nextConfig = {
       "/compose": ["./VERSION"],
       "/play": ["./VERSION"],
       "/game/[id]": ["./VERSION"],
+      // V2.2: every route that writes to the corpus stamps app_version on the
+      // record, so each one now reads the VERSION file through getAppVersion().
+      // Without an entry here the stamp is null in production and correct in
+      // dev — silently wrong, exactly the failure this block already exists for.
+      "/api/game/create": ["./VERSION"],
+      "/api/game/[id]/ask": ["./VERSION"],
+      "/api/game/[id]/turn": ["./VERSION"],
+      "/api/game/[id]/clue": ["./VERSION"],
+      "/api/game/[id]/correct": ["./VERSION"],
+      "/api/game/[id]/resolve": ["./VERSION"],
     },
   },
 };

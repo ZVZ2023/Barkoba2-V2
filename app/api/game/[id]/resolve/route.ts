@@ -86,6 +86,7 @@ export async function POST(
   let adjudicatorVerdict: AdjudicatorVerdict | null = null;
   let integrityVerdict: IntegrityVerdict | null = null;
   let adjudicationNotes: string | null = null;
+  let adjudicationConfidence: number | null = null;
   let integrityNotes: string | null = null;
   let flaggedTurns: number[] | null = null;
 
@@ -116,6 +117,11 @@ export async function POST(
       });
       adjudicatorVerdict = adjudication.verdict;
       adjudicationNotes = adjudication.reasoning;
+      // V2.2: the Adjudicator has always produced this and the record has
+      // always dropped it. Kept exactly as returned — it does not gate the
+      // verdict here and must not be interpreted anywhere else.
+      adjudicationConfidence =
+        typeof adjudication.confidence === "number" ? adjudication.confidence : null;
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[barkoba] Adjudicator call failed:", err);
@@ -202,8 +208,28 @@ export async function POST(
   game.adjudication_notes = adjudicationNotes;
   game.integrity_notes = integrityNotes;
   game.integrity_flagged_turns = flaggedTurns;
+  // V2.2 — the verdicts themselves, not only the conclusion drawn from them.
+  game.adjudicator_verdict = adjudicatorVerdict;
+  game.integrity_verdict = integrityVerdict;
+  game.adjudication_confidence = adjudicationConfidence;
+
   // ---- DECLASSIFICATION: the only copy of secret text into public state. ----
+  //
+  // V2.2 widened WHAT this single point declassifies. The target's definition,
+  // granularity and modifiers are what the granularity-adjudication questions
+  // will eventually be answered with, and they died with the secret's 24h TTL.
+  // Copying them here — at the same instant, under the same rule, at the same
+  // one auditable seam — is what allows lib/corpus/* to record them while
+  // remaining structurally incapable of reading secretStore.
+  //
+  // The alternative was adding the corpus writer to PERMITTED_SECRET_IMPORTERS.
+  // That was rejected: one deliberately widened seam is auditable, two seams
+  // that each look reasonable in isolation are how an invariant erodes.
   game.revealed_target = secret.target;
+  game.revealed_definition = secret.private_clarification;
+  game.revealed_granularity = secret.granularity;
+  game.revealed_modifiers = secret.modifiers;
+  game.revealed_locked_at = secret.locked_at;
   game.phase = "complete";
 
   await saveGame(game);

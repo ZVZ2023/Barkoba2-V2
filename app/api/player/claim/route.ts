@@ -8,6 +8,7 @@ import {
   readPlayerName,
 } from "@/lib/playerIdentity";
 import { claimPlayer, deleteDurablePlayer, getDurablePlayer } from "@/lib/playerStore";
+import { unlinkPlayer } from "@/lib/corpus/gameCorpus";
 import { generateRecoveryCode } from "@/lib/recoveryCode";
 
 export const dynamic = "force-dynamic";
@@ -68,6 +69,11 @@ export async function DELETE(req: Request) {
   if (!playerId) return noPlayer();
 
   const deleted = await deleteDurablePlayer(playerId);
+
+  // V2.2 — detach preserved games from this Player. Interim pre-public policy:
+  // the evidence survives, the link does not. Never throws, so a corpus outage
+  // cannot block someone asking to be forgotten.
+  await unlinkPlayer(playerId);
 
   // Clearing the cookies is part of deletion, not a side effect: the player
   // asked to be forgotten, so the local identity goes too and they return as

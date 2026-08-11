@@ -66,4 +66,36 @@ export const env = {
 
   upstashUrl: () => process.env.UPSTASH_REDIS_REST_URL || null,
   upstashToken: () => process.env.UPSTASH_REDIS_REST_TOKEN || null,
+
+  // --- V2.2: durable game corpus (Neon / PostgreSQL) ----------------------
+  //
+  // PostgreSQL is durable memory. Redis stays operational state. These are two
+  // stores with two jobs, and nothing here migrates an existing Redis
+  // responsibility.
+  databaseUrl: () => process.env.DATABASE_URL || null,
+
+  /**
+   * Master switch for durable corpus persistence. Default OFF, deliberately.
+   *
+   * The migration can therefore be applied and the code deployed before a
+   * single row is written, and the switch is the fastest possible rollback if
+   * corpus writes ever misbehave in production — no redeploy, no revert.
+   */
+  corpusEnabled: () => process.env.CORPUS_ENABLED === "true",
+
+  /**
+   * Provenance stamp on every corpus row. Not a legal consent basis: it records
+   * WHICH collection regime a game was captured under, so a future public
+   * corpus gathered under explicit consent stays distinguishable from the
+   * present pre-public family/test research phase. Retrofitting this later is
+   * impossible; recording it now costs one column.
+   */
+  collectionContext: () => process.env.COLLECTION_CONTEXT || "pre_public_research",
+
+  /**
+   * Ceiling on how many deferred games one opportunistic reconciliation pass
+   * will replay. Bounded so a backlog can never turn a game-creation request
+   * into a batch job.
+   */
+  corpusReconcileBatch: () => optionalInt("CORPUS_RECONCILE_BATCH", 3),
 };

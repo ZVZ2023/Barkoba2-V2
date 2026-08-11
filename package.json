@@ -11,9 +11,12 @@
     "test": "tsx --test test/**/*.test.ts test/*.test.ts",
     "check:isolation": "node scripts/check-isolation.mjs",
     "verify": "npm run check:isolation && npm run test && npm run typecheck && npm run build",
-    "eval:adjudicator": "tsx scripts/evalAdjudicator.ts"
+    "eval:adjudicator": "tsx scripts/evalAdjudicator.ts",
+    "migrate": "node scripts/migrate.mjs",
+    "migrate:status": "node scripts/migrate.mjs --status"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.1.0",
     "@upstash/redis": "^1.34.0",
     "next": "14.2.35",
     "react": "^18.3.1",

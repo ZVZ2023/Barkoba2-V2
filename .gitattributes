@@ -1,0 +1,25 @@
+# ---------------------------------------------------------------------------
+# Line-ending policy.
+#
+# THE PROBLEM THIS FIXES: the repository's committed blobs are LF, but the
+# Windows working tree had been rewritten to CRLF. Every one of ~72 tracked
+# files therefore reported as modified while being semantically identical
+# (`git diff --ignore-all-space` was empty). Any `git add -A` would have swept
+# them all into whatever commit happened to be in progress.
+#
+# `text=auto eol=lf` normalizes to LF in the object database and checks out LF,
+# which matches what is already committed. Nothing in the repository is
+# content-changed by this; the diff noise simply stops.
+#
+# Binary assets are listed explicitly so nothing tries to normalize a JPEG.
+# ---------------------------------------------------------------------------
+
+* text=auto eol=lf
+
+*.jpg  binary
+*.jpeg binary
+*.png  binary
+*.gif  binary
+*.ico  binary
+*.woff binary
+*.woff2 binary

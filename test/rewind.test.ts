@@ -197,6 +197,15 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
     final_action: null,
     final_guess_text: null,
     result: null,
+    // V2.2 resolution/declassification fields. A live game has declassified
+    // nothing, so every one of these is null here.
+    adjudicator_verdict: null,
+    integrity_verdict: null,
+    adjudication_confidence: null,
+    revealed_definition: null,
+    revealed_granularity: null,
+    revealed_modifiers: null,
+    revealed_locked_at: null,
     integrity_notes: null,
     integrity_flagged_turns: null,
     adjudication_notes: null,

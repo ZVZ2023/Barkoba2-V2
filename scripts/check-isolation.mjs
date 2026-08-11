@@ -43,6 +43,15 @@ const PERMITTED_SECRET_IMPORTERS = [
 
 /** Modules that must be structurally incapable of reaching the secret. */
 const QUARANTINED = [
+  // V2.2 — the durable corpus must be structurally incapable of reading the
+  // secret. It records target metadata ONLY from the revealed_* fields that
+  // /api/game/[id]/resolve writes into public state at the single
+  // declassification point. This is the mechanical half of that decision:
+  // the deliberate alternative was adding gameCorpus to
+  // PERMITTED_SECRET_IMPORTERS, and it was rejected.
+  "lib/corpus/gameCorpus.ts",
+  "lib/corpus/db.ts",
+  "lib/corpus/pendingQueue.ts",
   "lib/playerIdentity.ts",
   "app/api/player/name/route.ts",
   "app/api/player/claim/route.ts",

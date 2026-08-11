@@ -24,6 +24,18 @@ export const metadata: Metadata = { title: "Adatvédelem — Barkóba" };
 // purpose: a hardcoded milestone number is what went stale here twice, and the
 // visible build number already lives in the footer via getAppVersion().
 //
+// UPDATED IN 2.2.0.0, IN THE SAME RELEASE AS THE CHANGE IT DESCRIBES. Durable
+// game records (lib/corpus/*) mean the previous claim — that nothing survives
+// the 24h game state — became false the moment corpus writes were switched on.
+// This page ships with that change rather than after it, because the 2.1.1.0
+// cookie omission recorded above is exactly what happens otherwise.
+//
+// Two things are stated plainly rather than glossed:
+//   - failed and abandoned games are kept on purpose, not by oversight;
+//   - player deletion UNLINKS, and unlinking is not anonymization, because the
+//     free text is the player's own words. Claiming otherwise would be the
+//     comfortable lie.
+//
 // Claims that could NOT be verified from the repository — what the hosting
 // provider logs, how long those logs live — are described as unknown rather
 // than asserted. Saying "we store nothing" would have been false.
@@ -50,9 +62,14 @@ export default function PrivacyPage() {
           ]}
         />
         <p>
-          Ezek a játékazonosítóhoz kötődnek, nem személyhez. Alapértelmezetten
-          <strong> 24 óra </strong> után automatikusan törlődnek, és nincs olyan funkció,
-          amellyel korábbi játékok visszakereshetők lennének.
+          Ez a játék élő munkapéldánya: a játékazonosítóhoz kötődik, nem
+          személyhez, és <strong>24 óra</strong> után automatikusan törlődik.
+          Jelenleg nincs olyan felület, amelyen korábbi játékokat vissza
+          lehetne nézni.
+        </p>
+        <p>
+          A ténylegesen lejátszott játékokból ezen felül tartós másolat is
+          készül — lásd lentebb a „Megőrzött játékok” részt.
         </p>
       </Section>
 
@@ -106,8 +123,9 @@ export default function PrivacyPage() {
 
       <Section heading="Ha megvéded a játékosodat">
         <p>
-          Alapesetben minden a böngésződben marad, és a szervereinken nem őrzünk meg
-          rólad semmit a játék 24 órás állapotán túl. Ha viszont a játék végén úgy
+          Alapesetben a játékosazonosítód a böngésződben marad, és nem tárolunk
+          róla semmit a szervereinken. (A lejátszott játékok megőrzése ettől
+          független — arról a „Megőrzött játékok” rész szól.) Ha a játék végén úgy
           döntesz, hogy megvéded a játékosodat, akkor ehhez tartósan eltárolunk három
           dolgot:
         </p>
@@ -127,6 +145,58 @@ export default function PrivacyPage() {
           Bármikor törölheted a védett játékosodat a játék végi képernyőn. A törlés
           végleges: a tárolt azonosító, a név és a helyreállító kód ellenőrzője is
           megszűnik, a kódod többé nem működik, és újként indulsz tovább.
+        </p>
+      </Section>
+
+      <Section heading="Megőrzött játékok">
+        <p>
+          A Barkóba mostantól tartósan megőrzi azokat a játékokat, amelyekben
+          legalább egy kérdés és válasz ténylegesen lezajlott. Ez a játék 24 órás
+          munkapéldányán túl él, és nem törlődik magától.
+        </p>
+        <Bullets
+          items={[
+            "A játék menetét: a kérdéseket, a válaszokat, a tippet és az eredményt, időrendben.",
+            "A játék beállításait: nehézség, kérdéskeret, nyelv, ki volt a kérdező és ki válaszolt.",
+            "A megfejtést és annak meghatározását — de csak akkor, ha a játék le is zárult, és a megfejtés amúgy is láthatóvá vált. A félbehagyott játékoknál ez nem kerül eltárolásra.",
+            "Ha van azonosított játékosod, azt is, hogy melyik játékos játszotta.",
+          ]}
+        />
+        <p>
+          A félbehagyott, megszakadt és sikertelen játékokat is megőrizzük, ha
+          volt bennük legalább egy lezajlott kérdés-válasz. Ez szándékos: a
+          félresikerült játék ugyanannyit elárul a játék működéséről, mint a
+          sikeres. Amiben egyetlen kérdés sem hangzott el, abból nem lesz
+          megőrzött játék.
+        </p>
+        <p>
+          Miért: a Barkóba ezekből tanulja meg, hol hibázik — hol kérdez rosszul
+          az AI, hol válaszol ellentmondásosan, hol dönt tévesen. Ehhez valódi
+          játékok kellenek.
+        </p>
+        <p>
+          Ez jelenleg egy nyilvánosság előtti, zárt teszt- és kutatási szakasz. A
+          nyilvános indulás előtt ezt a részt újra kell gondolni, és ez az oldal
+          frissülni fog.
+        </p>
+      </Section>
+
+      <Section heading="Ha törlöd a védett játékosodat">
+        <p>
+          A törlés leválasztja a megőrzött játékokat a játékosodról: a
+          játékosazonosító eltűnik mellőlük, és nem lesz visszakereshető, hogy
+          melyik játékot te játszottad.
+        </p>
+        <p>
+          Amit viszont őszintén el kell mondanunk: maguk a játékok megmaradnak. A
+          bennük szereplő szöveg — a megfejtés, a kérdések, a tippek — a te
+          szavaid, és tartalmazhat rád vonatkozó információt akkor is, ha az
+          azonosító már nincs mellette. A leválasztás tehát nem teljes
+          névtelenítés, és nem is állítjuk annak.
+        </p>
+        <p>
+          Ha ez zavar, a legbiztosabb, ha nem írsz a játékba olyat, amit nem
+          szeretnél megőrizve látni.
         </p>
       </Section>
 

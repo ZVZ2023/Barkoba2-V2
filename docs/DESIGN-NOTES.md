@@ -889,6 +889,126 @@ at the moment of choosing, without a modal in the main loop.
 
 ---
 
+## 13. V2.2 — durable game corpus (`2.2.0.0`)
+
+V2.1 gave Barkóba persistent Players. V2.2 gives it persistent experience.
+Before this, every game was destroyed 24 hours after it was created.
+
+### Two stores, two jobs
+
+PostgreSQL (Neon) is **durable memory**. Redis stays **operational state**.
+Nothing that lived in Redis moved. Redis remains authoritative during play;
+PostgreSQL is a write-behind mirror that no gameplay path ever reads.
+
+### The corpus hook lives in `saveGame`, not in six routes
+
+`/ask`, `/turn`, `/clue`, `/correct` and `/resolve` all end by calling
+`saveGame()`, including the error paths that deliberately save a recorded answer
+before returning 502. Wrapping that one funnel is the whole change — the same
+argument `NamespacedKV` made for wrapping `getKV()`. Six copies of the call
+would be six chances for a future route to silently stop recording history.
+
+Redis is written and awaited **first**. Nothing after that line can change what
+the player experiences.
+
+### Incremental write was forced, not chosen
+
+There is no abandonment signal anywhere in the engine: no heartbeat, no
+`beforeunload`, no disconnect event, and on serverless no process to notice.
+Abandoned, interrupted and stalled games all die identically and silently at the
+TTL.
+
+So a "finalise the record at the terminal transition" design would have captured
+only cleanly completed games — and would have discarded exactly the failed and
+abandoned games the milestone exists to preserve. Full-state incremental sync
+follows from that, not from taste.
+
+### Preservation threshold: one completed question/answer
+
+A game enters the corpus once one question has actually been answered. Below
+that there is no reasoning path to reconstruct. `complete` and `worth
+preserving` are deliberately different questions — an abandoned three-question
+game is preserved; a zero-turn game is not.
+
+`lifecycle_state` and `outcome` are orthogonal columns so an unresolved game
+never has to invent an outcome.
+
+### Declassification was WIDENED, not duplicated
+
+The corpus needs the target's definition and granularity — the evidence the
+granularity-adjudication questions will eventually be answered with. Those live
+in `SecretRecord` and died with its TTL.
+
+Two options existed. Adding `lib/corpus/gameCorpus.ts` to
+`PERMITTED_SECRET_IMPORTERS` was **rejected**: one deliberately widened seam is
+auditable, two seams that each look reasonable in isolation are how an invariant
+erodes. Instead the single declassification point in `/resolve` now copies
+`revealed_definition`, `revealed_granularity`, `revealed_modifiers` and
+`revealed_locked_at` alongside `revealed_target`, at the same instant under the
+same rule. `lib/corpus/*` reads only public state and is listed in `QUARANTINED`
+so that is mechanically enforced.
+
+**Accepted cost:** a game that never resolves never declassifies, so abandoned
+games carry no target metadata at all. Isolation outranks research completeness.
+
+### Raw is separated from derived by schema, not by naming
+
+`corpus.*` is append-only and immutable once finalized, enforced by a trigger.
+`derived.*` is freely mutable and always references `corpus` by FK.
+
+The dormant `QuestionLogEntry` fields (`quality_score`, `information_gain`,
+`strategy_classification`) were **not** migrated into `corpus.game_turns`. They
+are derived analysis wearing a raw-evidence costume — §6 says dormant fields stay
+dormant, and the schema honours that by putting them where they belong. A test
+asserts they never appear in the raw turns table.
+
+`derived.analysis_runs` exists so two readings of the same turn can coexist and
+disagree, each attributable to the model, prompt version or human that produced
+it. That is impossible if a score is a column on the raw turn.
+
+### `adjudicator_confidence` was already being generated and thrown away
+
+`AdjudicatorResult.confidence` has been produced since M4 and documented as
+"Recorded for tuning", and the resolve route dropped it. It is now stored raw —
+not interpreted, not normalised, not turned into a quality metric.
+
+### Reconciliation is opportunistic, and that is a trade
+
+A failed corpus write queues the game id; the next game creation replays it from
+Redis while the record is still alive. That turns a Neon outage into delayed
+evidence rather than lost evidence, within the 24h window.
+
+Known limits, stated rather than discovered later: the queue is one JSON array
+under one key (because `lib/kv.ts` deliberately has no scan and widening it for
+this would be the worse trade), so concurrent failures can race; it is bounded;
+and reconciliation only runs when someone starts a game. The upgrade path is a
+scheduled caller of the same function.
+
+The sweep half needs no Redis at all — a row still `in_progress` long after its
+`last_activity_at` is reclassified in pure SQL, and `last_phase` says honestly
+whether it was abandoned mid-play or stalled in adjudication.
+
+### Player deletion unlinks; it is not anonymization
+
+Interim pre-public policy: deletion sets `player_id` to NULL and the game
+survives as evidence. `/privacy` says plainly that this is **not** full
+anonymization, because the questions and targets are the player's own words and
+Barkóba's own benchmarks are "my left ear" and "MuShu". Claiming otherwise would
+be the comfortable lie. The permanent public erasure model is explicitly
+deferred; cascade deletion already works via `ON DELETE CASCADE` and
+pseudonymization would be a column change, not a redesign.
+
+`player_id` is one of only two fields the immutability trigger lets through on a
+finalized game — erasure must remain possible on finished evidence.
+
+### `collection_context`
+
+Every row is stamped `pre_public_research`. Provenance, not consent. Retrofitting
+a collection basis onto rows gathered before it existed is impossible; recording
+it now costs one column.
+
+---
+
 ## 12. OPEN DECISION — the Validator ambiguity gate is a UX problem, not a bug
 
 **Status: undecided. Not a defect. Do not fold this into a Pass scope silently.**

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { getKV } from "./kv";
 import { env } from "./env";
+import { recordGameState } from "./corpus/gameCorpus";
 import type { GameRecord, QuestionLogEntry } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +45,14 @@ export async function createGame(
     integrity_notes: null,
     integrity_flagged_turns: null,
     adjudication_notes: null,
+    adjudicator_verdict: null,
+    integrity_verdict: null,
+    adjudication_confidence: null,
     revealed_target: null,
+    revealed_definition: null,
+    revealed_granularity: null,
+    revealed_modifiers: null,
+    revealed_locked_at: null,
     corrections: [],
     abandoned_branches: [],
     clarification_prompt: null,
@@ -71,6 +79,15 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.integrity_flagged_turns === undefined) record.integrity_flagged_turns = null;
   if (record.adjudication_notes === undefined) record.adjudication_notes = null;
   if (record.revealed_target === undefined) record.revealed_target = null;
+  // V2.2 resolution/declassification fields. Games created before 2.2.0.0 live
+  // for up to GAME_TTL_SECONDS, so normalize rather than trust their presence.
+  if (record.adjudicator_verdict === undefined) record.adjudicator_verdict = null;
+  if (record.integrity_verdict === undefined) record.integrity_verdict = null;
+  if (record.adjudication_confidence === undefined) record.adjudication_confidence = null;
+  if (record.revealed_definition === undefined) record.revealed_definition = null;
+  if (record.revealed_granularity === undefined) record.revealed_granularity = null;
+  if (record.revealed_modifiers === undefined) record.revealed_modifiers = null;
+  if (record.revealed_locked_at === undefined) record.revealed_locked_at = null;
   // Correction/rewind fields, added in 0.3.2.0.
   if (typeof record.private_target !== "boolean") record.private_target = false;
   if (record.player_id === undefined) record.player_id = null;
@@ -89,8 +106,43 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   return record;
 }
 
+/**
+ * Persist live game state — and, from V2.2, mirror it into the durable corpus.
+ *
+ * WHY THE CORPUS HOOK LIVES HERE RATHER THAN IN SIX ROUTE HANDLERS.
+ *
+ * Every turn-producing, correction and resolution path already funnels through
+ * this one function: /ask, /turn, /clue, /correct and /resolve all end by
+ * calling it, including the error paths that deliberately save a recorded
+ * answer before returning 502. Wrapping the funnel is therefore the entire
+ * change — the same argument NamespacedKV made for wrapping getKV(): the call
+ * sites are untouched and cannot forget to apply it. Six copies of this call
+ * would be six chances for a future route to silently stop recording history.
+ *
+ * ORDERING IS LOAD-BEARING. Redis is written and awaited FIRST. Redis remains
+ * the authority for live gameplay; PostgreSQL is a write-behind mirror of it.
+ * Nothing below this line can change what the player experiences.
+ *
+ * WHY AWAITED RATHER THAN FIRE-AND-FORGET: on serverless the function may
+ * freeze the moment the response is returned, so a detached promise is not
+ * reliably delivered — "fire and forget" would quietly mean "forget". The cost
+ * is one HTTP round trip (~50ms) on turns that already spend seconds in model
+ * calls.
+ *
+ * recordGameState never throws and never mutates the record.
+ */
 export async function saveGame(record: GameRecord): Promise<void> {
   await getKV().set(gameKey(record.game_id), record, env.gameTtlSeconds());
+
+  try {
+    await recordGameState(record);
+  } catch (err) {
+    // Belt and braces. recordGameState already contains its own failure
+    // handling; this exists so that a defect inside it can still never
+    // propagate into gameplay. A game must not fail because history did.
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] corpus hook raised unexpectedly:", err);
+  }
 }
 
 

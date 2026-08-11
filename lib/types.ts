@@ -285,6 +285,26 @@ export interface GameRecord {
   integrity_flagged_turns: number[] | null;
   adjudication_notes: string | null;
   /**
+   * V2.2 — the Adjudicator's and Integrity Review's own verdicts, kept
+   * alongside the derived `result`.
+   *
+   * `result` is the CONCLUSION of the result table; these are its INPUTS. They
+   * are not recoverable from it: "racer_win_integrity_violation" could follow a
+   * concede or an incorrect guess, and only these fields say which. Raw
+   * evidence, stored as produced.
+   */
+  adjudicator_verdict: AdjudicatorVerdict | null;
+  integrity_verdict: IntegrityVerdict | null;
+  /**
+   * The Adjudicator's own confidence, 0..1, exactly as produced.
+   *
+   * Generated on every adjudication since M4 and, until V2.2, discarded by the
+   * resolve route despite AdjudicatorResult documenting it as recorded for
+   * tuning. Stored raw: never interpreted, normalised or turned into a quality
+   * score. Any such reading is derived analysis and belongs in `derived.*`.
+   */
+  adjudication_confidence: number | null;
+  /**
    * THE SINGLE DECLASSIFICATION POINT.
    *
    * Null for the entire life of the game. Written exactly once, by
@@ -293,8 +313,29 @@ export interface GameRecord {
    * access to secretStore. If you are reading this because you want the target
    * somewhere else: do not widen this. Add another deliberate, auditable
    * declassification point, or reconsider the requirement.
+   *
+   * V2.2 WIDENED WHAT THIS POINT DECLASSIFIES, NOT HOW MANY POINTS EXIST.
+   * The four `revealed_*` companions below carry the target's definition,
+   * granularity, modifiers and lock time into public state at the same instant,
+   * under the same rule, so that the durable corpus can record what the target
+   * actually meant without any second module ever reading secretStore. That was
+   * the deliberate alternative to adding lib/corpus/* to
+   * PERMITTED_SECRET_IMPORTERS — one declassification seam, widened on purpose,
+   * beats two seams that each look reasonable alone.
+   *
+   * The accepted cost: a game that never resolves never declassifies, so
+   * abandoned games carry no target metadata at all. Isolation outranks
+   * research completeness.
    */
   revealed_target: string | null;
+  /** The hidden definition that fixed the target's meaning. See revealed_target. */
+  revealed_definition: string | null;
+  /** generic_type vs specific_instance — the granularity adjudication rests on. */
+  revealed_granularity: TargetGranularity | null;
+  /** Qualifiers that narrowed the target, or null. */
+  revealed_modifiers: string | null;
+  /** When the target became immutable. */
+  revealed_locked_at: string | null;
   /** Corrected answers, newest last. Diagnostics only. */
   corrections: CorrectionRecord[];
   /**

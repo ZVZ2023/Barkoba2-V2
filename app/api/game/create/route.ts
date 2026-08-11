@@ -3,7 +3,8 @@ import { randomUUID } from "crypto";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
-import { createGame } from "@/lib/gameStore";
+import { createGame, getGame } from "@/lib/gameStore";
+import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
 import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
@@ -50,6 +51,20 @@ export async function POST(req: NextRequest) {
       { status: 503 }
     );
   }
+
+  // -------------------------------------------------------------------------
+  // V2.2 — opportunistic corpus reconciliation.
+  //
+  // Game creation is the natural trigger: it is the one request that is not
+  // already waiting on a model call for a turn in progress, and someone
+  // starting a game is exactly when a previous game's deferred write is worth
+  // retrying. Bounded by CORPUS_RECONCILE_BATCH so a backlog can never turn
+  // this request into a batch job, and it never throws.
+  //
+  // getGame is injected so lib/corpus/* stays a leaf of the dependency graph.
+  // This is deliberately not Cron and deliberately not a queue.
+  // -------------------------------------------------------------------------
+  void reconcileOpportunistically(getGame).catch(() => undefined);
 
   const ip = extractClientIp(req.headers);
   const rateLimit = await checkGameCreationRateLimit(ip);
