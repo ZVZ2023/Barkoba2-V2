@@ -889,6 +889,43 @@ at the moment of choosing, without a modal in the main loop.
 
 ---
 
+## 14. DEFERRED — cap the AI-Racer question budget before wider release
+
+**Status: tracked, deliberately not implemented. Revisit before any wider
+release, or sooner if field data warrants.**
+
+`2.3.0.0` gave every human Composer the full `20 / 35 / 50 / 100` allowance,
+including on the AI-Racer path. Difficulty recommends one; the Composer may
+override it.
+
+The consequence is a cost one, and it is real:
+
+| Budget | Racer model calls per game | Games/day under `RACER_DAILY_CALL_CEILING=2000` |
+|---|---|---|
+| 20 (recommended, easy) | ~20–25 | ~80–100 |
+| 100 (available) | ~100–125 | ~16–20 |
+
+So a player who favours 100 costs roughly five times as much as one who takes
+the recommendation, and the daily ceiling — which exists to bound spend, not to
+ration play — starts behaving like a rationing mechanism.
+
+Human↔Human is unaffected: no AI runs per turn there, so a 100-question
+two-player game costs the same as a 20-question one.
+
+**Why it was NOT capped now:** nobody has yet chosen a budget in the field. The
+premise that players will reach for 100 is an assumption, and capping on an
+assumption would remove a control the Composer legitimately owns — the whole
+point of the override is that the person who set the target knows how far it is.
+
+**Cheapest fix when the data says so:** restrict the AI-Racer path to `20 / 35`,
+or lower `RECOMMENDED.hard` in `lib/questionBudget.ts`. Both are one-line
+changes; neither needs a migration, and the Human↔Human range stays untouched.
+
+**What would trigger it:** budget selection skewing high in real games, or the
+daily Racer ceiling actually being hit.
+
+---
+
 ## 13. V2.2 — durable game corpus (`2.2.0.0`)
 
 V2.1 gave Barkóba persistent Players. V2.2 gives it persistent experience.
