@@ -3,13 +3,15 @@ import { randomUUID } from "crypto";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
-import { createGame, getGame } from "@/lib/gameStore";
+import { createGame, getGame, saveGame } from "@/lib/gameStore";
+import { createJoinCode } from "@/lib/joinCode";
 import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
 import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
 import { consumeModelCall } from "@/lib/callBudget";
 import type { ClueMode, Difficulty } from "@/lib/types";
+import { resolveQuestionBudget } from "@/lib/questionBudget";
 import { env } from "@/lib/env";
 
 interface CreateGameBody {
@@ -17,7 +19,7 @@ interface CreateGameBody {
   target?: string;
   private_clarification?: string;
   /** 0.6.x — AI Composer. When "ai_composer", the AI chooses the target. */
-  mode?: "human_composer" | "ai_composer";
+  mode?: "human_composer" | "ai_composer" | "human_human";
   /**
    * The Composer has seen the Validator's warning and chosen to play anyway.
    * The human decision is final: Barkóba's Composer owns the target.
@@ -30,7 +32,8 @@ interface CreateGameBody {
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
-const QUESTION_BUDGETS = [20, 35, 50, 100];
+// QUESTION_BUDGETS moved to lib/questionBudget.ts in 2.3.0.0 so the server that
+// validates a budget and the screens that offer it share one definition.
 
 export async function POST(req: NextRequest) {
   // V2.1.1 — who is acting. Null whenever identity is unconfigured; the game is
@@ -110,10 +113,10 @@ export async function POST(req: NextRequest) {
         ? (body.clue_mode as ClueMode)
         : "none";
 
-    const budgetChoice =
-      typeof body.max_questions === "number" && QUESTION_BUDGETS.includes(body.max_questions)
-        ? body.max_questions
-        : 20;
+    // Unchanged behaviour: an unrecognised value falls back. The AI-Composer
+    // screen has always defaulted to 20 regardless of difficulty, so it passes
+    // "easy" as the fallback basis rather than adopting the new recommendation.
+    const budgetChoice = resolveQuestionBudget("easy", body.max_questions);
 
     const callBudget = await consumeModelCall("resolve");
     if (!callBudget.allowed) {
@@ -205,7 +208,24 @@ export async function POST(req: NextRequest) {
   // CLARIFICATION_REQUIRED when it does not — so nothing ambiguous gets
   // through. That judgment belongs to the Validator, not to a null check here.
 
-  const maxQuestions = env.maxQuestions();
+  // V2.3 — the Human↔Human Composer chooses the allowance. Barkóba recommends
+  // one from the selected difficulty; the Composer may override it before the
+  // target is locked, and whatever survives here becomes authoritative game
+  // state. /hh/turn enforces it against question_count on every question, so
+  // the choice governs play rather than merely being displayed.
+  //
+  // The 0.3.x human-Composer mode is untouched and keeps env.maxQuestions().
+  //
+  // Resolved BEFORE the Validator runs, because the Validator is told the
+  // allowance — a target that is reasonable inside 50 questions may not be
+  // inside 20, so it must judge against the budget the game will actually use.
+  const humanVsHuman = body.mode === "human_human";
+  const humanDifficulty: Difficulty = DIFFICULTIES.includes(body.difficulty as Difficulty)
+    ? (body.difficulty as Difficulty)
+    : "easy";
+  const maxQuestions = humanVsHuman
+    ? resolveQuestionBudget(humanDifficulty, body.max_questions)
+    : env.maxQuestions();
 
   let validation;
   try {
@@ -243,6 +263,13 @@ export async function POST(req: NextRequest) {
   }
 
   // VALID — create the game.
+  //
+  // V2.3: "human_human" reuses this entire path — the same Validator, the same
+  // secret creation, the same lock. Only the seats differ. The Composer sets
+  // the target BEFORE inviting, which is a deliberate simplification of the
+  // scoped flow: it removes a "waiting for the Composer to think" state that
+  // the second player would otherwise sit in, and it means a join link is never
+  // live for a game that has no secret yet.
   const gameId = randomUUID();
   await createSecret(gameId, target, clarification);
   // Immutable once questioning begins, per spec — locked at creation since
@@ -250,6 +277,15 @@ export async function POST(req: NextRequest) {
   await lockSecret(gameId);
   const game = await createGame(gameId, {
     player_id: playerId,
+    // The creator always takes the Composer seat. Recorded for BOTH modes so
+    // the seat model has one meaning everywhere rather than a special case.
+    composer_player_id: playerId,
+    racer_kind: humanVsHuman ? "human" : "ai",
+    // Recorded for Human↔Human so the corpus knows what the allowance was
+    // chosen against. Null in 0.3.x, where difficulty is not a concept.
+    difficulty: humanVsHuman ? humanDifficulty : null,
+    // Left null until someone joins. awaitingRacer() reads exactly this.
+    racer_player_id: null,
     phase: "questioning",
     max_questions: maxQuestions,
     private_target: validation.private_knowledge,
@@ -261,6 +297,16 @@ export async function POST(req: NextRequest) {
     game_language: "hu",
   });
 
+  // The invitation exists only for Human↔Human. Separate from the game id on
+  // purpose: it can be burned the moment the Racer seat fills, which is what
+  // makes "no third player" enforceable rather than merely unlikely.
+  const joinCode = humanVsHuman ? await createJoinCode(game.game_id) : null;
+  if (joinCode) {
+    // Held on the record so a refreshed Composer can retrieve the link.
+    game.join_code = joinCode;
+    await saveGame(game);
+  }
+
   return NextResponse.json({
     status: "VALID",
     game_id: game.game_id,
@@ -269,5 +315,6 @@ export async function POST(req: NextRequest) {
     game_language: game.game_language,
     difficulty_warning: validation.difficulty_warning,
     private_knowledge: validation.private_knowledge,
+    join_code: joinCode,
   });
 }

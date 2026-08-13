@@ -32,6 +32,13 @@ const SECRET_MODULE = "lib/secretStore.ts";
 const PERMITTED_SECRET_IMPORTERS = [
   "app/api/game/create/route.ts", // createSecret + lockSecret, at game creation
   "app/api/game/[id]/resolve/route.ts", // getSecretForAdjudication, at resolution
+  // V2.3, APPROVED ARCHITECTURE DECISION. getSecretForComposer — the only
+  // getter that returns target text to a browser before resolution, and the
+  // only one taking an identity. A human Composer who refreshes must recover
+  // their OWN secret; without this, reconnect is impossible for that seat.
+  // The identity check lives inside the getter, not in this route, so the
+  // route cannot forget it. One entry, deliberately narrow.
+  "app/api/game/[id]/view/route.ts",
   "lib/prompts/validator.ts", // (reserved) pre-game validation
   "app/api/game/[id]/ask/route.ts", // getSecretForAnswering, every AI-Composer turn
   "app/api/game/[id]/clue/route.ts", // getSecretForAnswering, explicit SÚGÓ request (0.9.8.0)

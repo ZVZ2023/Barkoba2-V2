@@ -50,6 +50,9 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
   return {
     game_id: randomUUID(),
     player_id: null,
+    composer_player_id: null,
+    racer_player_id: null,
+    join_code: null,
     phase: "questioning",
     created_at: "2026-08-11T09:59:00.000Z",
     expires_at: "2026-08-12T09:59:00.000Z",

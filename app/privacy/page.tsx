@@ -181,6 +181,24 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      <Section heading="Ha másik emberrel játszol">
+        <p>
+          A másik emberrel játszott játékokban a titkodat a szerver őrzi, és a
+          kérdező nem kapja meg — sem az oldalon, sem a háttérben futó
+          adatforgalomban. Csak a játék végén, az eredménnyel együtt derül ki.
+        </p>
+        <p>
+          Amit a másik játékos lát: a kérdéseket, a válaszaidat, és a megadott
+          megszólításodat, ha van ilyen. Ez az első helyzet a Barkóbában, ahol a
+          neved egy másik ember számára is látszik — ha ezt nem szeretnéd, hagyd
+          ki a nevet, vagy válassz becenevet.
+        </p>
+        <p>
+          A meghívó link egyetlen játékhoz szól, és amint a második játékos
+          csatlakozott, harmadik már nem tud belépni.
+        </p>
+      </Section>
+
       <Section heading="Ha törlöd a védett játékosodat">
         <p>
           A törlés leválasztja a megőrzött játékokat a játékosodról: a

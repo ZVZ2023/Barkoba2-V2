@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGame, saveGame } from "@/lib/gameStore";
+import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { isParticipant } from "@/lib/seats";
 import { getSecretForAdjudication } from "@/lib/secretStore";
 import { runAdjudicator } from "@/lib/prompts/adjudicator";
 import { runIntegrityReview } from "@/lib/prompts/integrityReview";
@@ -46,6 +48,17 @@ export async function POST(
     return NextResponse.json(
       { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
       { status: 404 }
+    );
+  }
+
+  // V2.3 — only a participant may trigger resolution. Either seat qualifies:
+  // both clients poll and either may be first to fire this, and the endpoint is
+  // already idempotent for phase "complete". Single-human modes are unaffected,
+  // because resolveSeat falls back to the historic one-human rule for them.
+  if (!isParticipant(game, playerIdFromHeaders(_req.headers))) {
+    return NextResponse.json(
+      { error: "not_a_participant", message: "Ehhez a játékhoz nincs hozzáférésed." },
+      { status: 403 }
     );
   }
 

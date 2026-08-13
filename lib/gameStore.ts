@@ -24,6 +24,9 @@ export async function createGame(
   const record: GameRecord = {
     game_id: gameId,
     player_id: null,
+    composer_player_id: null,
+    racer_player_id: null,
+    join_code: null,
     phase: "pending_validation",
     created_at: now.toISOString(),
     expires_at: expires.toISOString(),
@@ -91,6 +94,11 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   // Correction/rewind fields, added in 0.3.2.0.
   if (typeof record.private_target !== "boolean") record.private_target = false;
   if (record.player_id === undefined) record.player_id = null;
+  // V2.3 seats. Games created before 2.3.0.0 live for up to GAME_TTL_SECONDS,
+  // so normalize rather than trust their presence.
+  if (record.composer_player_id === undefined) record.composer_player_id = null;
+  if (record.racer_player_id === undefined) record.racer_player_id = null;
+  if (record.join_code === undefined) record.join_code = null;
   if (record.difficulty === undefined) record.difficulty = null;
   if (record.clue_mode === undefined) record.clue_mode = null;
   if (!Array.isArray(record.corrections)) record.corrections = [];

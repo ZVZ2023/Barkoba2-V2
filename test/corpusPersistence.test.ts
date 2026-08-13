@@ -93,6 +93,9 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
   return {
     game_id: randomUUID(),
     player_id: "abc123",
+    composer_player_id: null,
+    racer_player_id: null,
+    join_code: null,
     phase: "questioning",
     created_at: "2026-08-11T09:59:00.000Z",
     expires_at: "2026-08-12T09:59:00.000Z",
@@ -263,7 +266,13 @@ test("unlinkPlayer never throws when the database is unavailable", async () => {
 test("unlinkPlayer clears player_id rather than deleting evidence", async () => {
   await unlinkPlayer("abc123");
   const text = issued();
-  assert.match(text, /UPDATE corpus\.games SET player_id = NULL/);
+  // Since V2.3 all three id columns are cleared together, so the statement is a
+  // CASE form rather than a single assignment. What must hold is unchanged:
+  // links are removed, evidence is not.
+  assert.match(text, /UPDATE corpus\.games/);
+  assert.match(text, /player_id\s+= CASE WHEN player_id\s+= \? THEN NULL/);
+  assert.match(text, /composer_player_id = CASE WHEN composer_player_id = \? THEN NULL/);
+  assert.match(text, /racer_player_id\s+= CASE WHEN racer_player_id\s+= \? THEN NULL/);
   assert.doesNotMatch(text, /DELETE FROM corpus\.games/);
 });
 

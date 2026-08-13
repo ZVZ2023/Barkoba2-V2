@@ -1,6 +1,6 @@
 import { getKV } from "./kv";
 import { env } from "./env";
-import type { SecretRecord } from "./types";
+import type { GameRecord, SecretRecord } from "./types";
 
 // ---------------------------------------------------------------------------
 // ISOLATION BOUNDARY.
@@ -78,4 +78,35 @@ export async function getSecretForAdjudication(
   gameId: string
 ): Promise<SecretRecord | null> {
   return getKV().get<SecretRecord>(secretKey(gameId));
+}
+
+// ---------------------------------------------------------------------------
+// V2.3 — the Composer reading their OWN secret.
+//
+// The only getter that returns the target to a browser before resolution, and
+// the only one that takes an identity. It exists because a human Composer who
+// refreshes must see the target again: they typed it, they own it, and without
+// this reconnect is impossible for that seat.
+//
+// THE IDENTITY CHECK LIVES HERE, NOT IN THE ROUTE. A route can forget a guard;
+// a getter that refuses to answer cannot be called incorrectly. This is the one
+// place in Barkóba where "who is asking" decides whether target text is
+// returned, so it is deliberately the narrowest possible surface.
+//
+// It takes an already-loaded GameRecord rather than a game id so that this
+// module still performs no game lookups and the caller cannot pass an id
+// belonging to a different game than the one it authorized against.
+// ---------------------------------------------------------------------------
+export async function getSecretForComposer(
+  game: GameRecord,
+  requestingPlayerId: string | null
+): Promise<SecretRecord | null> {
+  // Null, empty or mismatched identity all mean the same thing: not the
+  // Composer. An unassigned composer seat never matches, so a game with no
+  // recorded Composer cannot have its target read by anyone.
+  if (!requestingPlayerId) return null;
+  if (!game.composer_player_id) return null;
+  if (game.composer_player_id !== requestingPlayerId) return null;
+
+  return getKV().get<SecretRecord>(secretKey(game.game_id));
 }

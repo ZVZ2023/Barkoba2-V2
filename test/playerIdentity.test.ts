@@ -124,7 +124,13 @@ test("the acting player is recorded in existing game state, not a new store", ()
 
   const create = readFileSync("app/api/game/create/route.ts", "utf8");
   assert.match(create, /playerIdFromHeaders\(req\.headers\)/);
-  assert.equal((create.match(/player_id: playerId,/g) || []).length, 2, "both game modes");
+  // Word-boundary guarded: since V2.3 the route also sets composer_player_id,
+  // which a bare substring count would wrongly include.
+  assert.equal(
+    (create.match(/(?<![_a-zA-Z])player_id: playerId,/g) || []).length,
+    2,
+    "both game modes"
+  );
 });
 
 test("a game with no identity still reads and still plays", () => {

@@ -43,6 +43,18 @@ export default function PlayPage() {
               <span className="text-sm text-neutral-600">{copy.modes.aiComposer.detail}</span>
             </Link>
 
+            {/* V2.3 — the first Human↔Human mode. */}
+            <Link
+              href="/play/human"
+              className="flex min-w-0 flex-col gap-1 rounded-xl border border-white/60 bg-white/75 p-5 shadow-sm backdrop-blur-sm"
+            >
+              <span className="text-lg font-semibold">Játék egy másik emberrel</span>
+              <span className="text-base text-neutral-800">→ te gondolsz, ő kérdez</span>
+              <span className="text-sm text-neutral-600">
+                Te zárod le a titkot, és küldesz egy meghívó linket.
+              </span>
+            </Link>
+
             <div className="flex flex-wrap items-center justify-between gap-3">
               <Link href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
                 {copy.modes.back}

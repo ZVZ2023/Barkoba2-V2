@@ -25,6 +25,10 @@ export const config = {
     "/",
     "/compose",
     "/play/ai",
+    // V2.3: both Human↔Human entry points need an identity on the request —
+    // /join binds the Racer seat, /play/human records the Composer.
+    "/play/human",
+    "/join/:path*",
     "/game/:path*",
     "/api/game/:path*",
     // 2.1.2.0: the name route needs the acting player on the request.

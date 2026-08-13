@@ -181,6 +181,10 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
   return {
     game_id: "g",
     player_id: null,
+    // V2.3 seats. A single-human game records no seats until creation does it.
+    composer_player_id: null,
+    racer_player_id: null,
+    join_code: null,
     phase: "questioning",
     created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(),

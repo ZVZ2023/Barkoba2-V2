@@ -266,14 +266,17 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
   // Index 0. Every statement below resolves its parent through this row.
   statements.push(sql`
     INSERT INTO corpus.games (
-      operational_game_id, player_id, app_version, commit_sha,
+      operational_game_id, player_id, composer_player_id, racer_player_id,
+      app_version, commit_sha,
       composer_kind, racer_kind, difficulty, clue_mode, game_language,
       max_questions, private_target,
       lifecycle_state, outcome, termination_reason, last_phase,
       question_count, ambiguous_count,
       created_at, last_activity_at, finalized_at, collection_context
     ) VALUES (
-      ${game.game_id}, ${game.player_id}, ${version.version}, ${version.commit},
+      ${game.game_id}, ${game.player_id},
+      ${game.composer_player_id}, ${game.racer_player_id},
+      ${version.version}, ${version.commit},
       ${game.composer_kind}, ${game.racer_kind}, ${game.difficulty}, ${game.clue_mode},
       ${game.game_language}, ${game.max_questions}, ${game.private_target},
       ${life.lifecycle_state}, ${life.outcome}, ${life.termination_reason}, ${game.phase},
@@ -283,6 +286,10 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
     )
     ON CONFLICT (operational_game_id) DO UPDATE SET
       player_id          = EXCLUDED.player_id,
+      composer_player_id = EXCLUDED.composer_player_id,
+      -- The Racer seat fills mid-game, after the first sync, so this must be
+      -- part of the update and not only the insert.
+      racer_player_id    = EXCLUDED.racer_player_id,
       lifecycle_state    = EXCLUDED.lifecycle_state,
       outcome            = EXCLUDED.outcome,
       termination_reason = EXCLUDED.termination_reason,
@@ -507,9 +514,17 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
   if (!sql) return null;
 
   try {
+    // V2.3: all THREE id columns, together. Clearing only player_id would leave
+    // an erased player still linked as Composer or Racer — deletion would be a
+    // promise the schema quietly broke.
     const rows = await sql`
-      UPDATE corpus.games SET player_id = NULL
+      UPDATE corpus.games
+         SET player_id          = CASE WHEN player_id          = ${playerId} THEN NULL ELSE player_id          END,
+             composer_player_id = CASE WHEN composer_player_id = ${playerId} THEN NULL ELSE composer_player_id END,
+             racer_player_id    = CASE WHEN racer_player_id    = ${playerId} THEN NULL ELSE racer_player_id    END
        WHERE player_id = ${playerId}
+          OR composer_player_id = ${playerId}
+          OR racer_player_id = ${playerId}
        RETURNING corpus_game_id
     `;
     return rows.length;

@@ -151,6 +151,9 @@ function game(qa: QuestionLogEntry[]): GameRecord {
   return {
     game_id: randomUUID(),
     player_id: null,
+    composer_player_id: null,
+    racer_player_id: null,
+    join_code: null,
     phase: "questioning",
     created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(),

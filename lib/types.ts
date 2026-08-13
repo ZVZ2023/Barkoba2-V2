@@ -244,6 +244,33 @@ export interface GameRecord {
    * created before V2.1.1 never had it.
    */
   player_id: string | null;
+  /**
+   * V2.3 — who occupies each seat.
+   *
+   * References, not foreign keys, exactly like `player_id`: there is no players
+   * table for the anonymous majority to point at.
+   *
+   * Until V2.3 a game had at most one human, so "which client renders" and "who
+   * is asking" were the same question and `composer_kind`/`racer_kind` answered
+   * both. In Human↔Human they are different questions. These two fields are what
+   * make role a property of the REQUEST rather than only of the game, and they
+   * are the basis of every authorization check in the H↔H routes.
+   *
+   * Populated for the human seat in the existing single-human modes too, so the
+   * seat model has one meaning everywhere rather than a special case.
+   */
+  composer_player_id: string | null;
+  racer_player_id: string | null;
+  /**
+   * V2.3 — the Human↔Human invitation code, so the Composer can retrieve the
+   * link after a refresh. Null in every other mode.
+   *
+   * Safe to hold here because it is surfaced ONLY through the Composer branch
+   * of lib/gameView.ts; no Racer projection includes it. It is an invitation,
+   * not a credential — the authoritative guard against a third player is
+   * `racer_player_id` already being set.
+   */
+  join_code: string | null;
   phase: GamePhase;
   created_at: string;
   expires_at: string;
