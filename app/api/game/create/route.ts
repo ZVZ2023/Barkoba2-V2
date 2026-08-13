@@ -219,11 +219,20 @@ export async function POST(req: NextRequest) {
   // Resolved BEFORE the Validator runs, because the Validator is told the
   // allowance — a target that is reasonable inside 50 questions may not be
   // inside 20, so it must judge against the budget the game will actually use.
+  // Applies to BOTH human-Composer flows — this block is only reached when a
+  // human set the target, whether the Racer is the AI (/compose) or another
+  // person (/play/human). The rule belongs to "a human owns the target", not to
+  // who is guessing, so it is resolved once here for both.
   const humanVsHuman = body.mode === "human_human";
+  const composerChoseBudget =
+    body.difficulty !== undefined || body.max_questions !== undefined;
   const humanDifficulty: Difficulty = DIFFICULTIES.includes(body.difficulty as Difficulty)
     ? (body.difficulty as Difficulty)
     : "easy";
-  const maxQuestions = humanVsHuman
+  // No explicit choice keeps the historic behaviour exactly, including the
+  // MAX_QUESTIONS deployment knob. A client that does not offer the control is
+  // not silently switched onto a different default.
+  const maxQuestions = composerChoseBudget
     ? resolveQuestionBudget(humanDifficulty, body.max_questions)
     : env.maxQuestions();
 
@@ -281,9 +290,11 @@ export async function POST(req: NextRequest) {
     // the seat model has one meaning everywhere rather than a special case.
     composer_player_id: playerId,
     racer_kind: humanVsHuman ? "human" : "ai",
-    // Recorded for Human↔Human so the corpus knows what the allowance was
-    // chosen against. Null in 0.3.x, where difficulty is not a concept.
-    difficulty: humanVsHuman ? humanDifficulty : null,
+    // Recorded whenever the Composer actually expressed one, in either human
+    // flow, so the corpus knows what the allowance was chosen against. Stays
+    // null when no choice was made, so games that never had a difficulty are
+    // not retroactively given one.
+    difficulty: composerChoseBudget ? humanDifficulty : null,
     // Left null until someone joins. awaitingRacer() reads exactly this.
     racer_player_id: null,
     phase: "questioning",

@@ -219,6 +219,33 @@ test("the H↔H route enforces the budget it was given, whatever its size", () =
   assert.equal(buildGameView(nearlyDone, "racer").questions_remaining, 1);
 });
 
+test("the budget rule applies to BOTH human-Composer flows, from one source", () => {
+  // It belongs to "a human owns the target", not to who is guessing. The two
+  // setup screens must share the control, or the same choice ends up meaning
+  // two different things.
+  const composer = readFileSync("app/ComposerEntry.tsx", "utf8");
+  const human = readFileSync("app/play/human/HumanSetup.tsx", "utf8");
+
+  for (const [name, src] of [["/compose", composer], ["/play/human", human]] as const) {
+    assert.match(src, /BudgetPicker/, `${name} must use the shared picker`);
+    assert.match(src, /max_questions: pickedBudget|max_questions: budget/, `${name} must submit it`);
+    assert.match(src, /difficulty,/, `${name} must submit the difficulty`);
+  }
+
+  // Neither screen may carry its own copy of the difficulty vocabulary.
+  for (const src of [composer, human]) {
+    assert.doesNotMatch(src, /Hétköznapi dolgok/);
+  }
+});
+
+test("a Composer who expresses no choice keeps the historic default", () => {
+  // /compose has always used the MAX_QUESTIONS deployment knob. A client that
+  // does not send the control must not be silently moved onto a new default.
+  const src = readFileSync("app/api/game/create/route.ts", "utf8");
+  assert.match(src, /composerChoseBudget\s*=\s*\n?\s*body\.difficulty !== undefined \|\| body\.max_questions !== undefined/);
+  assert.match(src, /composerChoseBudget\s*\n?\s*\?\s*resolveQuestionBudget\(humanDifficulty, body\.max_questions\)\s*\n?\s*:\s*env\.maxQuestions\(\)/);
+});
+
 test("creation resolves the budget before the Validator judges the target", () => {
   // A target reasonable inside 50 questions may not be inside 20, so the
   // Validator has to be told the allowance the game will actually use.

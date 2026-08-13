@@ -5,6 +5,8 @@ import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import GameShell from "./components/GameShell";
+import BudgetPicker, { pickedBudget } from "./components/BudgetPicker";
+import type { Difficulty } from "@/lib/types";
 
 type ViewState =
   | { step: "entry" }
@@ -45,6 +47,8 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   const router = useRouter();
   const [target, setTarget] = useState("");
   const [clarification, setClarification] = useState("");
+  const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
   const [view, setView] = useState<ViewState>({ step: "entry" });
   // Asked once, before setup. Resolved locally after the answer so the form
   // appears immediately rather than after a round trip.
@@ -59,6 +63,10 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
         body: JSON.stringify({
           target,
           private_clarification: clarification,
+          // V2.3 — the Composer's chosen allowance. The server re-resolves it;
+          // this only proposes.
+          difficulty,
+          max_questions: pickedBudget(difficulty, budgetOverride),
           // Set once the player has seen the warning and chosen to continue.
           force,
         }),
@@ -145,6 +153,16 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
               placeholder="Csak ha a szó többfélét is jelenthet — pl. a fűnyíróm indítózsinórjának fogantyúja"
             />
           </label>
+
+          {/* V2.3 — shared with the two-player setup screen: one rule for
+              difficulty, recommendation and override. See BudgetPicker. */}
+          <BudgetPicker
+            difficulty={difficulty}
+            onDifficultyChange={setDifficulty}
+            budgetOverride={budgetOverride}
+            onBudgetChange={setBudgetOverride}
+            racer="ai"
+          />
 
           <button
             onClick={() => void submit()}

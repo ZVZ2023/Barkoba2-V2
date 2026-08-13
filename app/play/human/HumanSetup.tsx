@@ -2,16 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { QUESTION_BUDGETS, recommendedBudget } from "@/lib/questionBudget";
+import BudgetPicker, { pickedBudget } from "@/app/components/BudgetPicker";
 import type { Difficulty } from "@/lib/types";
-
-// Same wording as the AI-Composer setup screen. Difficulty describes deductive
-// DISTANCE, never obscurity — reused verbatim so the two screens cannot drift.
-const DIFFICULTIES: { value: Difficulty; label: string; blurb: string }[] = [
-  { value: "easy", label: "Könnyű", blurb: "Hétköznapi dolgok. Gyerekkel is jó." },
-  { value: "medium", label: "Közepes", blurb: "Általános műveltség. Nem kell utánanézni." },
-  { value: "hard", label: "Nehéz", blurb: "Több lépés a megfejtésig — nem homályosabb." },
-];
 
 // ---------------------------------------------------------------------------
 // V2.3 — creating a Human↔Human game.
@@ -35,8 +27,7 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
   const [error, setError] = useState<string | null>(null);
   const [needsForce, setNeedsForce] = useState(false);
 
-  const recommended = recommendedBudget(difficulty);
-  const budget = budgetOverride ?? recommended;
+  const budget = pickedBudget(difficulty, budgetOverride);
 
   async function create(force: boolean) {
     setBusy(true);
@@ -115,64 +106,14 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
         />
       </label>
 
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Nehézség</span>
-        <div className="flex flex-wrap gap-2">
-          {DIFFICULTIES.map((d) => (
-            <button
-              key={d.value}
-              type="button"
-              onClick={() => setDifficulty(d.value)}
-              disabled={busy}
-              className={`min-h-11 flex-1 rounded-md px-4 py-2 text-sm ${
-                difficulty === d.value
-                  ? "bg-[#1e3a24] font-medium text-[#f6ece0]"
-                  : "border border-neutral-900/20 bg-white/70"
-              }`}
-            >
-              {d.label}
-            </button>
-          ))}
-        </div>
-        <p className="text-sm text-neutral-600">
-          {DIFFICULTIES.find((d) => d.value === difficulty)?.blurb}
-        </p>
-      </div>
-
-      <div className="flex flex-col gap-1">
-        <span className="text-sm font-medium">Kérdések száma</span>
-        <div className="flex flex-wrap gap-2">
-          {QUESTION_BUDGETS.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => setBudgetOverride(b)}
-              disabled={busy}
-              className={`min-h-11 flex-1 rounded-md px-4 py-2 text-sm ${
-                budget === b
-                  ? "bg-[#1e3a24] font-medium text-[#f6ece0]"
-                  : "border border-neutral-900/20 bg-white/70"
-              }`}
-            >
-              {b}
-            </button>
-          ))}
-        </div>
-        <p className="text-sm text-neutral-600">
-          {budget === recommended
-            ? `Ennyit javaslunk ehhez a nehézséghez (${recommended}). Felülírhatod.`
-            : `Te választottad: ${budget}. Javaslatunk ${recommended} lenne.`}
-          {budgetOverride !== null && (
-            <button
-              type="button"
-              onClick={() => setBudgetOverride(null)}
-              className="ml-2 underline underline-offset-2"
-            >
-              Vissza a javaslathoz
-            </button>
-          )}
-        </p>
-      </div>
+      <BudgetPicker
+        difficulty={difficulty}
+        onDifficultyChange={setDifficulty}
+        budgetOverride={budgetOverride}
+        onBudgetChange={setBudgetOverride}
+        disabled={busy}
+        racer="human"
+      />
 
       {error && <p className="text-sm text-[#8b2f2f]">{error}</p>}
 
