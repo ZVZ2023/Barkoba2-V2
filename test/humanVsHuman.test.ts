@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import { awaitingRacer, isHumanVsHuman, isParticipant, requireSeat, resolveSeat } from "../lib/seats";
 import { buildComposerView, buildGameView, isSeatsTurn, pendingQuestionIndex } from "../lib/gameView";
 import { QUESTION_BUDGETS, recommendedBudget, resolveQuestionBudget } from "../lib/questionBudget";
+import { resultCopy, seatWon } from "../lib/resultCopy";
 import type { GameRecord, QuestionLogEntry } from "../lib/types";
 
 // ---------------------------------------------------------------------------
@@ -255,6 +256,144 @@ test("creation resolves the budget before the Validator judges the target", () =
   assert.ok(budgetAt > 0 && validatorAt > 0);
   assert.ok(budgetAt < validatorAt, "the budget must be resolved first");
   assert.match(src, /max_questions: maxQuestions,/);
+});
+
+// --- V2.3.1 (1): the winner is unmistakable, from each seat's own view ------
+
+test("every outcome tells each seat whether THEY won", () => {
+  const outcomes = [
+    "racer_correct",
+    "racer_incorrect",
+    "composer_win_integrity_upheld",
+    "racer_win_integrity_violation",
+  ] as const;
+
+  for (const r of outcomes) {
+    const composer = resultCopy(r, "composer");
+    const racer = resultCopy(r, "racer");
+
+    // Exactly one side won — never both, never neither.
+    assert.notEqual(composer.won, racer.won, `${r} must have one winner`);
+    assert.equal(composer.won, seatWon(r, "composer"));
+    assert.equal(racer.won, seatWon(r, "racer"));
+
+    // Each headline is non-empty and differs between seats: the same neutral
+    // sentence for both is precisely what the field test found unreadable.
+    assert.ok(composer.headline.length > 0 && racer.headline.length > 0);
+    assert.notEqual(composer.headline, racer.headline, `${r} reads the same to both`);
+  }
+});
+
+test("the two most common outcomes read as specified", () => {
+  assert.equal(resultCopy("racer_incorrect", "composer").headline, "NYERTÉL!");
+  assert.match(resultCopy("racer_incorrect", "composer").detail, /nem találta el/);
+  assert.equal(resultCopy("racer_incorrect", "racer").headline, "NEM TALÁLTAD EL");
+  assert.match(resultCopy("racer_incorrect", "racer").detail, /gondolkodó nyert/);
+
+  // The inverse, so a correct guess is equally obvious to both.
+  assert.equal(resultCopy("racer_correct", "racer").headline, "ELTALÁLTAD!");
+  assert.equal(resultCopy("racer_correct", "composer").headline, "VESZTETTÉL");
+});
+
+test("a concede reads as a concede, not as a wrong guess", () => {
+  assert.equal(resultCopy("composer_win_integrity_upheld", "racer").headline, "FELADTAD");
+  assert.match(
+    resultCopy("composer_win_integrity_upheld", "composer").detail,
+    /feladta/
+  );
+});
+
+test("the result screen no longer relies on the neutral sentence", () => {
+  const src = readFileSync("app/game/[id]/HumanClient.tsx", "utf8");
+  assert.doesNotMatch(src, /"Nem talált\."/);
+  assert.match(src, /outcome\.headline/);
+  // The adjudication text still follows — it explains, it no longer announces.
+  assert.match(src, /adjudication_notes/);
+});
+
+// --- V2.3.1 (2): BIZONYTALAN opens its own explanation ----------------------
+
+test("the explanation is reached THROUGH the BIZONYTALAN choice", () => {
+  const src = readFileSync("app/game/[id]/HumanClient.tsx", "utf8");
+  // The field is behind the choice, not sitting above the buttons.
+  assert.match(src, /setExplaining\(true\)/);
+  assert.match(src, /explaining \?|!explaining/);
+  // And it still submits the same field the server and adjudicator already use.
+  assert.match(src, /ambiguous_explanation: explanation/);
+});
+
+test("an AMBIGUOUS answer still carries its explanation into the record", () => {
+  // Unchanged persistence: the projection surfaces what the Composer typed.
+  const g = hhGame({
+    qa_log: [
+      entry({
+        composer_response: "AMBIGUOUS",
+        ambiguous_explanation: "No longer, it is machine made.",
+      }),
+    ],
+  });
+  assert.equal(
+    buildGameView(g, "racer").turns[0]?.ambiguous_explanation,
+    "No longer, it is machine made."
+  );
+});
+
+// --- V2.3.1 (3): the Composer's voluntary hint ------------------------------
+
+test("a hint is a clue turn — no new turn type, no migration", () => {
+  const src = readFileSync("app/api/game/[id]/hh/turn/route.ts", "utf8");
+  assert.match(src, /body\.action === "hint"/);
+  assert.match(src, /entry\.turn_type = "clue"/);
+  assert.match(src, /entry\.clue_text = text/);
+  // It must not consume a question or become an answer.
+  const hintBlock = src.slice(src.indexOf('body.action === "hint"'), src.indexOf("Composer: answer the one"));
+  assert.doesNotMatch(hintBlock, /question_count \+= 1/);
+  assert.doesNotMatch(hintBlock, /composer_response/);
+});
+
+test("only the Composer may hint", () => {
+  const src = readFileSync("app/api/game/[id]/hh/turn/route.ts", "utf8");
+  const hintBlock = src.slice(src.indexOf('body.action === "hint"'), src.indexOf("Composer: answer the one"));
+  assert.match(hintBlock, /requireSeat\(game, playerId, "composer"\)/);
+});
+
+test("a hint reaches the Racer and survives in the transcript", () => {
+  const g = hhGame({
+    qa_log: [
+      entry({ turn_index: 1, composer_response: "YES" }),
+      entry({ turn_index: 2, turn_type: "clue", question_text: null, clue_text: "Rossz irányba indultál." }),
+    ],
+  });
+  // The projection is what both the first render and every poll are built from,
+  // so appearing here is what makes it survive refresh and reconnect.
+  const racerTurns = buildGameView(g, "racer").turns;
+  assert.equal(racerTurns[1]?.turn_type, "clue");
+  assert.equal(racerTurns[1]?.clue_text, "Rossz irányba indultál.");
+});
+
+test("a hint between a question and its answer does not steal the turn", () => {
+  // The regression this ordering invites: a clue arriving after an unanswered
+  // question must not mask it and hand the move back to the Racer.
+  const g = hhGame({
+    qa_log: [
+      entry({ turn_index: 1 }), // asked, unanswered
+      entry({ turn_index: 2, turn_type: "clue", question_text: null, clue_text: "Nézd máshol." }),
+    ],
+  });
+  assert.equal(pendingQuestionIndex(g), 1);
+  assert.equal(isSeatsTurn(g, "composer"), true);
+  assert.equal(isSeatsTurn(g, "racer"), false);
+});
+
+test("a hint after an answered question leaves it the Racer's turn", () => {
+  const g = hhGame({
+    qa_log: [
+      entry({ turn_index: 1, composer_response: "NO" }),
+      entry({ turn_index: 2, turn_type: "clue", question_text: null, clue_text: "Melegebb." }),
+    ],
+  });
+  assert.equal(pendingQuestionIndex(g), null);
+  assert.equal(isSeatsTurn(g, "racer"), true);
 });
 
 // --- structural guards ------------------------------------------------------

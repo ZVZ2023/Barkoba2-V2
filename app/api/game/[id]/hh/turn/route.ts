@@ -32,9 +32,10 @@ import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 export const dynamic = "force-dynamic";
 
 interface Body {
-  action: "question" | "answer" | "guess" | "concede";
+  action: "question" | "answer" | "guess" | "concede" | "hint";
   question?: string;
   guess?: string;
+  hint?: string;
   answer?: ComposerAnswer;
   ambiguous_explanation?: string;
   /**
@@ -127,6 +128,49 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
   }
 
   const pending = pendingQuestionIndex(game);
+
+  // -------------------------------------------------------------------------
+  // V2.3.1 — Composer's voluntary hint. "You are barking up the wrong tree."
+  //
+  // DELIBERATELY REUSES turn_type "clue" RATHER THAN ADDING A TYPE. A clue is
+  // already defined as help flowing from the Composer to the Racer that costs
+  // no question and never answers one — which is exactly this. What differed
+  // in 0.9.8.0 was who ASKED for it, not what it is.
+  //
+  // Reuse also keeps the corpus uniform and needs no migration: the turn_type
+  // CHECK constraint in migration 0001 already permits 'clue', and
+  // gameCorpus.actorFor stamps it `human_composer` here versus `ai_composer`
+  // for an AI clue — so the two remain distinguishable in analysis without a
+  // new column.
+  //
+  // NOT gated on your_turn. The moment worth intervening is usually just after
+  // an answer, when the other player has started down an irrelevant branch.
+  // It spends no question and no clue credit, and changes nobody's turn.
+  // -------------------------------------------------------------------------
+  if (body.action === "hint") {
+    const seatCheck = requireSeat(game, playerId, "composer");
+    if (!seatCheck.ok) {
+      return NextResponse.json(
+        { error: seatCheck.error, message: "Csak a gondolkodó súghat." },
+        { status: 403 }
+      );
+    }
+
+    const text = (body.hint || "").trim().slice(0, MAX_TEXT);
+    if (!text) return NextResponse.json({ error: "missing_hint" }, { status: 400 });
+
+    // Stored verbatim. The Composer owns the target and may say what they
+    // like about it; the only way the secret reaches the Racer here is if the
+    // Composer types it themselves, which is their decision to make.
+    const entry = newEntry(game.qa_log.length + 1);
+    entry.turn_type = "clue";
+    entry.question_text = null;
+    entry.clue_text = text;
+    game.qa_log.push(entry);
+
+    await saveGame(game);
+    return respond(game);
+  }
 
   // -------------------------------------------------------------------------
   // Composer: answer the one outstanding question.

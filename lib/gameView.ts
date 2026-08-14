@@ -78,11 +78,22 @@ export interface ComposerGameView extends GameView {
   join_code: string | null;
 }
 
-/** The most recent question with no answer yet, or null. */
+/**
+ * The most recent question with no answer yet, or null.
+ *
+ * Scans backwards and SKIPS clue turns. A Composer hint may land between a
+ * question and its answer — that is the moment it is most useful — and it must
+ * not mask the question underneath it. Treating any non-question as "nothing
+ * pending" would hand the turn back to the Racer and let them stack a second
+ * question on an unanswered one.
+ *
+ * A guess or concede ends the questioning phase, so it correctly stops the scan.
+ */
 export function pendingQuestionIndex(game: GameRecord): number | null {
   for (let i = game.qa_log.length - 1; i >= 0; i -= 1) {
     const entry = game.qa_log[i];
     if (!entry) continue;
+    if (entry.turn_type === "clue") continue;
     if (entry.turn_type !== "question") return null;
     return entry.composer_response === null ? entry.turn_index : null;
   }
@@ -125,6 +136,9 @@ export function revisionOf(game: GameRecord): number {
   const answered = game.qa_log.filter((e) => e.composer_response !== null).length;
   return game.qa_log.length * 1000 + answered * 10 + (game.phase === "complete" ? 1 : 0);
 }
+// A hint bumps the revision, so a question composed before it is rejected as
+// stale. That is the intended behaviour rather than friction: the hint exists
+// precisely to redirect the Racer BEFORE they spend the next question.
 
 /** The shared, target-free projection. Built field by field, never spread. */
 export function buildGameView(game: GameRecord, seat: Seat): GameView {
