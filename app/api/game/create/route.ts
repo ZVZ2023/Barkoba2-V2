@@ -6,6 +6,36 @@ import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
 import { createJoinCode } from "@/lib/joinCode";
 import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
+import { canStartGame, consumeForGame, ensureInitialComplimentary } from "@/lib/entitlements";
+import type { ConsumeOutcome } from "@/lib/entitlements";
+
+/**
+ * V2.4 — the single entitlement refusal. Fails CLOSED: an unverifiable
+ * entitlement denies creation rather than handing out a free game.
+ *
+ * This posture exists at creation and nowhere else. No turn, answer, clue,
+ * correction or resolution route consults entitlement, so neither exhaustion
+ * nor an outage of the ledger can ever end a game already under way.
+ */
+function entitlementRefusal(outcome: ConsumeOutcome): NextResponse | null {
+  if (outcome.ok) return null;
+  if (outcome.reason === "insufficient_balance") {
+    return NextResponse.json(
+      {
+        error: "no_play_credit",
+        message: "Elfogyott a játékkereted. Tölts fel, és jöhet a következő játék.",
+      },
+      { status: 402 }
+    );
+  }
+  return NextResponse.json(
+    {
+      error: "entitlement_unavailable",
+      message: "Most nem tudjuk ellenőrizni a játékkeretedet. Próbáld újra hamarosan.",
+    },
+    { status: 503 }
+  );
+}
 import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
@@ -68,6 +98,17 @@ export async function POST(req: NextRequest) {
   // This is deliberately not Cron and deliberately not a queue.
   // -------------------------------------------------------------------------
   void reconcileOpportunistically(getGame).catch(() => undefined);
+
+  // V2.4 — the optional first-contact complimentary allowance. Never throws;
+  // if it fails the gate below simply sees the real balance.
+  await ensureInitialComplimentary(playerId);
+
+  // Advisory pre-check, so a player with no balance is refused before an
+  // Anthropic call is spent telling them so. consumeForGame below remains the
+  // authority — only the consumption is atomic.
+  const preCheck = await canStartGame(playerId);
+  const preRefusal = entitlementRefusal(preCheck);
+  if (preRefusal) return preRefusal;
 
   const ip = extractClientIp(req.headers);
   const rateLimit = await checkGameCreationRateLimit(ip);
@@ -183,6 +224,14 @@ export async function POST(req: NextRequest) {
       difficulty,
       clue_mode: clueMode,
     });
+
+    // Authoritative charge, once the game exists and its id is known. If it
+    // fails here the game_id is never returned: the record is orphaned, takes
+    // no turns, and therefore never crosses the V2.2 corpus threshold. It
+    // expires with the ordinary 24h TTL.
+    const aiCharge = await consumeForGame(playerId, aiGame.game_id);
+    const aiRefusal = entitlementRefusal(aiCharge);
+    if (aiRefusal) return aiRefusal;
 
     return NextResponse.json({
       status: "VALID",
@@ -311,6 +360,12 @@ export async function POST(req: NextRequest) {
   // The invitation exists only for Human↔Human. Separate from the game id on
   // purpose: it can be burned the moment the Racer seat fills, which is what
   // makes "no third player" enforceable rather than merely unlikely.
+  // Authoritative charge. Same reasoning as the AI branch: a refusal here
+  // leaves an orphaned, turn-less game that never enters the corpus.
+  const charge = await consumeForGame(playerId, game.game_id);
+  const refusal = entitlementRefusal(charge);
+  if (refusal) return refusal;
+
   const joinCode = humanVsHuman ? await createJoinCode(game.game_id) : null;
   if (joinCode) {
     // Held on the record so a refreshed Composer can retrieve the link.

@@ -60,6 +60,10 @@ const QUARANTINED = [
   "lib/corpus/db.ts",
   "lib/corpus/pendingQueue.ts",
   "lib/corpus/sqlStatements.ts",
+  // V2.4 — the entitlement gate is a PRE-game concern. It has no business near
+  // game state, seat authorization or the secret, and quarantining it is what
+  // keeps that true as it grows.
+  "lib/entitlements.ts",
   "scripts/migrate.ts",
   "lib/playerIdentity.ts",
   "app/api/player/name/route.ts",

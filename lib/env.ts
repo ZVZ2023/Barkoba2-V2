@@ -122,4 +122,39 @@ export const env = {
    * into a batch job.
    */
   corpusReconcileBatch: () => optionalInt("CORPUS_RECONCILE_BATCH", 3),
+
+  // --- V2.4: Play Credit entitlement --------------------------------------
+  //
+  // Play Credit is an internal entitlement unit. It is NOT a game, a model
+  // call, a token, a currency, or the SÚGÓ/clue credit — that one is derived
+  // per game in lib/clueCredits.ts and shares nothing with this.
+
+  /**
+   * Master switch for the game-creation entitlement gate. Default OFF.
+   *
+   * The same deployment order the corpus flag exists for: migrate, deploy,
+   * verify nothing changed, then switch gating on. Also the fastest rollback,
+   * with no redeploy.
+   *
+   * NOTE: enabling this with no complimentary grant configured and no purchased
+   * balance will block game creation for everyone. That is the honest
+   * consequence of a gate with nothing behind it, not a bug.
+   */
+  entitlementsEnabled: () => booleanFlag("ENTITLEMENTS_ENABLED"),
+
+  /**
+   * Play Credits charged per game started.
+   *
+   * A single flat provisional cost, deliberately NOT a game_type -> cost
+   * mapping: which modes cost what is not decided in this pass. One number is
+   * the minimum a gate can work with; the mapping is future work.
+   */
+  entitlementCostPerGame: () => optionalInt("ENTITLEMENT_COST_PER_GAME", 1),
+
+  /**
+   * Optional first-contact complimentary allowance, granted at most once per
+   * player. Default 0 = no automatic grant, because the quantity is a product
+   * decision that this pass deliberately does not take.
+   */
+  entitlementComplimentaryGrant: () => optionalInt("ENTITLEMENT_COMPLIMENTARY_GRANT", 0),
 };

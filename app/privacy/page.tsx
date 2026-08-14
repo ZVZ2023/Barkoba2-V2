@@ -199,6 +199,27 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
+      <Section heading="Játékkeret">
+        <p>
+          A játékindításhoz játékkeret tartozik. Amikor kapsz vagy felhasználsz
+          belőle, arról tartós bejegyzés készül: mennyi, mikor, milyen jogcímen
+          (ajándék vagy vásárolt), és melyik játékhoz lett felhasználva. Ez a
+          játékosazonosítódhoz kötődik, nem a nevedhez.
+        </p>
+        <p>
+          A bejegyzések utólag nem módosulnak és nem törlődnek — egy tévedést új
+          bejegyzés javít, hogy a javítás is nyomon követhető maradjon. Ez teszi
+          ellenőrizhetővé, mennyi keretet kaptál és mennyit használtál el.
+        </p>
+        <p>
+          Ha valaha fizetett keretet kapsz, ahhoz helyreállítható játékos kell,
+          hogy a böngésződ törlése ne vigye el a kifizetett értéket. Ezért ilyen
+          esetben — ha még nincs — automatikusan létrejön a helyreállító kódod.
+          Az ajándékkeret ilyet nem igényel: ha ajándékkerettel játszol és
+          elveszted a sütidet, a fel nem használt rész elvész.
+        </p>
+      </Section>
+
       <Section heading="Ha törlöd a védett játékosodat">
         <p>
           A törlés leválasztja a megőrzött játékokat a játékosodról: a
