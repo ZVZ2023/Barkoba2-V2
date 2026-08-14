@@ -229,7 +229,10 @@ export async function POST(req: NextRequest) {
     // fails here the game_id is never returned: the record is orphaned, takes
     // no turns, and therefore never crosses the V2.2 corpus threshold. It
     // expires with the ordinary 24h TTL.
-    const aiCharge = await consumeForGame(playerId, aiGame.game_id);
+    // The budget is read back off the CREATED RECORD, not from the request:
+    // aiGame.max_questions is what the server resolved and persisted. The cost
+    // table itself lives in lib/questionBudget.ts and is never held here.
+    const aiCharge = await consumeForGame(playerId, aiGame.game_id, aiGame.max_questions);
     const aiRefusal = entitlementRefusal(aiCharge);
     if (aiRefusal) return aiRefusal;
 
@@ -362,7 +365,8 @@ export async function POST(req: NextRequest) {
   // makes "no third player" enforceable rather than merely unlikely.
   // Authoritative charge. Same reasoning as the AI branch: a refusal here
   // leaves an orphaned, turn-less game that never enters the corpus.
-  const charge = await consumeForGame(playerId, game.game_id);
+  // Same rule: the persisted, server-resolved budget decides the cost.
+  const charge = await consumeForGame(playerId, game.game_id, game.max_questions);
   const refusal = entitlementRefusal(charge);
   if (refusal) return refusal;
 

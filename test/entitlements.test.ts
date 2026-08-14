@@ -11,6 +11,7 @@ import {
   grantComplimentary,
   isEntitlementEnabled,
 } from "../lib/entitlements";
+import { playCreditCostForBudget } from "../lib/questionBudget";
 
 // ---------------------------------------------------------------------------
 // V2.4 — Play Credit entitlement.
@@ -37,7 +38,6 @@ const SAVED = {
   enabled: process.env.ENTITLEMENTS_ENABLED,
   db: process.env.DATABASE_URL,
   corpus: process.env.CORPUS_ENABLED,
-  cost: process.env.ENTITLEMENT_COST_PER_GAME,
 };
 
 /** Minimal in-memory stand-in for accounts.entitlement_ledger. */
@@ -124,7 +124,6 @@ beforeEach(() => {
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   process.env.ENTITLEMENTS_ENABLED = "true";
-  process.env.ENTITLEMENT_COST_PER_GAME = "1";
   __setSqlClientForTests(fakeSql);
 });
 
@@ -134,7 +133,6 @@ afterEach(() => {
     ["ENTITLEMENTS_ENABLED", SAVED.enabled],
     ["DATABASE_URL", SAVED.db],
     ["CORPUS_ENABLED", SAVED.corpus],
-    ["ENTITLEMENT_COST_PER_GAME", SAVED.cost],
   ] as const) {
     if (val === undefined) delete process.env[k];
     else process.env[k] = val;
@@ -160,8 +158,8 @@ test("1b. an at-most-once grant key cannot double-grant", async () => {
 
 test("2. balance is SUM(amount) over the ledger, not a counter", async () => {
   await grantComplimentary(P, 5);
-  await consumeForGame(P, randomUUID());
-  await consumeForGame(P, randomUUID());
+  await consumeForGame(P, randomUUID(), 20);
+  await consumeForGame(P, randomUUID(), 20);
   assert.equal(await getBalance(P), 3);
 
   // Provenance survives: complimentary and purchased never collapse.
@@ -180,7 +178,7 @@ test("2. balance is SUM(amount) over the ledger, not a counter", async () => {
 test("3. creating a game consumes exactly one charge", async () => {
   await grantComplimentary(P, 2);
   const game = randomUUID();
-  assert.deepEqual(await consumeForGame(P, game), { ok: true, reason: "consumed" });
+  assert.deepEqual(await consumeForGame(P, game, 20), { ok: true, reason: "consumed" });
   assert.equal(await getBalance(P), 1);
 });
 
@@ -188,9 +186,9 @@ test("4. a retried creation cannot double-consume", async () => {
   await grantComplimentary(P, 5);
   const game = randomUUID();
 
-  const first = await consumeForGame(P, game);
-  const second = await consumeForGame(P, game);
-  const third = await consumeForGame(P, game);
+  const first = await consumeForGame(P, game, 20);
+  const second = await consumeForGame(P, game, 20);
+  const third = await consumeForGame(P, game, 20);
 
   assert.equal(first.reason, "consumed");
   assert.equal(second.reason, "already_consumed");
@@ -209,9 +207,9 @@ test("4b. the idempotency guarantee is a database constraint, not app care", () 
 
 test("5. an exhausted balance prevents a new game", async () => {
   await grantComplimentary(P, 1);
-  assert.equal((await consumeForGame(P, randomUUID())).ok, true);
+  assert.equal((await consumeForGame(P, randomUUID(), 20)).ok, true);
 
-  const denied = await consumeForGame(P, randomUUID());
+  const denied = await consumeForGame(P, randomUUID(), 20);
   assert.deepEqual(denied, { ok: false, reason: "insufficient_balance" });
   assert.equal((await canStartGame(P)).ok, false);
   assert.equal(await getBalance(P), 0);
@@ -219,12 +217,12 @@ test("5. an exhausted balance prevents a new game", async () => {
 
 test("6. a new grant restores the ability to create a game", async () => {
   await grantComplimentary(P, 1);
-  await consumeForGame(P, randomUUID());
+  await consumeForGame(P, randomUUID(), 20);
   assert.equal((await canStartGame(P)).ok, false);
 
   await grantComplimentary(P, 2);
   assert.equal((await canStartGame(P)).ok, true);
-  assert.equal((await consumeForGame(P, randomUUID())).ok, true);
+  assert.equal((await consumeForGame(P, randomUUID(), 20)).ok, true);
   assert.equal(await getBalance(P), 1);
 });
 
@@ -258,7 +256,7 @@ test("7. an in-flight game survives exhaustion — enforced by there being ONE g
 test("7b. exhausting a balance mid-game leaves the game's charge intact", async () => {
   await grantComplimentary(P, 1);
   const game = randomUUID();
-  await consumeForGame(P, game);
+  await consumeForGame(P, game, 20);
 
   // The player is now broke, and a later expiry drives them no lower.
   assert.equal(await getBalance(P), 0);
@@ -266,16 +264,124 @@ test("7b. exhausting a balance mid-game leaves the game's charge intact", async 
 
   // The game's own consumption row is untouched and still says paid — which is
   // what a replayed creation would find.
-  assert.equal((await consumeForGame(P, game)).reason, "already_consumed");
+  assert.equal((await consumeForGame(P, game, 20)).reason, "already_consumed");
 });
 
 test("7c. an entitlement-store outage denies CREATION only", async () => {
   failNext = true;
-  const denied = await consumeForGame(P, randomUUID());
+  const denied = await consumeForGame(P, randomUUID(), 20);
   assert.deepEqual(denied, { ok: false, reason: "unavailable" }, "fail closed at creation");
   assert.equal((await canStartGame(P)).ok, false);
   // The failure posture cannot reach gameplay, because gameplay never calls in
   // — proven by the route scan in test 7.
+});
+
+// --- V2.4.1: variable cost by question budget -------------------------------
+
+test("V2.4.1-1. each budget tier charges its own Play Credit cost", async () => {
+  const tiers: Array<[number, number]> = [
+    [20, 1],
+    [35, 2],
+    [50, 3],
+    [100, 5],
+  ];
+
+  for (const [budget, expected] of tiers) {
+    assert.equal(playCreditCostForBudget(budget), expected, `budget ${budget}`);
+  }
+
+  // And the charge actually moves the balance by that amount.
+  for (const [budget, expected] of tiers) {
+    const player = `p_${budget}`;
+    await grantComplimentary(player, 10);
+    await consumeForGame(player, randomUUID(), budget);
+    assert.equal(await getBalance(player), 10 - expected, `budget ${budget} charged wrong`);
+  }
+});
+
+test("V2.4.1-1b. the curve is monotonic, and a non-tier budget is never cheaper", () => {
+  // The curve is arbitrary, not a calibrated cost proxy — but it must never
+  // reward a larger budget with a smaller charge.
+  assert.ok(
+    playCreditCostForBudget(20) < playCreditCostForBudget(35) &&
+      playCreditCostForBudget(35) < playCreditCostForBudget(50) &&
+      playCreditCostForBudget(50) < playCreditCostForBudget(100)
+  );
+
+  // MAX_QUESTIONS is a deployment knob and need not be one of the four tiers.
+  assert.equal(playCreditCostForBudget(25), 2, "25 charges at the 35 tier");
+  assert.equal(playCreditCostForBudget(1), 1);
+  assert.equal(playCreditCostForBudget(500), 5, "beyond the top tier, top price");
+});
+
+test("V2.4.1-2. the charge cannot be priced by the client", async () => {
+  // consumeForGame takes a BUDGET, never a cost, and the table lives in
+  // lib/questionBudget.ts — no caller holds it.
+  const ent = readFileSync("lib/entitlements.ts", "utf8");
+  const charge = ent.slice(ent.indexOf("export async function consumeForGame"));
+  assert.match(charge, /playCreditCostForBudget\(questionBudget\)/);
+  assert.doesNotMatch(charge, /body\.|req\.|request\./, "the charge must not read a request");
+
+  // The route hands over the PERSISTED budget, not anything from the body.
+  const route = readFileSync("app/api/game/create/route.ts", "utf8");
+  assert.match(route, /consumeForGame\(playerId, aiGame\.game_id, aiGame\.max_questions\)/);
+  assert.match(route, /consumeForGame\(playerId, game\.game_id, game\.max_questions\)/);
+  assert.doesNotMatch(route, /consumeForGame\([^)]*body\./, "never from the request body");
+
+  // No environment setting can price a game either.
+  assert.doesNotMatch(readFileSync("lib/env.ts", "utf8"), /entitlementCostPerGame/);
+
+  // Behaviourally: an inflated budget argument would change the price, so the
+  // only thing that matters is that the route sources it from the record —
+  // asserted above. Here we prove the mapping itself is fixed.
+  await grantComplimentary(P, 10);
+  await consumeForGame(P, randomUUID(), 100);
+  assert.equal(await getBalance(P), 5, "budget-100 costs exactly 5, never a client's number");
+});
+
+test("V2.4.1-3. insufficient balance for the RESOLVED tier is refused", async () => {
+  await grantComplimentary(P, 3);
+
+  // 3 credits, budget-100 game costs 5 -> refused.
+  const denied = await consumeForGame(P, randomUUID(), 100);
+  assert.deepEqual(denied, { ok: false, reason: "insufficient_balance" });
+  assert.equal(await getBalance(P), 3, "a refused charge takes nothing");
+
+  // Same 3 credits, budget-35 game costs 2 -> succeeds.
+  const allowed = await consumeForGame(P, randomUUID(), 35);
+  assert.deepEqual(allowed, { ok: true, reason: "consumed" });
+  assert.equal(await getBalance(P), 1);
+});
+
+test("V2.4.1-3b. the dimension-blind pre-check passes, the charge still refuses", async () => {
+  // The pre-check runs before the body is parsed, so it cannot know the tier.
+  // A player with SOME balance passes it and is correctly refused later.
+  await grantComplimentary(P, 1);
+  assert.equal((await canStartGame(P)).ok, true, "pre-check sees a positive balance");
+  assert.equal((await consumeForGame(P, randomUUID(), 100)).ok, false, "charge knows the tier");
+  assert.equal(await getBalance(P), 1);
+});
+
+test("V2.4.1-5/6. a new player gets exactly 10, once, spendable on any tier", async () => {
+  const fresh = "new_player_1";
+  const amount = 10;
+
+  // Reuses the existing at-most-once grant_key mechanism, not a new one.
+  await grantComplimentary(fresh, amount, { grantKey: "initial_complimentary" });
+  await grantComplimentary(fresh, amount, { grantKey: "initial_complimentary" });
+  await grantComplimentary(fresh, amount, { grantKey: "initial_complimentary" });
+  assert.equal(await getBalance(fresh), 10, "granted once, not three times");
+
+  // No complimentary-specific tier restriction: budget-100 is spendable.
+  assert.deepEqual(await consumeForGame(fresh, randomUUID(), 100), {
+    ok: true,
+    reason: "consumed",
+  });
+  assert.equal(await getBalance(fresh), 5);
+
+  // And the default really is 10.
+  const envSrc = readFileSync("lib/env.ts", "utf8");
+  assert.match(envSrc, /optionalInt\("ENTITLEMENT_COMPLIMENTARY_GRANT", 10\)/);
 });
 
 // --- CONCURRENT DOUBLE-SPEND: different games, same last credit -------------
@@ -351,6 +457,46 @@ test("CONCURRENCY: without serialisation the last credit is double-spent", async
   const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
   assert.equal(a && b, true, "both succeed — the unguarded write skew");
   assert.equal(balance, -1, "balance goes negative: this is the defect");
+});
+
+test("CONCURRENCY: the guard holds with VARIABLE cost, not only cost=1", async () => {
+  // V2.4.1 — the prior pass proved this for a single credit. Re-proved for a
+  // budget-100 game costing 5: 7 credits fund exactly one such game, and two
+  // concurrent attempts must not both take 5.
+  const pg: PgSim = { rows: [], locks: new Set() };
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 7, operational_game_id: null, grant_key: null });
+
+  const cost = playCreditCostForBudget(100);
+  assert.equal(cost, 5);
+
+  const [a, b] = await Promise.all([
+    simulateCharge(pg, P, randomUUID(), cost, { useAdvisoryLock: true }),
+    simulateCharge(pg, P, randomUUID(), cost, { useAdvisoryLock: true }),
+  ]);
+
+  const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
+  assert.equal([a, b].filter(Boolean).length, 1, "exactly one budget-100 game is funded");
+  assert.equal(balance, 2, "7 - 5, not 7 - 10");
+  assert.ok(balance >= 0, "balance must never go negative");
+});
+
+test("CONCURRENCY: mixed tiers cannot overspend a shared balance", async () => {
+  // 5 credits, three concurrent attempts at different tiers. Whatever wins, the
+  // balance must never go below zero.
+  const pg: PgSim = { rows: [], locks: new Set() };
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 5, operational_game_id: null, grant_key: null });
+
+  await Promise.all(
+    [100, 50, 35].map((budget) =>
+      simulateCharge(pg, P, randomUUID(), playCreditCostForBudget(budget), {
+        useAdvisoryLock: true,
+      })
+    )
+  );
+
+  const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
+  assert.ok(balance >= 0, `balance went negative: ${balance}`);
+  assert.ok(balance <= 5);
 });
 
 test("CONCURRENCY: with the advisory lock, exactly one succeeds and balance never goes negative", async () => {
@@ -446,7 +592,7 @@ test("9b. entitlement lives in its own schema, never in immutable corpus.*", () 
 test("the gate ships OFF and is a no-op until switched on", async () => {
   process.env.ENTITLEMENTS_ENABLED = "false";
   assert.equal(isEntitlementEnabled(), false);
-  assert.deepEqual(await consumeForGame(P, randomUUID()), { ok: true, reason: "disabled" });
+  assert.deepEqual(await consumeForGame(P, randomUUID(), 20), { ok: true, reason: "disabled" });
   assert.deepEqual(await canStartGame(P), { ok: true, reason: "disabled" });
   assert.equal(ledger.length, 0, "nothing is written while disabled");
 });

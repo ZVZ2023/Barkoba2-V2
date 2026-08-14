@@ -143,18 +143,15 @@ export const env = {
   entitlementsEnabled: () => booleanFlag("ENTITLEMENTS_ENABLED"),
 
   /**
-   * Play Credits charged per game started.
+   * First-contact complimentary allowance, granted at most once per player.
    *
-   * A single flat provisional cost, deliberately NOT a game_type -> cost
-   * mapping: which modes cost what is not decided in this pass. One number is
-   * the minimum a gate can work with; the mapping is future work.
+   * V2.4.1 sets this to 10. Spendable on any tier including budget-100 (cost
+   * 5) — there is deliberately no complimentary-specific restriction, because
+   * RACER_DAILY_CALL_CEILING is the systemwide backstop at this scale.
+   *
+   * The per-game cost is NOT configured here: it is derived from the resolved
+   * question budget in lib/questionBudget.ts, so no deployment setting can put
+   * a price in a caller's hands.
    */
-  entitlementCostPerGame: () => optionalInt("ENTITLEMENT_COST_PER_GAME", 1),
-
-  /**
-   * Optional first-contact complimentary allowance, granted at most once per
-   * player. Default 0 = no automatic grant, because the quantity is a product
-   * decision that this pass deliberately does not take.
-   */
-  entitlementComplimentaryGrant: () => optionalInt("ENTITLEMENT_COMPLIMENTARY_GRANT", 0),
+  entitlementComplimentaryGrant: () => optionalInt("ENTITLEMENT_COMPLIMENTARY_GRANT", 10),
 };

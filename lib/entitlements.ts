@@ -2,6 +2,7 @@ import { getSql, isCorpusConfigured, type SqlClient } from "./corpus/db";
 import { env } from "./env";
 import { getDurablePlayer, claimPlayer } from "./playerStore";
 import { generateRecoveryCode } from "./recoveryCode";
+import { playCreditCostForBudget } from "./questionBudget";
 
 // ---------------------------------------------------------------------------
 // V2.4 — PLAY CREDIT. The only module permitted to read or write accounts.*,
@@ -260,12 +261,19 @@ export async function expireCredits(
  */
 export async function consumeForGame(
   playerId: string | null,
-  operationalGameId: string
+  operationalGameId: string,
+  questionBudget: number
 ): Promise<ConsumeOutcome> {
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
   if (!playerId) return { ok: false, reason: "no_player" };
 
-  const cost = env.entitlementCostPerGame();
+  // COST IS DERIVED HERE, FROM A BUDGET, NEVER RECEIVED AS A PRICE.
+  //
+  // The caller hands over the question budget it resolved server-side — the
+  // same value it persisted as max_questions — and the mapping lives inside
+  // lib/questionBudget.ts. No caller holds the table, so no request can state
+  // or influence what a game costs, even if a client invented a price field.
+  const cost = playCreditCostForBudget(questionBudget);
   if (cost <= 0) return { ok: true, reason: "disabled" };
 
   try {
@@ -359,11 +367,14 @@ export async function canStartGame(playerId: string | null): Promise<ConsumeOutc
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
   if (!playerId) return { ok: false, reason: "no_player" };
 
-  const cost = env.entitlementCostPerGame();
-  if (cost <= 0) return { ok: true, reason: "disabled" };
-
   try {
-    return (await getBalance(playerId)) >= cost
+    // DIMENSION-BLIND BY DESIGN. This runs before the request body is parsed,
+    // so the game's budget — and therefore its cost — is not yet known. It asks
+    // only "has this player any balance at all", which is the strongest
+    // question available at this point. A player with some balance but not
+    // enough for the tier they chose passes here and is correctly refused by
+    // the authoritative charge, which knows the budget.
+    return (await getBalance(playerId)) > 0
       ? { ok: true, reason: "consumed" }
       : { ok: false, reason: "insufficient_balance" };
   } catch (err) {
