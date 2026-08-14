@@ -278,6 +278,130 @@ test("7c. an entitlement-store outage denies CREATION only", async () => {
   // — proven by the route scan in test 7.
 });
 
+// --- CONCURRENT DOUBLE-SPEND: different games, same last credit -------------
+//
+// The unique index proves retry idempotency for the SAME game. This is the
+// separate case: two genuinely concurrent creations, different
+// operational_game_ids, one credit between them.
+//
+// The fake below models PostgreSQL READ COMMITTED honestly — a statement's
+// balance subquery sees only rows committed before that statement began — and
+// models pg_advisory_xact_lock as a per-player mutex held for the transaction.
+// That is what lets the two cases be told apart here.
+
+interface PgSim {
+  rows: Row[];
+  locks: Set<string>;
+}
+
+/** Runs one charge attempt against a simulated READ COMMITTED Postgres. */
+async function simulateCharge(
+  pg: PgSim,
+  playerId: string,
+  gameId: string,
+  cost: number,
+  opts: { useAdvisoryLock: boolean }
+): Promise<boolean> {
+  // Transaction begins. With the lock, a second caller waits here.
+  if (opts.useAdvisoryLock) {
+    while (pg.locks.has(playerId)) await new Promise((r) => setTimeout(r, 1));
+    pg.locks.add(playerId);
+  }
+
+  try {
+    // Statement snapshot: sum of rows committed so far.
+    const balance = pg.rows
+      .filter((r) => r.player_id === playerId)
+      .reduce((n, r) => n + r.amount, 0);
+
+    // Yield, so an unguarded concurrent caller can interleave right here —
+    // exactly the window between reading the balance and committing the write.
+    await new Promise((r) => setTimeout(r, 5));
+
+    if (pg.rows.some((r) => r.kind === "consumption" && r.operational_game_id === gameId)) {
+      return false; // unique index on operational_game_id
+    }
+    if (balance < cost) return false;
+
+    pg.rows.push({
+      player_id: playerId,
+      kind: "consumption",
+      amount: -cost,
+      operational_game_id: gameId,
+      grant_key: null,
+    });
+    return true;
+  } finally {
+    if (opts.useAdvisoryLock) pg.locks.delete(playerId);
+  }
+}
+
+test("CONCURRENCY: without serialisation the last credit is double-spent", async () => {
+  // Documents the flaw class the advisory lock exists to close. If this ever
+  // stops reproducing, the fake has stopped modelling READ COMMITTED and the
+  // guard test below is no longer meaningful.
+  const pg: PgSim = { rows: [], locks: new Set() };
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 1, operational_game_id: null, grant_key: null });
+
+  const [a, b] = await Promise.all([
+    simulateCharge(pg, P, randomUUID(), 1, { useAdvisoryLock: false }),
+    simulateCharge(pg, P, randomUUID(), 1, { useAdvisoryLock: false }),
+  ]);
+
+  const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
+  assert.equal(a && b, true, "both succeed — the unguarded write skew");
+  assert.equal(balance, -1, "balance goes negative: this is the defect");
+});
+
+test("CONCURRENCY: with the advisory lock, exactly one succeeds and balance never goes negative", async () => {
+  const pg: PgSim = { rows: [], locks: new Set() };
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 1, operational_game_id: null, grant_key: null });
+
+  const [a, b] = await Promise.all([
+    simulateCharge(pg, P, randomUUID(), 1, { useAdvisoryLock: true }),
+    simulateCharge(pg, P, randomUUID(), 1, { useAdvisoryLock: true }),
+  ]);
+
+  const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
+  assert.equal([a, b].filter(Boolean).length, 1, "exactly one consumption succeeds");
+  assert.equal(balance, 0, "balance lands at zero");
+  assert.ok(balance >= 0, "balance must never be negative");
+  assert.equal(pg.rows.filter((r) => r.kind === "consumption").length, 1);
+});
+
+test("CONCURRENCY: ten concurrent attempts on three credits consume exactly three", async () => {
+  const pg: PgSim = { rows: [], locks: new Set() };
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 3, operational_game_id: null, grant_key: null });
+
+  const results = await Promise.all(
+    Array.from({ length: 10 }, () =>
+      simulateCharge(pg, P, randomUUID(), 1, { useAdvisoryLock: true })
+    )
+  );
+
+  assert.equal(results.filter(Boolean).length, 3);
+  assert.equal(pg.rows.reduce((n, r) => n + r.amount, 0), 0);
+});
+
+test("the shipped charge serialises per player INSIDE the same transaction", () => {
+  // The behavioural tests above prove the mechanism is correct. This proves the
+  // shipped code actually uses it — the two together are the invariant.
+  const src = readFileSync("lib/entitlements.ts", "utf8");
+  const charge = src.slice(src.indexOf("export async function consumeForGame"));
+
+  assert.match(charge, /sql\.transaction\(\[/, "check and write must share one transaction");
+  assert.match(charge, /pg_advisory_xact_lock\(4242, hashtext\(/, "serialised per player");
+
+  // Lock first, insert second — the order is the whole point.
+  const lockAt = charge.indexOf("pg_advisory_xact_lock");
+  const insertAt = charge.indexOf("INSERT INTO accounts.entitlement_ledger");
+  assert.ok(lockAt > 0 && insertAt > lockAt, "the lock must precede the conditional insert");
+
+  // And the conditional insert still carries its balance guard.
+  assert.match(charge, /WHERE \(\s*\n?\s*SELECT COALESCE\(SUM\(amount\), 0\)/);
+  assert.match(charge, /ON CONFLICT \(operational_game_id\) WHERE kind = 'consumption' DO NOTHING/);
+});
+
 // --- 8 & 9. frozen surfaces and V1 isolation --------------------------------
 
 test("8. no frozen V2.2/V2.3 surface is touched by entitlement", () => {

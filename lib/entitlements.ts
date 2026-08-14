@@ -279,19 +279,48 @@ export async function consumeForGame(
     `;
     if (existing.length > 0) return { ok: true, reason: "already_consumed" };
 
-    const inserted = await sql`
-      INSERT INTO accounts.entitlement_ledger
-        (player_id, kind, amount, operational_game_id, note)
-      SELECT ${playerId}, 'consumption', ${-cost}, ${operationalGameId}::uuid, 'game_start'
-      WHERE (
-        SELECT COALESCE(SUM(amount), 0)
-          FROM accounts.entitlement_ledger
-         WHERE player_id = ${playerId}
-      ) >= ${cost}
-      ON CONFLICT (operational_game_id) WHERE kind = 'consumption' DO NOTHING
-      RETURNING entry_id
-    `;
+    // -----------------------------------------------------------------------
+    // THE DOUBLE-SPEND GUARD. Documented invariant, not an accidental property
+    // of the query shape.
+    //
+    // The conditional INSERT alone is NOT sufficient. Every statement here runs
+    // as its own autocommit transaction under READ COMMITTED, and the balance
+    // subquery is a plain non-locking read. Two concurrent charges for the same
+    // player with DIFFERENT operational_game_ids would each snapshot the
+    // balance before either insert committed, both find it sufficient, and both
+    // write — driving the balance negative. The unique index does not help:
+    // it only collides a game with itself.
+    //
+    // So the check and the write are serialised per player by an advisory
+    // transaction lock. The second caller blocks until the first commits, then
+    // recomputes the balance and correctly finds it insufficient. The lock is
+    // released automatically at transaction end — there is nothing to leak.
+    //
+    // Advisory rather than row locking because there is no row to lock: the
+    // anonymous majority has no durable player record, by design. 4242 is an
+    // arbitrary namespace constant that keeps this lock space distinct from any
+    // other advisory-lock user.
+    //
+    // Deliberately NOT a reservation table or two-phase commit. One lock and
+    // one conditional insert is the whole mechanism.
+    // -----------------------------------------------------------------------
+    const results = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(4242, hashtext(${playerId}))`,
+      sql`
+        INSERT INTO accounts.entitlement_ledger
+          (player_id, kind, amount, operational_game_id, note)
+        SELECT ${playerId}, 'consumption', ${-cost}, ${operationalGameId}::uuid, 'game_start'
+        WHERE (
+          SELECT COALESCE(SUM(amount), 0)
+            FROM accounts.entitlement_ledger
+           WHERE player_id = ${playerId}
+        ) >= ${cost}
+        ON CONFLICT (operational_game_id) WHERE kind = 'consumption' DO NOTHING
+        RETURNING entry_id
+      `,
+    ]);
 
+    const inserted = results[1] ?? [];
     if (inserted.length > 0) return { ok: true, reason: "consumed" };
 
     // No row: either the balance test failed, or a concurrent request won the

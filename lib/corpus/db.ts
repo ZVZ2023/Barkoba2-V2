@@ -34,7 +34,9 @@ export interface SqlClient {
    * by one statement can be fed into the next. Statements execute in array
    * order on one session, so each sees the effects of those before it.
    */
-  transaction(queries: Promise<Record<string, unknown>[]>[]): Promise<unknown>;
+  transaction(
+    queries: Promise<Record<string, unknown>[]>[]
+  ): Promise<Record<string, unknown>[][]>;
 }
 
 /**
