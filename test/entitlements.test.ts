@@ -10,6 +10,7 @@ import {
   getStatus,
   grantComplimentary,
   isEntitlementEnabled,
+  entitlementStatus,
 } from "../lib/entitlements";
 import { playCreditCostForBudget } from "../lib/questionBudget";
 
@@ -588,6 +589,71 @@ test("9b. entitlement lives in its own schema, never in immutable corpus.*", () 
 });
 
 // --- the gate is off by default ---------------------------------------------
+
+// --- observability: the gate's state must be readable from outside ----------
+
+test("the status names WHICH half of the conjunction failed", () => {
+  process.env.CORPUS_ENABLED = "true";
+
+  delete process.env.ENTITLEMENTS_ENABLED;
+  let s = entitlementStatus();
+  assert.equal(s.enforced, false);
+  assert.equal(s.flagEnabled, false);
+  assert.equal(s.storeReady, true);
+  assert.equal(s.reason, "flag_unset", "never configured");
+
+  process.env.ENTITLEMENTS_ENABLED = "ture";
+  s = entitlementStatus();
+  assert.equal(s.reason, "flag_not_enabled", "set but unreadable — a different fix");
+
+  process.env.ENTITLEMENTS_ENABLED = "true";
+  assert.equal(entitlementStatus().reason, "enforcing");
+  assert.equal(entitlementStatus().enforced, true);
+
+  // Store outranks the flag: there is nothing to enforce against without one.
+  process.env.CORPUS_ENABLED = "false";
+  s = entitlementStatus();
+  assert.equal(s.reason, "store_unavailable");
+  assert.equal(s.flagEnabled, true, "the flag is still reported truthfully");
+  assert.equal(s.enforced, false);
+});
+
+test("the status reports the grant, so an empty gate is visible from outside", () => {
+  process.env.ENTITLEMENTS_ENABLED = "true";
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "0";
+  const s = entitlementStatus();
+  assert.equal(s.enforced, true);
+  assert.equal(s.complimentaryGrant, 0, "gate on, nothing behind it — blocks everyone");
+  delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  assert.equal(entitlementStatus().complimentaryGrant, 10);
+});
+
+test("the status carries no secret, no player and no ledger data", () => {
+  process.env.DATABASE_URL = "postgresql://user:SECRET@host/db";
+  process.env.ENTITLEMENTS_ENABLED = "true";
+  const serialized = JSON.stringify(entitlementStatus());
+
+  assert.doesNotMatch(serialized, /SECRET/);
+  assert.doesNotMatch(serialized, /postgresql/);
+  assert.doesNotMatch(serialized, /player|balance|ledger|credit_cost/i);
+  // Booleans, one small integer, one reason code — nothing else.
+  assert.deepEqual(
+    Object.keys(entitlementStatus()).sort(),
+    ["complimentaryGrant", "enforced", "flagEnabled", "reason", "storeReady"]
+  );
+});
+
+test("/api/version exposes the block without pricing or player data", () => {
+  const src = readFileSync("app/api/version/route.ts", "utf8");
+  assert.match(src, /entitlements: \{/);
+  assert.match(src, /enforced: entitlement\.enforced/);
+  assert.match(src, /flag_enabled: entitlement\.flagEnabled/);
+  assert.match(src, /store_ready: entitlement\.storeReady/);
+  assert.match(src, /complimentary_grant: entitlement\.complimentaryGrant/);
+  assert.match(src, /reason: entitlement\.reason/);
+  // Deliberately excluded: the cost table and anything per-player.
+  assert.doesNotMatch(src, /playCreditCostForBudget|getBalance|getStatus|player_id/);
+});
 
 test("the gate ships OFF and is a no-op until switched on", async () => {
   process.env.ENTITLEMENTS_ENABLED = "false";

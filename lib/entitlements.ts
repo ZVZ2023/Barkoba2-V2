@@ -55,7 +55,63 @@ export type ConsumeOutcome =
  * fastest rollback if gating misbehaves, with no redeploy.
  */
 export function isEntitlementEnabled(): boolean {
-  return env.entitlementsEnabled() && isCorpusConfigured();
+  return entitlementStatus().enforced;
+}
+
+/**
+ * Why entitlement is, or is not, enforcing in THIS runtime.
+ *
+ * WHY THIS EXISTS: on 2.4.1.0 the flag was set in Vercel, the deployment was
+ * correct, and no ledger row appeared. `isEntitlementEnabled()` returned a bare
+ * boolean, so the state had to be INFERRED from an absence of rows rather than
+ * read. That is the same gap the corpus block closed in 2.2.0.1, left open here.
+ *
+ * `enforced` is a CONJUNCTION, which is exactly why the two halves are reported
+ * separately: a bare `false` cannot say whether the flag is off or the store is
+ * unreachable, and those have different fixes.
+ *
+ * CONFIGURATION ONLY. No player id, no balance, no ledger content, no
+ * connection string — entitlement has none of its own, it reuses the corpus
+ * client. Safe to serve from the public, cacheable /api/version.
+ */
+export type EntitlementReason =
+  /** Enforcing: the gate is live and charging. */
+  | "enforcing"
+  /** ENTITLEMENTS_ENABLED is not set at all. This is the shipped default. */
+  | "flag_unset"
+  /** Set, but does not read as true — a typo, a stray quote, a wrong scope. */
+  | "flag_not_enabled"
+  /** The flag is on, but the ledger's database is not usable. */
+  | "store_unavailable";
+
+export interface EntitlementRuntimeStatus {
+  enforced: boolean;
+  flagEnabled: boolean;
+  storeReady: boolean;
+  complimentaryGrant: number;
+  reason: EntitlementReason;
+}
+
+export function entitlementStatus(): EntitlementRuntimeStatus {
+  const flagEnabled = env.entitlementsEnabled();
+  const flagIsSet = env.entitlementsEnabledIsSet();
+  const storeReady = isCorpusConfigured();
+
+  // Store first, mirroring corpusConfigStatus and matching the dependency
+  // order: there is nothing to enforce against without a usable ledger.
+  let reason: EntitlementReason = "enforcing";
+  if (!storeReady) reason = "store_unavailable";
+  else if (!flagEnabled) reason = flagIsSet ? "flag_not_enabled" : "flag_unset";
+
+  return {
+    enforced: flagEnabled && storeReady,
+    flagEnabled,
+    storeReady,
+    // Reported because "gate on, nothing behind it" blocks every player, and
+    // was otherwise invisible from outside.
+    complimentaryGrant: env.entitlementComplimentaryGrant(),
+    reason,
+  };
 }
 
 function requireSql(): SqlClient {

@@ -143,6 +143,16 @@ export const env = {
   entitlementsEnabled: () => booleanFlag("ENTITLEMENTS_ENABLED"),
 
   /**
+   * Is the variable present at all, whatever its value? Diagnostics only.
+   *
+   * Mirrors corpusEnabledIsSet. It is what separates "never configured" from
+   * "configured but unreadable as true" — a distinction that took a round trip
+   * through inference to establish when only the parsed boolean was visible.
+   */
+  entitlementsEnabledIsSet: () => typeof process.env.ENTITLEMENTS_ENABLED === "string"
+    && process.env.ENTITLEMENTS_ENABLED.trim().length > 0,
+
+  /**
    * First-contact complimentary allowance, granted at most once per player.
    *
    * V2.4.1 sets this to 10. Spendable on any tier including budget-100 (cost

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAppVersion } from "@/lib/appVersion";
 import { corpusConfigStatus } from "@/lib/corpus/db";
+import { entitlementStatus } from "@/lib/entitlements";
 
 // Deployment identity as JSON. Reads lib/appVersion.ts — the same source the
 // on-screen badge uses, so the two cannot disagree.
@@ -14,6 +15,7 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const v = getAppVersion();
   const corpus = corpusConfigStatus();
+  const entitlement = entitlementStatus();
 
   return NextResponse.json({
     version: v.version,
@@ -46,6 +48,23 @@ export async function GET() {
       host: corpus.host,
       database: corpus.database,
       reason: corpus.reason,
+    },
+    // V2.4.1 — is the Play Credit gate actually enforcing in THIS runtime?
+    //
+    // `enforced` is a conjunction of the flag and the store, so both halves are
+    // reported: a bare false cannot say which one failed, and they have
+    // different fixes. `complimentary_grant` is here because a gate that is on
+    // with nothing behind it blocks every player and was otherwise invisible.
+    //
+    // CONFIGURATION ONLY — no player id, no balance, no ledger content, no
+    // connection string. Entitlement has no credential of its own; it reuses
+    // the corpus client, so there is nothing here to redact.
+    entitlements: {
+      enforced: entitlement.enforced,
+      flag_enabled: entitlement.flagEnabled,
+      store_ready: entitlement.storeReady,
+      complimentary_grant: entitlement.complimentaryGrant,
+      reason: entitlement.reason,
     },
     served_at: new Date().toISOString(),
   });
