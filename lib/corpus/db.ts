@@ -206,7 +206,32 @@ export function getSql(): SqlClient | null {
   const url = env.databaseUrl();
   if (!url) return null;
 
-  cached = neon(url) as unknown as SqlClient;
+  // ---------------------------------------------------------------------------
+  // A DATABASE QUERY MUST NEVER BE SERVED FROM AN HTTP CACHE.
+  //
+  // The Neon serverless driver talks to Postgres by POSTing to an HTTPS endpoint
+  // through the global `fetch`. Next.js replaces that global with its own
+  // instrumented version, and stores eligible responses in the Data Cache —
+  // which is on DISK, under .next/cache/fetch-cache, and survives both a restart
+  // and a rebuild.
+  //
+  // The result was a query answered from a file. V2.4.2.0 verification recorded
+  // a purchase and a consumption in the ledger, confirmed both rows directly
+  // against Neon, and then watched /api/player/entitlement keep reporting the
+  // pre-consumption balance. The cached entry carried revalidate: 31536000 —
+  // one year — so the correct answer would not have surfaced on its own.
+  //
+  // Reads collide most readily because the same player produces a byte-identical
+  // request body and therefore one stable cache key. This is set on the CLIENT
+  // rather than at any call site so that no query, read or write, can acquire a
+  // cache by being added later.
+  //
+  // Nothing about the SQL, the transactions or the ledger changes. This governs
+  // transport only.
+  // ---------------------------------------------------------------------------
+  cached = neon(url, {
+    fetchOptions: { cache: "no-store" },
+  }) as unknown as SqlClient;
   return cached;
 }
 

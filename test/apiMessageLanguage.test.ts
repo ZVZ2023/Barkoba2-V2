@@ -2,7 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { readdirSync } from "node:fs";
-import { join } from "node:path";
+import { join, sep } from "node:path";
 
 /**
  * TASK 9 — every API `message` is rendered to the player verbatim by the
@@ -25,7 +25,23 @@ const TECHNICAL_TOKENS = /turn_index|JSON|\/turn|VALID_ANSWERS/;
 const ENGLISH_GIVEAWAY =
   /\b(could not|cannot|please|try again|the game|this game|is required|no such|must be|available|questions? left|your game)\b/i;
 
+/**
+ * Routes whose `message` is never rendered to a player.
+ *
+ * This guard exists because every API message IS shown verbatim by the clients.
+ * That premise does not hold for the server-to-server grant endpoint: it is
+ * called by the commercial adapter with a shared secret, no browser can reach
+ * it, and no client reads its body. Its audience is whoever is integrating
+ * against it, so English protocol vocabulary is the correct choice — translating
+ * "credits must be a positive integer" into Hungarian would serve nobody.
+ *
+ * Deliberately a narrow, named exemption rather than a loosening of the rule.
+ */
+const MACHINE_FACING = new Set(["app/api/entitlement/grant/route.ts"]);
+
 for (const file of routeFiles("app/api")) {
+  if (MACHINE_FACING.has(file.split(sep).join("/"))) continue;
+
   test(`${file} has no English player-facing message`, () => {
     const offenders = readFileSync(file, "utf8")
       .split("\n")

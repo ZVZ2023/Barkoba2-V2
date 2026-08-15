@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClueMode, Difficulty } from "@/lib/types";
 import GameShell from "./components/GameShell";
+import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
 
 // Pre-game controls for the human Racer. Deliberately three buttons and four
 // numbers — the brief called for the smallest sensible selector, and anything
@@ -33,10 +34,14 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
   const [busy, setBusy] = useState(false);
   const [naming, setNaming] = useState(askForName);
   const [error, setError] = useState<string | null>(null);
+  // V2.4 - refusal for lack of Play Credits must lead somewhere.
+  const [noCredit, setNoCredit] = useState(false);
+  const entitlement = useEntitlement();
 
   async function start() {
     setBusy(true);
     setError(null);
+    setNoCredit(false);
     try {
       const res = await fetch("/api/game/create", {
         method: "POST",
@@ -51,6 +56,7 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
       const data = await res.json();
       if (!res.ok || !data.game_id) {
         setError(data.message || "Nem sikerült elindítani a játékot.");
+        if (data.error === "no_play_credit") setNoCredit(true);
         setBusy(false);
         return;
       }
@@ -76,6 +82,8 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
         <ThinkingState note="Kiválaszt valamit, amire gondol. Mindjárt kezdhetsz kérdezni." />
       ) : (
       <>
+      <BalanceBadge view={entitlement.view} />
+
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Nehézség</span>
         <div className="flex flex-wrap gap-2">
@@ -119,16 +127,28 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Kérdések</span>
         <div className="flex flex-wrap gap-2">
-          {BUDGETS.map((b) => (
-            <button
-              key={b}
-              onClick={() => setBudget(b)}
-              disabled={busy}
-              className={pill(budget === b)}
-            >
-              {b}
-            </button>
-          ))}
+          {BUDGETS.map((b) => {
+            const cost = entitlement.view?.costs?.[String(b)];
+            const bal = entitlement.view?.balance;
+            // Marked, never blocked — the server decides refusals.
+            const short = typeof cost === "number" && typeof bal === "number" && bal < cost;
+            return (
+              <button
+                key={b}
+                onClick={() => setBudget(b)}
+                disabled={busy}
+                title={short ? "Ehhez nincs elég játékkereted" : undefined}
+                className={`${pill(budget === b)} ${short && budget !== b ? "opacity-45" : ""}`}
+              >
+                <span className="block">{b}</span>
+                {typeof cost === "number" && (
+                  <span className="block text-xs opacity-80">
+                    {cost} keret{short ? " ⚠" : ""}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       </div>
 
@@ -149,6 +169,8 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
           <p className="text-sm text-[var(--red)]">{error}</p>
         </div>
       )}
+
+      {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
       </>
       )}
     </GameShell>

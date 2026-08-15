@@ -1,6 +1,7 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { parseDatabaseUrl, corpusConfigStatus } from "../lib/corpus/db";
 import { recordGameState, __resetCorpusWarnings } from "../lib/corpus/gameCorpus";
 import { readPending } from "../lib/corpus/pendingQueue";
@@ -218,4 +219,51 @@ test("a game whose client cannot be built is queued for replay, not dropped", as
       "a deferred game MUST be recoverable — that is the whole point of the queue"
     );
   }
+});
+
+// ---------------------------------------------------------------------------
+// V2.4.2.0 — a database query must never be served from an HTTP cache.
+//
+// The Neon serverless driver reaches Postgres by POSTing through the global
+// `fetch`, which Next.js replaces with an instrumented version that persists
+// eligible responses to .next/cache/fetch-cache — on disk, surviving restart
+// AND rebuild.
+//
+// Observed, not theorised: live verification wrote a purchase and a consumption,
+// confirmed both rows directly against Neon, and then watched the entitlement
+// read keep returning the pre-consumption balance. The cache file held
+// rows [["1","0","1","0","0"]] with revalidate: 31536000 — one year.
+// ---------------------------------------------------------------------------
+
+test("the SQL client opts out of Next's fetch cache", () => {
+  const src = readFileSync("lib/corpus/db.ts", "utf8");
+  const construction = src.slice(src.indexOf("cached = neon("));
+  assert.match(
+    construction,
+    /fetchOptions:\s*\{\s*cache:\s*"no-store"\s*\}/,
+    "every Neon request must be no-store, or a read can be answered from a file"
+  );
+});
+
+test("the opt-out is on the CLIENT, so no call site can forget it", () => {
+  // The file explains at length what `neon()` does and how it fails, so a bare
+  // substring count finds the prose and reports it as a second client.
+  const code = readFileSync("lib/corpus/db.ts", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .split("\n")
+    .filter((l) => !l.trim().startsWith("*") && !l.trim().startsWith("//"))
+    .join("\n");
+
+  // Exactly one construction, inside getSql, which is the only way to a client.
+  assert.equal((code.match(/\bneon\(/g) ?? []).length, 1, "one client construction only");
+
+  // No caller may build its own, which would bypass the opt-out entirely.
+  for (const f of ["lib/entitlements.ts", "lib/corpus/gameCorpus.ts"]) {
+    assert.doesNotMatch(readFileSync(f, "utf8"), /@neondatabase\/serverless/, f);
+  }
+});
+
+test("the temporary read-path diagnostic is gone", () => {
+  // It logged a raw player id. It must never reach a commit or a production log.
+  assert.doesNotMatch(readFileSync("lib/entitlements.ts", "utf8"), /DIAG getStatus|TEMPORARY DIAGNOSTIC/);
 });

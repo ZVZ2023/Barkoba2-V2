@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import GameShell from "./components/GameShell";
 import BudgetPicker, { pickedBudget } from "./components/BudgetPicker";
+import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
 import type { Difficulty } from "@/lib/types";
 
 type ViewState =
@@ -49,12 +50,16 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   const [clarification, setClarification] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
+  // V2.4 - refusal for lack of Play Credits must lead somewhere.
+  const [noCredit, setNoCredit] = useState(false);
+  const entitlement = useEntitlement();
   const [view, setView] = useState<ViewState>({ step: "entry" });
   // Asked once, before setup. Resolved locally after the answer so the form
   // appears immediately rather than after a round trip.
   const [naming, setNaming] = useState(askForName);
 
   async function submit(force = false) {
+    setNoCredit(false);
     setView({ step: "submitting" });
     try {
       const res = await fetch("/api/game/create", {
@@ -79,6 +84,7 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
         return;
       }
       if (!res.ok && data.error && data.error !== "validator_unavailable") {
+        if (data.error === "no_play_credit") setNoCredit(true);
         setView({ step: "error", message: data.message || "Valami hiba történt." });
         return;
       }
@@ -126,6 +132,8 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
 
       {!naming && view.step === "entry" && (
         <div className="flex flex-col gap-4">
+          <BalanceBadge view={entitlement.view} />
+
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-[var(--ink)]">Amire gondolsz</span>
             <input
@@ -162,6 +170,8 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
             budgetOverride={budgetOverride}
             onBudgetChange={setBudgetOverride}
             racer="ai"
+            costs={entitlement.view?.costs ?? null}
+            balance={entitlement.view?.balance ?? null}
           />
 
           <button
@@ -222,6 +232,7 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
       {view.step === "error" && (
         <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
           <p className="text-sm text-[var(--red)]">{view.message}</p>
+          {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
           <button
             onClick={() => setView({ step: "entry" })}
             className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"

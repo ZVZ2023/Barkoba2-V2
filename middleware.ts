@@ -33,6 +33,11 @@ export const config = {
     "/api/game/:path*",
     // 2.1.2.0: the name route needs the acting player on the request.
     "/api/player/:path*",
+    // V2.4: /intent needs the acting player. /grant does not — it resolves the
+    // player from an opaque reference — but it is matched too so the inbound
+    // x-bk-player strip applies uniformly across the whole namespace, and a
+    // future route here cannot inherit an untrusted header by omission.
+    "/api/entitlement/:path*",
   ],
 };
 

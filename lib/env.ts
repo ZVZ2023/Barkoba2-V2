@@ -164,4 +164,18 @@ export const env = {
    * a price in a caller's hands.
    */
   entitlementComplimentaryGrant: () => optionalInt("ENTITLEMENT_COMPLIMENTARY_GRANT", 10),
+
+  /**
+   * Shared secret for the server-to-server grant endpoint.
+   *
+   * SERVER SIDE ONLY. No client-facing code path may read this, and no browser
+   * can obtain it — which is precisely what stops a player self-granting
+   * credits. A session cookie is deliberately not sufficient authorisation on
+   * /api/entitlement/grant.
+   *
+   * Null means the endpoint is out of service and rejects everything. It must
+   * never fall open: an unconfigured grant endpoint that accepted anything
+   * would be worse than one that did not exist.
+   */
+  entitlementGrantSecret: () => process.env.ENTITLEMENT_GRANT_SECRET || null,
 };

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BudgetPicker, { pickedBudget } from "@/app/components/BudgetPicker";
+import { BalanceBadge, CreditGateway, useEntitlement } from "@/app/components/Entitlement";
 import type { Difficulty } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -26,12 +27,17 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsForce, setNeedsForce] = useState(false);
+  // V2.4 — set when creation was refused for lack of Play Credits, so the
+  // refusal leads to the gateway instead of naming an action that goes nowhere.
+  const [noCredit, setNoCredit] = useState(false);
+  const entitlement = useEntitlement();
 
   const budget = pickedBudget(difficulty, budgetOverride);
 
   async function create(force: boolean) {
     setBusy(true);
     setError(null);
+    setNoCredit(false);
     try {
       const res = await fetch("/api/game/create", {
         method: "POST",
@@ -54,6 +60,7 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
       }
       if (!res.ok) {
         setError(data?.message || "Most nem sikerült elindítani a játékot.");
+        if (data?.error === "no_play_credit") setNoCredit(true);
         return;
       }
       if (data.status === "INVALID") {
@@ -75,6 +82,8 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
+      <BalanceBadge view={entitlement.view} />
+
       <div>
         <h1 className="text-2xl font-semibold tracking-tight">Játék egy másik emberrel</h1>
         <p className="mt-1 text-sm text-neutral-700">
@@ -113,9 +122,12 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
         onBudgetChange={setBudgetOverride}
         disabled={busy}
         racer="human"
+        costs={entitlement.view?.costs ?? null}
+        balance={entitlement.view?.balance ?? null}
       />
 
       {error && <p className="text-sm text-[#8b2f2f]">{error}</p>}
+      {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
 
       <button
         onClick={() => void create(needsForce)}

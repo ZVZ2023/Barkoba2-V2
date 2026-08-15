@@ -36,6 +36,17 @@ export interface BudgetPickerProps {
   disabled?: boolean;
   /** Who will be spending the questions. Only changes the wording. */
   racer: "ai" | "human";
+  /**
+   * V2.4 — Play Credit cost per tier and the player's balance, both from
+   * GET /api/player/entitlement. Null/absent means entitlement is not
+   * enforcing, and no price or affordability hint is shown at all.
+   *
+   * A tier the player cannot afford is MARKED, never blocked: the server is the
+   * only authority on refusal, and a client that disabled the control would be
+   * making a decision it is not entitled to make.
+   */
+  costs?: Record<string, number> | null;
+  balance?: number | null;
 }
 
 /** The allowance this picker currently resolves to. Exported so callers submit the same value. */
@@ -50,6 +61,8 @@ export default function BudgetPicker({
   onBudgetChange,
   disabled = false,
   racer,
+  costs = null,
+  balance = null,
 }: BudgetPickerProps) {
   const recommended = recommendedBudget(difficulty);
   const budget = pickedBudget(difficulty, budgetOverride);
@@ -85,21 +98,34 @@ export default function BudgetPicker({
           {racer === "ai" ? "Hány kérdést kapjon az AI?" : "Kérdések száma"}
         </span>
         <div className="flex flex-wrap gap-2">
-          {QUESTION_BUDGETS.map((b) => (
-            <button
-              key={b}
-              type="button"
-              onClick={() => onBudgetChange(b)}
-              disabled={disabled}
-              className={`min-h-11 flex-1 rounded-md px-4 py-2 text-sm ${
-                budget === b
-                  ? "bg-[#1e3a24] font-medium text-[#f6ece0]"
-                  : "border border-neutral-900/20 bg-white/70"
-              }`}
-            >
-              {b}
-            </button>
-          ))}
+          {QUESTION_BUDGETS.map((b) => {
+            const cost = costs?.[String(b)];
+            // Marked, not blocked. The server decides refusals; this only
+            // spares the player a wasted attempt.
+            const unaffordable =
+              typeof cost === "number" && typeof balance === "number" && balance < cost;
+            return (
+              <button
+                key={b}
+                type="button"
+                onClick={() => onBudgetChange(b)}
+                disabled={disabled}
+                title={unaffordable ? "Ehhez nincs elég játékkereted" : undefined}
+                className={`min-h-11 flex-1 rounded-md px-4 py-2 text-sm ${
+                  budget === b
+                    ? "bg-[#1e3a24] font-medium text-[#f6ece0]"
+                    : "border border-neutral-900/20 bg-white/70"
+                } ${unaffordable && budget !== b ? "opacity-45" : ""}`}
+              >
+                <span className="block">{b}</span>
+                {typeof cost === "number" && (
+                  <span className="block text-xs opacity-80">
+                    {cost} keret{unaffordable ? " ⚠" : ""}
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
         <p className="text-sm text-neutral-600">
           {budget === recommended
