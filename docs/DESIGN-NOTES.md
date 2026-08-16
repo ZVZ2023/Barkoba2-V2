@@ -2923,3 +2923,103 @@ This addendum changes documentation and governance classification only. No V2.5
 engineering is reopened, no code, schema, version, environment or deployment is
 affected, and every item above is either a record of how a decision was made or
 a requirement carried forward to a later milestone.
+
+---
+
+## 34. V2.6 opens — `2.6.0.0`, the English candidate-identification correction
+
+**First change after the V2.5 freeze.** Scope: `lib/guessDetector.ts`,
+`CANDIDATE_IDENTIFICATION_EN` pattern 2, and its regression fixtures. No prompt,
+no schema, no strategy change. `RACER_PROMPT_VERSION` stays `racer/2.5.0` —
+nothing the Racer reads was touched.
+
+### 34.1 Why this had to be first
+
+§32 measured the defect in production and named it the strongest candidate for
+the first post-freeze change. The reason is not the false flags themselves —
+none consumed a guess entitlement, and no game was decided incorrectly. The
+reason is **contamination of the evidence base**.
+
+Every flag re-prompts the Racer through `resolveGuessIntent()` to reword a
+question it had already framed correctly. In Field Test #4 that happened on ten
+of roughly twenty turns. Any English benchmark run on the uncorrected build
+measures a Racer that is being pushed off its own phrasing half the time, and
+spending a second model call each time it happens. The V2.5 milestone existed to
+build a durable evidence foundation; running English benchmarks against this
+defect would have poured contaminated data into it on day one.
+
+### 34.2 Two changes, in opposite directions
+
+**Change 1 — narrowing. The indefinite article is rejected.**
+
+```
+before:  (?:is|was) the (?:target|answer|thing|object|word) (?:a|an|the) <NP>
+after:   (?:is|was) the (?:target|answer|thing|object|word)
+                                     (?:the|your|my|his|her|its|their) <NP>
+```
+
+Pattern 2 admitted `a|an`, contradicting the definiteness discriminator stated
+in the module's own comments and obeyed by pattern 1. Measured effect:
+
+| Question | before | after |
+|---|---|---|
+| `Is it a physical object?` | −2, no flag | −2, no flag |
+| `Is the target a physical object?` | **+3, FLAGGED** | **0, no rule fired** |
+
+All five Field Test #4 production strings now score 0 with no rule firing.
+
+**Change 2 — widening. The possessives are accepted.**
+
+Found while correcting the first. Pattern 1's own comment has always read *"'the'
+and the possessives are equally identifying"* — but only pattern 1 acted on it.
+`Is the target your left ear?` scored **1 and did not flag**: an unambiguously
+identifying question read as an ordinary narrowing one. That is the precise miss
+this module's header says it exists to catch, sitting inside the rule being
+edited.
+
+**The two changes pull in opposite directions, and were bundled by explicit
+Mission Sovereign decision after the alternative — scoping the widening
+separately — was put and declined.** The consequence is recorded rather than
+argued: **the next English field test's flag rate measures their combined
+effect, not the removal of `a|an` alone.** A rate that does not fall is not
+evidence that change 1 failed; it is evidence that change 2 replaced some of
+what change 1 removed. Whoever reads that number needs this paragraph first.
+
+### 34.3 Verification
+
+- **618 tests pass**, `tsc --noEmit` clean, isolation invariant holds
+  (134 files, 10 permitted call sites, 30 quarantined modules).
+- Five new fixture blocks in `test/guessDetector.test.ts`, built on the **five
+  Field Test #4 production strings, verbatim**.
+- The fixtures assert **`candidate_identification` does not fire**, not merely
+  that the question does not flag. A later weight change could drop these under
+  the threshold while the rule still fired, and the suite would stay green while
+  the defect survived invisibly — the same trap §31 fell into, where "A célpont
+  a fül?" passed while production leaked four functional guesses.
+- One fixture pins the pair `Is it a bicycle?` / `Is the target a bicycle?`
+  against `Is it the bicycle?` / `Is the target the bicycle?`, so patterns 1 and
+  2 cannot silently disagree on definiteness again.
+- One fixture re-checks the Field Test #4 strings **after** the widening, so the
+  determiner expansion cannot quietly readmit the indefinite reading.
+
+### 34.4 Version
+
+`VERSION` moves `2.5.0.5` → **`2.6.0.0`**.
+
+Not cosmetic. §32 requires a fourth Game Intelligence data point gathered after
+this correction, and `app_version` is the only column in the corpus that
+separates a post-fix game from Field Test #4. Leaving the tag at `2.5.0.5` would
+have made the two indistinguishable in exactly the data V2.5 was built to
+produce.
+
+### 34.5 What this does NOT close
+
+- **Hungarian false positives** (§31, §32) — untouched. Genuinely hard,
+  needs a native-speaker pass. Do not narrow that pattern by guesswork.
+- **Guess Intent fail-open** — if `resolveGuessIntent()` cannot complete, the
+  flagged question still stands. A product decision, still open.
+- **G3 benchmark ingress** — built at `2.5.0.0`, still never exercised, still
+  zero tagged games.
+- **Parent-hypothesis lock-in** — n=3 across §29, §31, §32, with §32 the
+  weakest of the three for the reason given there. No prompt or strategy change
+  has been made for it, per §18's standing rule.

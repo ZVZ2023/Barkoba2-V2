@@ -170,8 +170,38 @@ export const CANDIDATE_IDENTIFICATION_EN: RegExp[] = [
     "i"
   ),
   // "Is the target the ear?"  ·  "Is the answer the bicycle?"
+  //
+  // FIELD TEST #4 CORRECTED THIS PATTERN. It previously read
+  // `(?:a|an|the)` and so admitted the INDEFINITE article, contradicting the
+  // definiteness discriminator stated three comment blocks above and obeyed by
+  // pattern 1. The consequence was measured in production at `2.5.0.5`:
+  //
+  //     Is it a physical object?          -2   not flagged
+  //     Is the target a physical object?  +3   FLAGGED
+  //
+  // The same category question, opposite verdicts, on phrasing alone. Ten turns
+  // of a twenty-question game flagged this way; none was a real guess, and each
+  // flag spent a second model call re-prompting the Racer to reword a question
+  // it had already framed correctly. See docs/DESIGN-NOTES.md §32 and the
+  // Field Test #4 specimens in test/guessDetector.test.ts.
+  //
+  // `a|an` is gone. This frame names WHICH ONE the target is; the indefinite
+  // reading asks WHAT KIND, which is an ordinary narrowing question.
+  //
+  // THE DETERMINER SET IS NOW PATTERN 1'S, which closes a second, opposite
+  // defect found while correcting the first. Pattern 1's own comment says "the
+  // and the possessives are equally identifying" — but only pattern 1 acted on
+  // it. `Is the target your left ear?` scored 1 and did not flag: an
+  // unambiguously identifying question treated as an ordinary one, the exact
+  // miss this module exists to catch.
+  //
+  // The two changes move in OPPOSITE directions — one narrowing, one widening —
+  // and were deliberately made together by Mission Sovereign decision. The
+  // consequence for evidence is recorded in docs/DESIGN-NOTES.md §34: the next
+  // field test's flag rate measures their combined effect, not the removal of
+  // `a|an` alone.
   new RegExp(
-    `\\b(?:is|was)\\s+the\\s+(?:target|answer|thing|object|word)\\s+(?:a|an|the)\\s+${NP_TAIL_EN}`,
+    `\\b(?:is|was)\\s+the\\s+(?:target|answer|thing|object|word)\\s+(?:the|your|my|his|her|its|their)\\s+${NP_TAIL_EN}`,
     "i"
   ),
 ];

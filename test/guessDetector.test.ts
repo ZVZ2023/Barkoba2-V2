@@ -391,6 +391,122 @@ test("Field Test #3 — a flagged question is what makes G4 capture possible", (
   }
 });
 
+// ---------------------------------------------------------------------------
+// Field Test #4 — the English indefinite-article defect.
+//
+// `2.5.0.5` flagged ten of roughly twenty turns in a production English game.
+// Not one was a guess. `CANDIDATE_IDENTIFICATION_EN` pattern 2 accepted
+// `(?:a|an|the)`, so an ordinary category question phrased as "Is the target
+// a X?" scored +3 while the identical question phrased "Is it a X?" scored −2.
+//
+// These are the production strings, verbatim. They are the regression net for
+// the correction: the rule must not fire on any of them, and — asserted
+// separately below — must still fire on the definite form.
+// ---------------------------------------------------------------------------
+
+const FIELD_TEST_4_SPECIMENS = [
+  "Is the target a physical object?",
+  "Is the target a person?",
+  "Is the target a concept or idea?",
+  "Is the target a natural phenomenon?",
+  "Is the target a company or corporation?",
+] as const;
+
+for (const q of FIELD_TEST_4_SPECIMENS) {
+  test(`Field Test #4 — indefinite article is the category reading, not a guess: ${q}`, () => {
+    const r = detectGuess(q);
+    // Assert the RULE, not merely the flag. A weight change could drop these
+    // under the threshold while candidate_identification still fired, and the
+    // defect — a category question being treated as a naming one — would
+    // survive invisibly until the next scoring change lifted it back over.
+    assert.ok(
+      !r.matched.includes("candidate_identification"),
+      `${q} scored ${r.score} via ${r.matched.join(", ") || "nothing"}`
+    );
+    assert.equal(r.flagged, false, `${q} scored ${r.score}`);
+  });
+}
+
+test("Field Test #4 — phrasing must not change the verdict on the same question", () => {
+  // The defect in one line: these two ask the identical thing. Before the
+  // correction they scored −2 and +3 respectively.
+  const short = detectGuess("Is it a physical object?");
+  const framed = detectGuess("Is the target a physical object?");
+  assert.equal(short.flagged, false);
+  assert.equal(framed.flagged, false);
+  assert.ok(
+    !framed.matched.includes("candidate_identification"),
+    `matched [${framed.matched.join(", ")}]`
+  );
+});
+
+test("Field Test #4 — the correction removed the indefinite reading only", () => {
+  // Pattern 2 still has a job. If this ever goes quiet, the fix was made by
+  // deleting the rule rather than by narrowing it.
+  for (const q of [
+    "Is the target the ear?",
+    "Is the answer the bicycle?",
+    "Was the word the handle?",
+  ]) {
+    const r = detectGuess(q);
+    assert.ok(
+      r.matched.includes("candidate_identification"),
+      `${q} scored ${r.score} via ${r.matched.join(", ") || "nothing"}`
+    );
+  }
+});
+
+test("V2.6 — pattern 2 accepts the possessives, as pattern 1 always has", () => {
+  // The second, opposite defect found while correcting the first. Pattern 1's
+  // comment has always said "the" and the possessives are equally identifying;
+  // only pattern 1 acted on it. Before this change "Is the target your left
+  // ear?" scored 1 and did not flag — a named instance read as an ordinary
+  // narrowing question.
+  for (const q of [
+    "Is the target your left ear?",
+    "Is the answer your bicycle?",
+    "Was the word his name?",
+  ]) {
+    const r = detectGuess(q);
+    assert.ok(
+      r.matched.includes("candidate_identification"),
+      `${q} scored ${r.score} via ${r.matched.join(", ") || "nothing"}`
+    );
+    assert.equal(r.flagged, true, `${q} scored ${r.score}`);
+  }
+});
+
+test("V2.6 — widening the determiner set did not reopen the indefinite reading", () => {
+  // The two changes in this commit pull in opposite directions. This pins that
+  // the widening stopped at the possessives and did not let `a|an` back in.
+  for (const q of FIELD_TEST_4_SPECIMENS) {
+    assert.ok(
+      !detectGuess(q).matched.includes("candidate_identification"),
+      `indefinite reading returned: ${q}`
+    );
+  }
+});
+
+test("Field Test #4 — pattern 1 and pattern 2 now share one discriminator", () => {
+  // The doctrine, pinned as a test: definiteness decides, in both frames.
+  // Pattern 1 already obeyed it; pattern 2 does now. If a later change makes
+  // them disagree again, this is the assertion that fails.
+  const definite = ["Is it the bicycle?", "Is the target the bicycle?"];
+  const indefinite = ["Is it a bicycle?", "Is the target a bicycle?"];
+  for (const q of definite) {
+    assert.ok(
+      detectGuess(q).matched.includes("candidate_identification"),
+      `expected candidate_identification: ${q}`
+    );
+  }
+  for (const q of indefinite) {
+    assert.ok(
+      !detectGuess(q).matched.includes("candidate_identification"),
+      `expected NO candidate_identification: ${q}`
+    );
+  }
+});
+
 test("flagging a candidate question does not by itself decide anything", () => {
   // The detector reports; resolveGuessIntent decides. This pins that the rule
   // added here changed detection only.
