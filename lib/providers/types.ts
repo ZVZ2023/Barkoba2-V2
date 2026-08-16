@@ -62,6 +62,20 @@ export interface ToolCallRequest {
    * how they do so is their own business and must not leak out of the adapter.
    */
   temperature?: number;
+  /**
+   * How much the model should think before answering, where the provider
+   * exposes such a control. xAI's grok-4.6 and grok-4.5 take
+   * "low" | "medium" | "high" | "xhigh" and default to "high" when unset — so
+   * every Grok turn Barkóba has ever played ran at maximum effort.
+   *
+   * UNSET MUST MEAN UNCHANGED. An adapter may only send this when it is
+   * defined; leaving it out has to produce a byte-identical request to the one
+   * production sends today. A test asserts that.
+   *
+   * Providers without the concept ignore it. It is NOT a sampling parameter and
+   * has nothing to do with `temperature`.
+   */
+  reasoningEffort?: string;
 }
 
 export interface ToolCallResult<T> {
@@ -76,6 +90,20 @@ export interface ToolCallResult<T> {
    * when the response omits it.
    */
   resolvedModel: string;
+  /**
+   * Raw observable facts about the call, where the provider reports them.
+   *
+   * OPTIONAL AND UNUSED BY THE GAME. Nothing in the turn loop reads this; it
+   * exists so a diagnostic harness can see why a call was slow without the
+   * adapter having to be reimplemented outside the code path it is testing.
+   * Populated best-effort — an absent field means the provider did not say,
+   * never that the value was zero.
+   */
+  diagnostics?: {
+    finishReason?: string;
+    completionTokens?: number;
+    reasoningTokens?: number;
+  };
 }
 
 /**

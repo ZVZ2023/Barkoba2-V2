@@ -63,7 +63,14 @@ interface XaiResponse {
     finish_reason?: string;
     message?: { tool_calls?: XaiToolCall[] };
   }>;
-  usage?: { completion_tokens?: number };
+  usage?: {
+    completion_tokens?: number;
+    // xAI documents that usage exposes reasoning_tokens. Both the flat and the
+    // OpenAI-compatible nested shapes are read, because which one this endpoint
+    // returns is not stated and guessing wrong would silently report nothing.
+    reasoning_tokens?: number;
+    completion_tokens_details?: { reasoning_tokens?: number };
+  };
 }
 
 /**
@@ -129,6 +136,14 @@ export const xaiAdapter: ProviderAdapter = {
       parallel_tool_calls: false,
       stream: false,
       ...(request.temperature !== undefined ? { temperature: request.temperature } : {}),
+      // UNSET MEANS UNCHANGED. Spread-when-defined rather than a key set to
+      // undefined: JSON.stringify would drop an undefined value anyway, but
+      // relying on that would make "production is byte-identical" a property of
+      // the serializer rather than of this code. grok-4.6 defaults to "high"
+      // when the field is absent, which is what every Grok turn so far has run.
+      ...(request.reasoningEffort !== undefined
+        ? { reasoning_effort: request.reasoningEffort }
+        : {}),
     };
 
     const response = await fetch(XAI_ENDPOINT, {
@@ -203,6 +218,16 @@ export const xaiAdapter: ProviderAdapter = {
       );
     }
 
-    return { output, resolvedModel };
+    return {
+      output,
+      resolvedModel,
+      diagnostics: {
+        finishReason: choice?.finish_reason,
+        completionTokens: data.usage?.completion_tokens,
+        reasoningTokens:
+          data.usage?.reasoning_tokens ??
+          data.usage?.completion_tokens_details?.reasoning_tokens,
+      },
+    };
   },
 };

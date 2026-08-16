@@ -222,13 +222,31 @@ test("adjudicator confidence of exactly 0 is stored, not treated as absent", asy
 
 // --- rewind ordering --------------------------------------------------------
 
+/**
+ * Identify the demotion by WHAT IT DOES, not by how it is written.
+ *
+ * These two tests used to match /UPDATE corpus\.game_turns SET branch/, which
+ * required `SET branch` to sit immediately after the table name. V2.5-B5 gave
+ * the statement an alias and a join — `UPDATE corpus.game_turns AS g SET
+ * branch = 'abandoned', branch_seq = ...` — because a per-turn sequence number
+ * cannot be expressed by an `ANY(array)` update. The invariant was untouched;
+ * only the token adjacency changed, and the regex was pinned to the adjacency.
+ *
+ * Worth recording that the failure was one-sided and the SILENT half was worse:
+ * the "no rewind issues no demotion" test below still PASSED, because a regex
+ * that can no longer match anything cannot fail. Repairing only the red test
+ * would have left a dead assertion that looked like cover.
+ */
+const isDemotion = (sql: string): boolean =>
+  sql.includes("UPDATE corpus.game_turns") && sql.includes("branch = 'abandoned'");
+
 test("abandoned turns are demoted before main turns are upserted", async () => {
   const discarded = [entry({ turn_index: 2 }), entry({ turn_index: 3 })];
   await recordGameState(
     game({ qa_log: [entry({ turn_index: 1 })], abandoned_branches: [discarded] })
   );
 
-  const demote = calls.findIndex((c) => /UPDATE corpus\.game_turns SET branch/.test(c.sql));
+  const demote = calls.findIndex((c) => isDemotion(c.sql));
   const upsert = calls.findIndex((c) => /INSERT INTO corpus\.game_turns/.test(c.sql));
   assert.ok(demote >= 0, "a rewind must demote the abandoned branch");
   assert.ok(
@@ -240,7 +258,7 @@ test("abandoned turns are demoted before main turns are upserted", async () => {
 
 test("a game with no rewind issues no demotion statement", async () => {
   await recordGameState(game());
-  assert.doesNotMatch(issued(), /UPDATE corpus\.game_turns SET branch/);
+  assert.equal(calls.some((c) => isDemotion(c.sql)), false);
 });
 
 // --- failure isolation (the critical property) ------------------------------

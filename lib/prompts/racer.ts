@@ -1,6 +1,6 @@
 import { DEFAULT_RACER_PROVIDER, getAdapter } from "../providers";
 import { env } from "../env";
-import type { ModelProviderId } from "../providers/types";
+import type { ModelProviderId, ToolCallResult } from "../providers/types";
 import type {
   GuessIntentResolution,
   ModelProvenance,
@@ -41,6 +41,12 @@ export const RACER_PROMPT_VERSION = "racer/2.5.0";
 export interface RacerTurnResult {
   output: RacerTurnOutput;
   provenance: ModelProvenance;
+  /**
+   * Raw call facts, where the provider reports them. Unused by the turn loop —
+   * present so a diagnostic harness can observe the real code path instead of
+   * reimplementing it. See scripts/probeRacerLatency.ts.
+   */
+  diagnostics?: ToolCallResult<RacerTurnOutput>["diagnostics"];
 }
 
 // ---------------------------------------------------------------------------
@@ -216,7 +222,17 @@ function racerModelFor(provider: ModelProviderId): string {
 
 export async function runRacerTurn(
   state: RacerPublicState,
-  options: { forceFinal: boolean; provider?: ModelProviderId }
+  options: {
+    forceFinal: boolean;
+    provider?: ModelProviderId;
+    /**
+     * Diagnostic seam ONLY, for scripts/probeRacerLatency.ts. Production never
+     * passes it, so every Grok turn keeps running at the provider default. This
+     * is deliberately NOT routing: nothing here decides what to send, it only
+     * carries what a caller already decided.
+     */
+    reasoningEffort?: string;
+  }
 ): Promise<RacerTurnResult> {
   const { forceFinal } = options;
   const provider = options.provider ?? DEFAULT_RACER_PROVIDER;
@@ -236,8 +252,13 @@ export async function runRacerTurn(
   const adapter = getAdapter(provider);
   const requestedModel = racerModelFor(provider);
 
-  const { output: result, resolvedModel } = await adapter.callTool<RacerTurnOutput>({
+  const {
+    output: result,
+    resolvedModel,
+    diagnostics,
+  } = await adapter.callTool<RacerTurnOutput>({
     model: requestedModel,
+    reasoningEffort: options.reasoningEffort,
     system: RACER_SYSTEM_PROMPT,
     messages: [
       {
@@ -291,6 +312,7 @@ export async function runRacerTurn(
       model_provider: adapter.id,
       prompt_version: RACER_PROMPT_VERSION,
     },
+    diagnostics,
   };
 }
 

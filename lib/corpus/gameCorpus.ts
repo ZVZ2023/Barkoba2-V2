@@ -348,14 +348,32 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
     // data-modifying CTE was rejected as the alternative design: CTEs all see
     // the same snapshot and their side-effect order is unspecified, so
     // demote-before-upsert could not be expressed at all.
-    const abandonedIds = turns.filter((t) => t.branch === "abandoned").map((t) => t.turn_id);
-    if (abandonedIds.length > 0) {
+    //
+    // V2.5-B5 — THIS STATEMENT ALSO CARRIES branch_seq, AND HAS TO.
+    //
+    // It used to set `branch` alone, over `turn_id = ANY(array)`. That shape
+    // cannot express branch_seq at all: every turn in the batch needs its OWN
+    // sequence number, and one array update has one value for all of them.
+    // Combined with branch_seq being absent from the upsert's DO UPDATE below,
+    // the column could never be written for a turn that already existed — which
+    // is every abandoned turn, since a turn is only demoted after it was
+    // recorded as main. Production confirmed it: 6 abandoned turns, 6 nulls.
+    //
+    // A per-turn join fixes both halves. COALESCE keeps it write-once: an
+    // already-numbered branch is never renumbered by a later re-sync.
+    const abandoned = turns.filter((t) => t.branch === "abandoned");
+    if (abandoned.length > 0) {
       statements.push(sql`
-        UPDATE corpus.game_turns SET branch = 'abandoned'
-        WHERE corpus_game_id =
-                (SELECT corpus_game_id FROM corpus.games
-                  WHERE operational_game_id = ${game.game_id}::uuid)
-          AND turn_id = ANY(${pgArray(abandonedIds)}::uuid[])
+        UPDATE corpus.game_turns AS g
+           SET branch = 'abandoned',
+               branch_seq = COALESCE(g.branch_seq, d.branch_seq)
+          FROM jsonb_to_recordset(${JSON.stringify(
+            abandoned.map((t) => ({ turn_id: t.turn_id, branch_seq: t.branch_seq }))
+          )}::jsonb) AS d(turn_id uuid, branch_seq integer)
+         WHERE g.turn_id = d.turn_id
+           AND g.corpus_game_id =
+                 (SELECT corpus_game_id FROM corpus.games
+                   WHERE operational_game_id = ${game.game_id}::uuid)
       `);
     }
 
@@ -395,21 +413,43 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         answered_at timestamptz, pre_revision_question_text text
       )
       -- ---------------------------------------------------------------------
-      -- V2.5: NONE of the six new columns appear below, deliberately.
+      -- V2.5-B5: TWO KINDS OF COLUMN, AND THE DIFFERENCE IS WHEN THE VALUE IS
+      -- KNOWN — not whether it is new.
       --
       -- reject_finalized_turn_mutation (0002) permits a no-op re-sync of a
-      -- finalized game's turns and raises on any real change. model_id and
-      -- prompt_version CAN legitimately differ between the original write and a
-      -- later re-sync — the env override may have moved, the prompt version may
-      -- have been bumped — so updating them here would raise and roll back the
-      -- entire transaction, including the repair pass that re-sync exists for.
+      -- finalized game's turns and raises on any real change. That produces the
+      -- rule:
       --
-      -- COALESCE was considered and rejected twice over. It does not even work:
-      -- on a finalized row with a NULL model_id, filling it in is still a change
-      -- and still raises. And it would be wrong where it did work — writing
-      -- today's model id onto a turn played before capture existed asserts a
-      -- fact nobody observed, which is the one thing this whole workstream
-      -- exists to prevent.
+      --   INSERT-ONLY — model_id, model_provider, prompt_version,
+      --   pre_revision_question_text. All are known when the row is created,
+      --   and the first two can legitimately DIFFER on a later re-sync (the env
+      --   override may have moved, the prompt version may have been bumped).
+      --   Updating them would raise and roll back the whole transaction,
+      --   including the repair pass that re-sync exists for. COALESCE would be
+      --   wrong here even if it were safe: writing today's model id onto a turn
+      --   played before capture existed asserts a fact nobody observed.
+      --
+      --   WRITE-ONCE-LATER — answered_at, branch_seq. Neither is knowable when
+      --   the row is inserted. answered_at arrives on the NEXT request;
+      --   branch_seq is assigned when a rewind happens. V2.5-3 swept both into
+      --   the insert-only rule and they were therefore never written at all —
+      --   production showed answered_at on turn 1 only (an artefact of the
+      --   preservation threshold) and branch_seq null on 6 of 6 abandoned turns.
+      --
+      -- COALESCE gives write-once: null becomes a value exactly once and never
+      -- changes, so a re-sync is a genuine no-op and the trigger passes. Both
+      -- fields are only ever set while the game is still in the questioning
+      -- phase, so the
+      -- transition always lands before finalization, while the trigger is
+      -- dormant. This is the same pattern corpus.games already uses for
+      -- finalized_at above — not a new idea, one that was applied too narrowly.
+      --
+      -- ACCEPTED, BOUNDED RISK: a game finalized BEFORE this change, still in
+      -- Redis (<24h), re-synced AFTER it, would have its nulls filled on a
+      -- finalized row and raise. Non-destructive — nothing is written, the
+      -- failure is logged, the record is unharmed — and the window self-clears
+      -- with the Redis TTL. Chosen over permanently complicating this
+      -- statement with a not-finalized guard.
       -- ---------------------------------------------------------------------
       ON CONFLICT (turn_id) DO UPDATE SET
         branch                 = EXCLUDED.branch,
@@ -419,7 +459,9 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         original_question_text = EXCLUDED.original_question_text,
         edit_status            = EXCLUDED.edit_status,
         edit_reason            = EXCLUDED.edit_reason,
-        raw_output             = EXCLUDED.raw_output
+        raw_output             = EXCLUDED.raw_output,
+        answered_at            = COALESCE(corpus.game_turns.answered_at, EXCLUDED.answered_at),
+        branch_seq             = COALESCE(corpus.game_turns.branch_seq, EXCLUDED.branch_seq)
     `);
   }
 

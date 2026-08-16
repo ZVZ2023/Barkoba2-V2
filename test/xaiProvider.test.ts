@@ -245,6 +245,71 @@ test("the output cap is raised for a reasoning model without changing the task",
   assert.equal((sent[0]!.body.messages as unknown[]).length, 2, "the task is unchanged");
 });
 
+// ---------------------------------------------------------------------------
+// reasoning_effort — the Step 0 probe seam.
+//
+// grok-4.6 defaults to "high" when the field is absent, so every Grok turn
+// Barkóba has ever played ran at maximum reasoning effort. The field exists so
+// that can be MEASURED. It must change nothing until something sets it.
+// ---------------------------------------------------------------------------
+
+test("PRODUCTION UNCHANGED: no reasoning_effort key when the caller sets none", async () => {
+  const sent = stubXai(grokReply({ action: "concede" }));
+  await xaiAdapter.callTool(TURN);
+
+  assert.equal(
+    "reasoning_effort" in sent[0]!.body,
+    false,
+    "the key must be absent, not present-and-undefined"
+  );
+  // Byte-identical to what production sends today.
+  assert.doesNotMatch(JSON.stringify(sent[0]!.body), /reasoning_effort/);
+});
+
+test("reasoning_effort is sent verbatim when the caller sets it", async () => {
+  const sent = stubXai(grokReply({ action: "concede" }));
+  await xaiAdapter.callTool({ ...TURN, reasoningEffort: "low" });
+  assert.equal(sent[0]!.body.reasoning_effort, "low");
+});
+
+test("effort does not disturb the task the model receives", async () => {
+  const withEffort = stubXai(grokReply({ action: "concede" }));
+  await xaiAdapter.callTool({ ...TURN, reasoningEffort: "low" });
+  const a = withEffort[0]!.body;
+
+  const without = stubXai(grokReply({ action: "concede" }));
+  await xaiAdapter.callTool(TURN);
+  const b = without[0]!.body;
+
+  // Thinking less is a transport setting. The prompt, the schema and the forced
+  // tool must be identical, or a latency comparison becomes a task comparison.
+  assert.deepEqual(a.messages, b.messages);
+  assert.deepEqual(a.tools, b.tools);
+  assert.deepEqual(a.tool_choice, b.tool_choice);
+});
+
+test("call diagnostics are reported when the provider gives them", async () => {
+  stubXai(
+    grokReply(
+      { action: "concede" },
+      { usage: { completion_tokens: 412, completion_tokens_details: { reasoning_tokens: 380 } } }
+    )
+  );
+  const { diagnostics } = await xaiAdapter.callTool(TURN);
+  assert.equal(diagnostics?.finishReason, "tool_calls");
+  assert.equal(diagnostics?.completionTokens, 412);
+  // Read from either the flat or the nested shape — which one this endpoint
+  // returns is undocumented, and guessing wrong would report nothing at all.
+  assert.equal(diagnostics?.reasoningTokens, 380);
+});
+
+test("the turn loop never sets reasoning effort", () => {
+  // Production must keep running at the provider default until a routing
+  // decision is made on evidence. The probe is the only caller.
+  const turnRoute = readFileSync("app/api/game/[id]/turn/route.ts", "utf8");
+  assert.doesNotMatch(turnRoute, /reasoningEffort/);
+});
+
 test("a missing key throws and never falls back to another provider", async () => {
   delete process.env.XAI_API_KEY;
   stubXai(grokReply({ action: "concede" }));

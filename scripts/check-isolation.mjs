@@ -84,6 +84,10 @@ const QUARANTINED = [
   "lib/providers/anthropic.ts",
   "lib/providers/xai.ts",
   "lib/anthropic.ts",
+  // The latency probe drives the real Racer path against a live endpoint. It
+  // carries whatever the Racer is given to an external vendor, so it sits in
+  // the same blast radius as the adapters it exercises.
+  "scripts/probeRacerLatency.ts",
   "lib/racerState.ts",
   "lib/gameStore.ts",
   "lib/resolveResult.ts",

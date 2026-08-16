@@ -276,6 +276,26 @@ const PROVENANCE_COLUMNS = [
   "branch_seq",
 ];
 
+/**
+ * V2.5-B5 — the two kinds, split by WHEN the value is knowable.
+ *
+ * Known at row creation, and capable of differing on a later re-sync. Updating
+ * them would raise the finalized-turn trigger and roll back the repair pass.
+ */
+const INSERT_ONLY_COLUMNS = [
+  "model_id",
+  "model_provider",
+  "prompt_version",
+  "pre_revision_question_text",
+];
+
+/**
+ * Not knowable when the row is inserted — the answer arrives on the next
+ * request, the branch number when a rewind happens. V2.5-3 treated these as
+ * insert-only too, so they were never written at all.
+ */
+const WRITE_ONCE_COLUMNS = ["answered_at", "branch_seq"];
+
 test("the turns insert, select and recordset lists stay in agreement", async () => {
   await recordGameState(
     game({ qa_log: [entry({ turn_index: 1, question_text: "q", composer_response: "YES" })] })
@@ -315,7 +335,7 @@ test("the turns insert, select and recordset lists stay in agreement", async () 
   }
 });
 
-test("no provenance column is ever written by ON CONFLICT DO UPDATE", async () => {
+test("insert-only provenance is never written by ON CONFLICT DO UPDATE", async () => {
   await recordGameState(
     game({ qa_log: [entry({ turn_index: 1, question_text: "q", composer_response: "YES" })] })
   );
@@ -331,12 +351,72 @@ test("no provenance column is ever written by ON CONFLICT DO UPDATE", async () =
   // override may have moved, the prompt version may have been bumped — so
   // updating them here would raise and roll back the entire transaction,
   // including the repair pass that re-sync exists to serve.
-  for (const col of PROVENANCE_COLUMNS) {
+  for (const col of INSERT_ONLY_COLUMNS) {
     assert.ok(
       !doUpdate.includes(`${col} `) && !doUpdate.includes(`${col}=`),
       `${col} must not appear in the turns DO UPDATE set-list`
     );
   }
+});
+
+test("write-once columns ARE updated, and only from null", async () => {
+  await recordGameState(
+    game({ qa_log: [entry({ turn_index: 1, question_text: "q", composer_response: "YES" })] })
+  );
+
+  const stmt = turnsStatement();
+  const doUpdate = stmt.slice(stmt.indexOf("ON CONFLICT (turn_id) DO UPDATE SET"));
+
+  for (const col of WRITE_ONCE_COLUMNS) {
+    assert.ok(doUpdate.includes(col), `${col} must be in the DO UPDATE set-list`);
+    // COALESCE, NOT a bare EXCLUDED assignment. A bare assignment would
+    // overwrite a recorded value on every re-sync, which on a finalized game is
+    // a real change and raises — the exact failure the insert-only rule was
+    // protecting against. COALESCE makes it write-once: null becomes a value
+    // once, then every later re-sync is a genuine no-op.
+    assert.match(
+      doUpdate,
+      new RegExp(`${col}\\s*=\\s*COALESCE\\(corpus\\.game_turns\\.${col},\\s*EXCLUDED\\.${col}\\)`),
+      `${col} must be COALESCE-guarded, never a bare EXCLUDED assignment`
+    );
+  }
+});
+
+test("the demotion statement numbers each abandoned turn individually", async () => {
+  // Two rewinds, and turn_index 2 appears in both. A single-value array update
+  // cannot express this — which is why branch_seq was null on 6 of 6 abandoned
+  // turns in production.
+  await recordGameState(
+    game({
+      qa_log: [entry({ turn_index: 1, question_text: "kept", composer_response: "YES" })],
+      abandoned_branches: [
+        [entry({ turn_index: 2, question_text: "first-a", composer_response: "NO" })],
+        [entry({ turn_index: 2, question_text: "second-a", composer_response: "NO" })],
+      ],
+    })
+  );
+
+  const demote = calls
+    .map((c) => c.sql)
+    .find((s) => s.includes("UPDATE corpus.game_turns AS g"));
+  assert.ok(demote, "expected a demotion statement");
+
+  assert.match(demote, /SET branch = 'abandoned'/);
+  assert.match(demote, /branch_seq = COALESCE\(g\.branch_seq, d\.branch_seq\)/);
+  // Per-turn join, not a flat array of ids.
+  assert.match(demote, /jsonb_to_recordset/);
+  assert.match(demote, /AS d\(turn_id uuid, branch_seq integer\)/);
+  assert.doesNotMatch(demote, /turn_id = ANY\(/, "the array form cannot carry a sequence");
+
+  // Both branch numbers are actually sent.
+  const payload = calls
+    .map((c) => c.values)
+    .flat()
+    .map(String)
+    .find((v) => v.includes("branch_seq"));
+  assert.ok(payload, "the demotion payload must carry branch_seq values");
+  assert.match(payload, /"branch_seq":1/);
+  assert.match(payload, /"branch_seq":2/);
 });
 
 test("benchmark identity is inserted but never updated", async () => {
