@@ -19,6 +19,15 @@
 // BIAS: a flag costs only an internal re-prompt, with no penalty to either
 // player. A miss lets a guess score as a free question. Over-flagging is
 // therefore the safe direction and the rules are tuned accordingly.
+//
+// KNOWN RESIDUAL — ENFORCEMENT IS FAIL-OPEN ON ONE PATH. Recorded at 2.5.0.4,
+// deliberately NOT changed there. If a question flags but resolveGuessIntent()
+// cannot complete — the racer call budget is exhausted, or the model call
+// throws — /api/game/[id]/turn falls back to treating the flagged question as
+// an ordinary question. A functional guess can therefore still reach the human
+// unchallenged under that failure mode. Choosing the fail-closed behaviour is a
+// product decision (consume the single guess / reject and regenerate / an
+// explicit rule), which is why it is scoped separately rather than patched in.
 // ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
@@ -172,9 +181,52 @@ export const CANDIDATE_IDENTIFICATION_HU: RegExp[] = [
   // both ride along here, which closes the "A bal füled az?" weakness without
   // a separate rule.)
   new RegExp(`^\\s*(?:a|az)\\s+(?:${HU_WORD}+\\s+){0,2}${HU_WORD}+\\s+az\\s*\\??\\s*$`, "i"),
-  // "A célpont a fül?"  ·  "A válasz az orr?"
+  // "A célpont a fül?"  ·  "A válasz az orr?"  ·  "A cél a Microsoft?"
+  //
+  // FIELD TEST #3 ADDED `cél`. The list already held célpont, válasz,
+  // megfejtés, megoldás and titok — every natural Hungarian word for the target
+  // EXCEPT the shortest and most common one, which is also the word
+  // RACER_SYSTEM_PROMPT and the Hungarian interface both use throughout.
+  //
+  // Grok asked "A cél a Microsoft?", "A cél az Apple?", "A cél a Google?" and
+  // "A cél a Linux?" as ordinary questions. Each scored 2 against a threshold
+  // of 3 — proper_noun alone — so four functional guesses were answered as free
+  // narrowing questions. The identical frame with `célpont` scores 5 and flags.
+  // The rule was correct; the vocabulary was one word short.
+  //
+  // Worse without the fix: "A cél a fül?" scored ZERO, because a candidate that
+  // is not capitalised gets no signal at all from any other rule.
+  //
+  // `célpont` stays FIRST so the longer word is tried before its own prefix.
+  // Backtracking would reach it either way; ordering makes that not depend on
+  // engine behaviour.
+  //
+  // KNOWN RESIDUAL — FALSE POSITIVES ON THIS FRAME. Recorded at 2.5.0.4,
+  // deliberately NOT solved there. The pattern matches
+  // "<article> <target-noun> <article> <up to 3 tokens>?", which also fits
+  // ordinary property and location questions:
+  //
+  //     A cél a konyhában található?      is the target in the kitchen?
+  //     A cél a szabadban van?            is the target outdoors?
+  //     A cél a te tulajdonod?            is it your property?
+  //
+  // All three flag. This is PRE-EXISTING in the same pattern family, not
+  // introduced here — "A célpont a konyhában található?" and "A válasz a
+  // szabadban van?" already flagged before `cél` was added, and were verified
+  // to do so against the unmodified module. What R1 changes is EXPOSURE: `cél`
+  // is far more common than `célpont`, so the rate rises.
+  //
+  // It is also the direction this module chose on purpose — see BIAS above. A
+  // false flag costs one cheap internal re-prompt and lets the Racer restate
+  // its own question; a miss hands out a free guess.
+  //
+  // Tightening the pattern means distinguishing a naming noun phrase from a
+  // predicate in Hungarian, which needs a native-speaker vocabulary and pattern
+  // review this codebase has never had (see the LANGUAGE COVERAGE note above
+  // and docs/DESIGN-NOTES.md §5). Scoped separately for that reason. Do not
+  // narrow it by guesswork.
   new RegExp(
-    `\\b(?:a|az)\\s+(?:célpont|válasz|megfejtés|megoldás|titok)\\s+(?:a|az)\\s+${NP_TAIL_HU}`,
+    `\\b(?:a|az)\\s+(?:célpont|cél|válasz|megfejtés|megoldás|titok)\\s+(?:a|az)\\s+${NP_TAIL_HU}`,
     "i"
   ),
   // "Ez a fül?" — but never "Ez egy jármű?", which is the category reading.

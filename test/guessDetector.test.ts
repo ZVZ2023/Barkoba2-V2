@@ -1,5 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import {
   detectGuess,
   EXPLICIT_GUESS_FRAMES_HU,
@@ -240,6 +241,25 @@ const CANDIDATE_QUESTIONS = [
   "A célpont a fül?",
   "A célpont az orr?",
   "Ez a fül?",
+  // --- Field Test #3 production specimens, verbatim ------------------------
+  //
+  // Grok asked these four as ordinary questions in a real 20-question game and
+  // was answered four times. Each scored 2 against a threshold of 3 —
+  // proper_noun alone — because the vocabulary list held `célpont` but not
+  // `cél`, the shortest and most common Hungarian word for the target and the
+  // one the interface itself uses.
+  //
+  // The fixtures already contained "A célpont a fül?", the identical frame with
+  // the word the rule knew, which is why the suite was green while production
+  // let four functional guesses through. These are the real strings.
+  "A cél a Microsoft?",
+  "A cél az Apple?",
+  "A cél a Google?",
+  "A cél a Linux?",
+  // Scored ZERO before the fix: a candidate that is not capitalised gets no
+  // signal from any other rule, so the exposure was wider than the four
+  // proper-noun cases suggested.
+  "A cél a fül?",
 ];
 
 const CATEGORY_QUESTIONS = [
@@ -260,6 +280,20 @@ const CATEGORY_QUESTIONS = [
   "Ez egy fajta fül?",
   "Fémből készült?",
   "Élőlény?",
+  // --- Field Test #3 negative controls -------------------------------------
+  //
+  // The same opening words as the specimens above. These ask what the target
+  // IS LIKE, not WHICH ONE it is, and adding `cél` to the vocabulary must not
+  // start flagging them. The discriminator is the second article: a candidate
+  // frame is "a cél A <name>", a property question is "a cél <predicate>".
+  "A cél élőlény?",
+  "A cél nagyobb egy kenyérpirítónál?",
+  // "egy" is the category reading in Hungarian exactly as "a/an" is in English,
+  // and must stay unflagged even directly after the newly-added word.
+  "A cél egy jármű?",
+  "A cél ember alkotta?",
+  "A cél elfér egy kézben?",
+  "A cél kisebb egy autónál?",
   "Ez valamilyen szerszám?",
 ];
 
@@ -289,6 +323,72 @@ test("category vocabulary disqualifies the candidate shape outright", () => {
   const r = detectGuess("Is it the kind of tool?");
   assert.ok(!r.matched.includes("candidate_identification"), r.matched.join(","));
   assert.equal(r.flagged, false);
+});
+
+// ---------------------------------------------------------------------------
+// Field Test #3 — the specific rule, not merely the threshold.
+// ---------------------------------------------------------------------------
+
+const FIELD_TEST_3_SPECIMENS = [
+  "A cél a Microsoft?",
+  "A cél az Apple?",
+  "A cél a Google?",
+  "A cél a Linux?",
+  "A cél a fül?",
+] as const;
+
+for (const q of FIELD_TEST_3_SPECIMENS) {
+  test(`Field Test #3 — candidate_identification fires, not just the score: ${q}`, () => {
+    const r = detectGuess(q);
+    // Asserting the RULE matters more than asserting the flag. Four of these
+    // scored 2 from proper_noun alone; a future weight change could lift them
+    // over the threshold without the candidate rule ever firing, and the suite
+    // would pass while the real defect returned.
+    assert.ok(
+      r.matched.includes("candidate_identification"),
+      `${q} scored ${r.score} via ${r.matched.join(", ") || "nothing"}`
+    );
+    assert.equal(r.flagged, true);
+  });
+}
+
+test("Field Test #3 — the fix is vocabulary, and the surrounding rule was correct", () => {
+  // Same frame, same shape, only the target word differs. If these ever
+  // diverge, the change was made in the wrong place.
+  const withCel = detectGuess("A cél a Microsoft?");
+  const withCelpont = detectGuess("A célpont a Microsoft?");
+  assert.deepEqual(withCel.matched.sort(), withCelpont.matched.sort());
+  assert.equal(withCel.score, withCelpont.score);
+});
+
+test("Field Test #3 — the second article is what separates a candidate from a property", () => {
+  // The whole discriminator, stated as a test so it cannot be lost to a
+  // well-meaning generalisation of the pattern later.
+  assert.equal(detectGuess("A cél a fül?").flagged, true, "names which one");
+  assert.equal(detectGuess("A cél egy fül?").flagged, false, "asks what kind");
+  assert.equal(detectGuess("A cél élőlény?").flagged, false, "asks a property");
+});
+
+test("Field Test #3 — a flagged question is what makes G4 capture possible", () => {
+  // pre_revision_question_text is assigned INSIDE the flagged branch of
+  // /api/game/[id]/turn. It has stayed empty in production for exactly one
+  // reason: nothing ever flagged. This pins the two halves together — the
+  // specimens now flag, and the route captures on flag — without manufacturing
+  // production data to prove it.
+  const route = readFileSync("app/api/game/[id]/turn/route.ts", "utf8");
+  const flaggedBranch = route.slice(
+    route.indexOf("if (detection.flagged) {"),
+    route.indexOf("// Step 5")
+  );
+  assert.ok(flaggedBranch.length > 0, "could not isolate the flagged branch");
+  assert.match(
+    flaggedBranch,
+    /preRevisionQuestion = turn\.question_text/,
+    "capture must live inside the flagged branch"
+  );
+  for (const q of FIELD_TEST_3_SPECIMENS) {
+    assert.equal(detectGuess(q).flagged, true, `${q} must reach that branch`);
+  }
 });
 
 test("flagging a candidate question does not by itself decide anything", () => {
