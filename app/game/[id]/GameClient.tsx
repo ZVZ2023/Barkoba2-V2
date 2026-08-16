@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { questionNumbers } from "@/lib/questionNumbers";
+import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -55,6 +56,10 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   // after a rewind truncates the log — not only on the opening turn.
   const autoTurnFor = useRef<number | null>(null);
   const resolveFired = useRef(false);
+  // V2.5-B4 — the last turn attempt failed and no human has asked to retry.
+  // Suspends only the AUTOMATIC path; see lib/turnRecovery.ts for why clearing
+  // the ref alone would turn one failure into a retry loop.
+  const [turnFailed, setTurnFailed] = useState(false);
 
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
@@ -97,14 +102,32 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         });
         const data = await res.json();
 
+        // Server truth first, on success AND on failure. Every error path in
+        // /turn returns the record with the human's answer already recorded, so
+        // a correction or an answer is never lost by a failed generation.
         if (data.game) {
           setGame(data.game as GameRecord);
         }
         if (!res.ok) {
           setError(data.message || "Valami hiba történt.");
+          // V2.5-B4. Both halves matter and neither works alone:
+          //   the ref is cleared so a stale qa_log length can never wedge the
+          //   game again — the GROK-03 stall;
+          //   turnFailed suspends the automatic path so clearing the ref does
+          //   not turn one failure into a loop against a failing provider.
+          autoTurnFor.current = null;
+          setTurnFailed(true);
+        } else {
+          setTurnFailed(false);
         }
       } catch {
+        // Network failure, or the browser aborting an in-flight request when
+        // the app was backgrounded — GROK-02. No response, so game state is
+        // left exactly as it was; the server may well have completed the turn,
+        // and the retry re-reads whatever actually happened.
         setError("Hálózati hiba — próbáld újra.");
+        autoTurnFor.current = null;
+        setTurnFailed(true);
       } finally {
         setBusy(false);
         setAmbiguousMode(false);
@@ -113,6 +136,20 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
     },
     [game.game_id]
   );
+
+  /**
+   * V2.5-B4 — the human asking for another attempt.
+   *
+   * The ONLY thing that clears `turnFailed`, which is what keeps recovery
+   * deliberate rather than automatic. The ref is cleared too, so if this
+   * attempt also fails the game still cannot wedge.
+   */
+  const retryTurn = useCallback(() => {
+    autoTurnFor.current = null;
+    setTurnFailed(false);
+    setError(null);
+    void sendTurn();
+  }, [sendTurn]);
 
   const correctAnswer = useCallback(
     async (turnIndex: number, answer: ComposerAnswer, explanation?: string) => {
@@ -133,6 +170,12 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         const data = await res.json();
         if (data.game) setGame(data.game as GameRecord);
         if (!res.ok) setError(data.message || "Nem sikerült javítani a választ.");
+        else {
+          // A correction is the human acting on a game that has moved to a new
+          // state. Whatever failed before it is no longer the situation, so the
+          // automatic resume is re-armed rather than left suspended.
+          setTurnFailed(false);
+        }
       } catch {
         setError("Hálózati hiba — próbáld újra.");
       } finally {
@@ -181,15 +224,36 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   // The ref keys on log length so it fires once per state, and the route's
   // idempotency guard covers every other duplicate path.
   useEffect(() => {
-    if (game.phase !== "questioning") return;
-    if (pendingQuestion(game)) return;
-    // A clue request is just as much a turn awaiting the human as a question is.
-    if (pendingClueRequest(game)) return;
-    if (busy) return;
-    if (autoTurnFor.current === game.qa_log.length) return;
+    // V2.5-B4 — the decision moved to lib/turnRecovery.ts so it can be tested
+    // without running React. This effect now only APPLIES it.
+    if (
+      !shouldAutoRequestTurn({
+        phase: game.phase,
+        hasPendingQuestion: pendingQuestion(game) !== null,
+        // A clue request is just as much a turn awaiting the human as a
+        // question is.
+        hasPendingClueRequest: Boolean(pendingClueRequest(game)),
+        busy,
+        turnFailed,
+        lastAutoTurnAt: autoTurnFor.current,
+        qaLogLength: game.qa_log.length,
+      })
+    ) {
+      return;
+    }
     autoTurnFor.current = game.qa_log.length;
     void sendTurn();
-  }, [game, busy, sendTurn]);
+  }, [game, busy, turnFailed, sendTurn]);
+
+  const offerTurnRetry = shouldOfferTurnRetry({
+    phase: game.phase,
+    hasPendingQuestion: pending !== null,
+    hasPendingClueRequest: Boolean(clueWanted),
+    busy,
+    turnFailed,
+    lastAutoTurnAt: autoTurnFor.current,
+    qaLogLength: game.qa_log.length,
+  });
 
   // See lib/questionNumbers.ts — turn_index is an identifier, not a count.
   const numbers = questionNumbers(game.qa_log);
@@ -534,6 +598,21 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
       {error && (
         <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
           <p className="text-sm text-[var(--red)]">{error}</p>
+
+          {/* V2.5-B4 — the way back.
+              Before this, a failed turn was a dead end: the message said "try
+              again" and nothing on the page could. Your answers and any
+              correction are already saved on the server, so this asks for the
+              next question again and loses nothing. */}
+          {offerTurnRetry && (
+            <button
+              type="button"
+              onClick={retryTurn}
+              className="mt-3 min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
+            >
+              Kérdés újrakérése
+            </button>
+          )}
         </div>
       )}
 
