@@ -3367,3 +3367,136 @@ Revocation takes effect on the next request. There is no cache to invalidate.
   matters is to thread the boolean through the route rather than re-query.
 - **No grants exist.** The mechanism is inert until two rows are inserted, which
   is deliberate — identity confirmation is a separate, evidence-based step.
+
+---
+
+## 37. `racer/2.6.0` — the canonical trailing CORE RACER RULES block
+
+The first deliberate Game Intelligence intervention in Barkóba's Racer
+guidance, and a **specific, non-generalisable exception to §18**.
+
+### 37.1 The mechanism is position and explicitness — NOT repetition
+
+The obvious reading of this change is wrong, and the field-test interpretation
+depends on getting it right.
+
+**The Racer is stateless.** Every turn is a fresh single-shot call:
+`RACER_SYSTEM_PROMPT` is re-sent in full, and the entire history is flattened
+into one rendered string inside a single user message. There is no accumulating
+conversation, no assistant turns carried forward, and therefore **no context in
+which earlier instructions lose salience**. The original framing of this task —
+"long conversational context causes strategic instructions to decay" — does not
+describe this architecture, and implementing against it would have produced a
+change whose stated rationale was false.
+
+What actually changes is two things:
+
+- **POSITION.** The block is the last content before the instruction to act, so
+  a growing transcript never pushes strategy further from the point of decision.
+  The system prompt necessarily sits above the transcript; this sits below it.
+- **EXPLICITNESS.** Rule 2 — the two-consecutive-NO pullback — is genuinely new.
+  Nothing in `RACER_SYSTEM_PROMPT` has ever stated it.
+
+### 37.2 The canonical text
+
+Reproduced verbatim. Editing it without bumping `RACER_PROMPT_VERSION` breaks
+the database claim in §37.4, and a test fails if this text and the constant in
+`lib/prompts/racer.ts` diverge.
+
+```
+CORE RACER RULES — APPLY EVERY TURN
+
+1. Stay broad on attributes early. Prefer questions likely to produce informative YES answers.
+2. After two consecutive NO answers within the same hypothesis path, pull back and open a genuinely different axis. Do not keep drilling into sibling candidates.
+3. Narrow aggressively only inside a branch supported by affirmative evidence.
+4. Never lock onto one promising clue. Reopen higher-level hypotheses when follow-ups repeatedly produce NO or AMBIGUOUS.
+5. Naming a specific candidate is a final-guess action. Do not spend ordinary question slots enumerating candidate identities.
+```
+
+Inserted immediately before `Take your turn.` — or `Make your final move.` on
+the final turn, where Rule 5 governs precisely that moment. **Unconditional**:
+a branch would make `racer/2.6.0` true of some turns and not others, which is
+the ambiguity the version exists to remove.
+
+**Deliberately NOT copied into `RACER_SYSTEM_PROMPT`.** One experimental
+variable, not two simultaneous prompt edits.
+
+### 37.3 The §18 exception — specific, and not a repeal
+
+§18's standing rule is to record an observed intelligence weakness rather than
+patch the prompt against it, and it was cited as recently as §32 to justify
+changing nothing. **It is not repealed.** This one intervention is authorised
+because the same failure class has now been observed across three consecutive
+field tests and because Rule 2 names a concrete, observable behaviour a field
+test can measure:
+
+- parent-hypothesis lock-in (§29 → Wolfram Alpha, §31 → Windows, §32);
+- sibling and category enumeration despite repeated NO;
+- candidate-name questions consuming ordinary question slots;
+- failure to reopen after accumulated NO / AMBIGUOUS evidence.
+
+Future Racer strategy changes remain governed by the evidence-first rule unless
+separately authorised.
+
+### 37.4 Why `prompt_version` can be trusted to prove this
+
+`racer/2.6.0` is a **load-bearing database claim**, not a label: corpus queries
+will be run against it as proof that a turn was played under the canonical
+guidance. A constant stamped beside an assembly it does not inspect would be an
+assertion about the code, made by the code, checked by nobody.
+
+So it is verified against the assembled message. `assertGuidanceApplied()`
+inspects the actual content immediately before the call and **throws** if the
+block is absent. A turn cannot be stamped with this version unless the guidance
+was genuinely present, because the call fails first.
+
+It throws rather than warning or silently downgrading the stamp. This can only
+fire on a code defect, and a loud, recoverable turn failure — B4 handles it,
+with a human retry control — is strictly better than a corpus quietly
+accumulating turns that claim guidance they never received. **Mislabelled
+evidence is worse than missing evidence.**
+
+No new column was needed. `prompt_version`, `model_provider` and `model_id` have
+been written per turn since `2.5.0.0`; provider and model identity are
+unchanged by this work, so post-change turns are auditable by provider and model
+against a single guidance version.
+
+### 37.5 Provider parity
+
+`buildRacerTurnMessage()` **takes no provider argument.** The parity guarantee
+is in the signature rather than in a comment: there is one assembly, so Claude
+and Grok cannot be handed different strategy text. Adapters transport it — the
+xAI adapter moves the system prompt into the first message position — but none
+authors, suppresses or differentiates it, and a test fails if any fragment of
+the block appears in a provider module.
+
+A second test captures what each transport is actually handed and asserts the
+two are byte-identical.
+
+### 37.6 How to read the field test
+
+**Rule 2 is the only rule carrying new information.** Rules 4 and 5
+substantially restate guidance the system prompt already contains — *"A question
+that names one specific candidate IS a guess"* and *"FALSIFY BEFORE YOU
+COMMIT"*.
+
+So if candidate enumeration persists, the honest reading is **"the model was
+already told and is not complying"**, not "the block was absent". Watch for:
+two-NO sequences producing a genuine axis change; late-game candidate naming;
+whether an AMBIGUOUS explanation visibly informs the next question; and whether
+the block over-corrects into mechanical axis-jumping.
+
+### 37.7 Residual concerns
+
+- **`resolveGuessIntent()` is unchanged and stamps no provenance at all.** It is
+  deliberately not given the block — it declares intent about an existing
+  question rather than choosing a new one. But when it returns a
+  `revised_question`, that question was authored **without** the guidance while
+  the turn still carries `racer/2.6.0` from the original call. §32 recorded 10
+  of ~20 turns flagged in one game, so this is not hypothetical, though the
+  `2.6.0.0` English detector correction should reduce it sharply. Recorded
+  rather than resolved: it is a narrow, known limit on what the stamp means.
+- **No behavioural claim is made or testable here.** The tests prove the block
+  reaches the model, reaches both providers identically, and never touches
+  stored answers or the visible transcript. Whether the Racer plays better is a
+  field question.

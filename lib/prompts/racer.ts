@@ -25,8 +25,65 @@ import type {
  * THE FAILURE MODE THIS CARRIES: a changed prompt with an unbumped constant
  * produces confidently mislabelled evidence, which is worse than no label.
  * Treat bumping this as part of editing the prompt, not as follow-up.
+ *
+ * V2.6 — `racer/2.6.0` IS A LOAD-BEARING DATABASE CLAIM, NOT A LABEL.
+ *
+ * It asserts one specific thing about every turn it is stamped on: that the
+ * canonical CORE_RACER_RULES block below was present, verbatim, in the message
+ * the model actually received. Corpus queries will be run against that claim,
+ * so the claim has to be true by construction rather than by discipline.
+ *
+ * It is made true by assertGuidanceApplied(), which inspects the ASSEMBLED
+ * message immediately before the call and throws if the block is missing. A
+ * turn cannot therefore be stamped with this version unless the guidance was
+ * genuinely there — the call fails first. That converts "someone remembered to
+ * bump the constant" into a structural guarantee.
  */
-export const RACER_PROMPT_VERSION = "racer/2.5.0";
+export const RACER_PROMPT_VERSION = "racer/2.6.0";
+
+/**
+ * V2.6 — THE CANONICAL TRAILING STRATEGY BLOCK.
+ *
+ * A deliberate §18 EXCEPTION, and the only one. §18's standing rule is to
+ * record an observed intelligence weakness rather than patch the prompt against
+ * it, and it was cited as recently as §32 to justify changing nothing. It is
+ * NOT repealed. This single intervention is authorised because the same failure
+ * class has now been observed across three consecutive field tests (§29, §31,
+ * §32) and because Rule 2 below states a concrete, observable behaviour that a
+ * field test can actually measure.
+ *
+ * WHAT THE INTERVENTION ACTUALLY IS — stated precisely, because the obvious
+ * reading is wrong. The Racer is STATELESS: every turn is a fresh single-shot
+ * call and RACER_SYSTEM_PROMPT is re-sent in full each time. There is no
+ * accumulating conversation in which earlier instructions lose salience, so
+ * this is NOT repetition-into-a-long-context. The mechanism is:
+ *
+ *   POSITION    — the block is the LAST thing before the turn instruction, so
+ *                 as the rendered transcript grows it does not push the
+ *                 strategy further from the point of action.
+ *   EXPLICITNESS — Rule 2, the two-NO pullback, is genuinely new. Nothing in
+ *                 the system prompt has ever stated it.
+ *
+ * DELIBERATELY NOT COPIED INTO RACER_SYSTEM_PROMPT. One experimental variable,
+ * not two simultaneous prompt edits.
+ *
+ * ON READING THE FIELD TEST: Rules 4 and 5 substantially restate guidance the
+ * system prompt already carries ("A question that names one specific candidate
+ * IS a guess", "FALSIFY BEFORE YOU COMMIT"). If candidate enumeration persists,
+ * the honest reading is "the model was already told and is not complying", NOT
+ * "the block was absent". Rule 2 is the one carrying new information.
+ *
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §37
+ * against `racer/2.6.0`. Editing it without bumping the version breaks the
+ * database claim above.
+ */
+export const CORE_RACER_RULES = `CORE RACER RULES — APPLY EVERY TURN
+
+1. Stay broad on attributes early. Prefer questions likely to produce informative YES answers.
+2. After two consecutive NO answers within the same hypothesis path, pull back and open a genuinely different axis. Do not keep drilling into sibling candidates.
+3. Narrow aggressively only inside a branch supported by affirmative evidence.
+4. Never lock onto one promising clue. Reopen higher-level hypotheses when follow-ups repeatedly produce NO or AMBIGUOUS.
+5. Naming a specific candidate is a final-guess action. Do not spend ordinary question slots enumerating candidate identities.`;
 
 /**
  * A Racer turn plus the provenance of the call that produced it.
@@ -212,6 +269,79 @@ function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
 }
 
 /**
+ * Assemble the per-turn Racer message.
+ *
+ * PROVIDER-NEUTRAL BY CONSTRUCTION — note the signature: it takes no provider.
+ * That is the parity guarantee, expressed in the type rather than promised in a
+ * comment. There is exactly one assembly, so Claude and Grok cannot be handed
+ * different strategy text; an adapter may move it between message roles, but it
+ * has nothing to differentiate.
+ *
+ * Exported so tests can inspect what the model is actually given without
+ * standing up a transport.
+ */
+export function buildRacerTurnMessage(
+  state: RacerPublicState,
+  options: { forceFinal: boolean; clueAvailable: boolean }
+): string {
+  const { forceFinal, clueAvailable } = options;
+
+  return [
+    renderLanguage(state),
+    "",
+    renderBudget(state, forceFinal),
+    "",
+    "Transcript so far:",
+    renderTranscript(state),
+    "",
+    renderClues(state),
+    clueAvailable
+      ? `You may request a clue this turn: action "clue". You have ${state.clue_credits_available} clue request(s) available. It costs no question and no guess, and the Composer will answer it in words rather than yes/no.\n\nBeing allowed to ask is not a reason to ask. Spend one only when you judge that a clue would materially help — when the transcript has stopped narrowing, or you are choosing between hypotheses that your own questions cannot separate. If your next question would make good progress on its own, ask it instead. An unspent credit is not wasted; it keeps accumulating.`
+      : "You cannot request a clue this turn.",
+    "",
+    // V2.6 — THE TRAILING STRATEGY BLOCK. Position is the intervention: last
+    // before the instruction to act, so a growing transcript never pushes the
+    // strategy away from the point of decision.
+    //
+    // Included on the final turn too. Rule 5 governs exactly that moment, and
+    // an unconditional block keeps the guarantee below unconditional as well —
+    // a branch here would mean `racer/2.6.0` was true of some turns and not
+    // others, which is precisely the ambiguity the version is meant to remove.
+    CORE_RACER_RULES,
+    "",
+    forceFinal ? "Make your final move." : "Take your turn.",
+  ].join("\n");
+}
+
+/**
+ * THE GUARANTEE BEHIND `racer/2.6.0`.
+ *
+ * `prompt_version` is written into corpus.game_turns and will be queried as
+ * proof that a turn was played under the canonical guidance. A constant stamped
+ * beside an assembly it does not actually inspect proves nothing — it would be
+ * an assertion about the code, made by the code, checked by nobody.
+ *
+ * So the claim is verified against the assembled message itself, immediately
+ * before the call. A turn cannot be stamped with this version unless the block
+ * was genuinely present, because the call raises first.
+ *
+ * THROWS RATHER THAN WARNS, and rather than silently downgrading the stamp.
+ * This can only fire on a code defect — the block is unconditional — and a
+ * loud, recoverable turn failure (B4 handles it, with a human retry control) is
+ * strictly better than a corpus quietly accumulating turns that claim guidance
+ * they never received. Mislabelled evidence is worse than missing evidence.
+ */
+function assertGuidanceApplied(content: string): void {
+  if (!content.includes(CORE_RACER_RULES)) {
+    throw new Error(
+      `racer: ${RACER_PROMPT_VERSION} claims the CORE RACER RULES block, but the ` +
+        `assembled turn message does not contain it. Refusing to stamp provenance ` +
+        `that would misdescribe this turn.`
+    );
+  }
+}
+
+/**
  * Which model this call runs on. Both fields are SERVER-RESOLVED — the provider
  * comes from the game record, the model id from the environment. No request may
  * state either, exactly as no request may state a Play Credit price.
@@ -252,6 +382,13 @@ export async function runRacerTurn(
   const adapter = getAdapter(provider);
   const requestedModel = racerModelFor(provider);
 
+  // Assembled ONCE, provider-neutrally, and verified before the transport is
+  // handed anything. Both halves matter: one assembly is what makes Claude and
+  // Grok comparable, and the assertion is what makes the stamped
+  // prompt_version a fact rather than a hope.
+  const content = buildRacerTurnMessage(state, { forceFinal, clueAvailable });
+  assertGuidanceApplied(content);
+
   const {
     output: result,
     resolvedModel,
@@ -260,28 +397,7 @@ export async function runRacerTurn(
     model: requestedModel,
     reasoningEffort: options.reasoningEffort,
     system: RACER_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          renderLanguage(state),
-          "",
-          renderBudget(state, forceFinal),
-          "",
-          "Transcript so far:",
-          renderTranscript(state),
-          "",
-          renderClues(state),
-          clueAvailable
-            ? `You may request a clue this turn: action "clue". You have ${state.clue_credits_available} clue request(s) available. It costs no question and no guess, and the Composer will answer it in words rather than yes/no.\n\nBeing allowed to ask is not a reason to ask. Spend one only when you judge that a clue would materially help — when the transcript has stopped narrowing, or you are choosing between hypotheses that your own questions cannot separate. If your next question would make good progress on its own, ask it instead. An unspent credit is not wasted; it keeps accumulating.`
-            : "You cannot request a clue this turn.",
-          "",
-          forceFinal
-            ? "Make your final move."
-            : "Take your turn.",
-        ].join("\n"),
-      },
-    ],
+    messages: [{ role: "user", content }],
     toolName: "submit_turn",
     toolDescription: "Submit your move for this turn.",
     inputSchema: turnInputSchema(forceFinal, clueAvailable),

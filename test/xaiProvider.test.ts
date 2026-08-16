@@ -391,7 +391,14 @@ test("the guess-intent call uses the same provider as the turn it resolves", () 
 test("both providers receive the same prompt version", () => {
   // Forking the prompt per provider would mean measuring prompt×model. If that
   // ever becomes necessary, the version must fork with it or the evidence lies.
-  assert.equal(RACER_PROMPT_VERSION, "racer/2.5.0");
+  //
+  // V2.6 moved this literal from "racer/2.5.0" to "racer/2.6.0" when the
+  // canonical CORE RACER RULES block was added. The INVARIANT is unchanged and
+  // is what this test is really for: exactly one version, shared by both
+  // providers. The literal is pinned as well so that an accidental revert to a
+  // previously-published version — which would silently relabel new evidence as
+  // old — fails here rather than in the corpus.
+  assert.equal(RACER_PROMPT_VERSION, "racer/2.6.0");
   const versions = RACER_SRC.match(/RACER_PROMPT_VERSION = "[^"]+"/g) ?? [];
   assert.equal(versions.length, 1, "exactly one prompt version, shared by both providers");
 });
