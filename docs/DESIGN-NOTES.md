@@ -3023,3 +3023,147 @@ produce.
 - **Parent-hypothesis lock-in** — n=3 across §29, §31, §32, with §32 the
   weakest of the three for the reason given there. No prompt or strategy change
   has been made for it, per §18's standing rule.
+
+---
+
+## 35. V2.6 Task 2 — Contest Verdict foundation
+
+**Scope: capture only.** A completed game's verdict can be contested by a
+participant, once, immutably, with the evidence preserved as it stood. Nothing
+reviews, votes on, moderates or reverses a contest. Result Dispute is homed
+here as the user-facing mechanism; its adjudication is not built.
+
+### 35.1 Two ratified decisions, and why each was escalated rather than assumed
+
+Both surfaced during investigation and were referred to Mission Sovereign
+before any code was written, per Task 2 §10's stop rule.
+
+**A. Durable participant identity — the strict rule.**
+
+`lib/seats.ts` `resolveSeat()` falls back for single-human modes: an unassigned
+Composer seat belongs to whoever is asking. That is correct and safe for a LIVE
+game, which has exactly one human by construction. Applied to a HISTORICAL
+game it would hand any authenticated visitor a seat on every game recorded
+before durable seats existed (pre-`2.3.0.0`) or created while identity was
+unconfigured.
+
+**Ratified:** contest authorization requires a **non-null durable seat id on the
+corpus row equal to the requesting player**. No fallback, no backfill, no
+inference. Games without durable participant identity are **not contestable in
+V2.6** — an accepted compatibility boundary, recorded as one rather than
+discovered later as a bug.
+
+Only the REQUESTING participant's seat must prove durable ownership. An AI
+Racer seat is null and always will be; that must not stop the human Composer
+contesting, and it does not.
+
+This mirrors an existing precedent rather than inventing a rule:
+`getSecretForComposer()` already refuses unless `composer_player_id` is non-null
+and matches. Contest authorization is the same shape, applied to the corpus.
+
+**B. Privacy unlink — contests follow the corpus erasure model.**
+
+`unlinkPlayer()` NULLs all three id columns, and migration 0003 widened the
+immutability trigger specifically so erasure still works on finalized evidence.
+A contest holding a `player_id` outside that sweep would make the erasure
+guarantee quietly false.
+
+**Ratified:** `unlinkPlayer()` clears contest linkage in the same call.
+`player_id` becomes NULL; the contest, the argument, the snapshot, the seat, the
+captured verdict and the timestamps all remain; the original game is untouched.
+No fallback re-identifies a former contestant.
+
+**This is the only permitted post-creation mutation of a contest.** The trigger
+enforces it, and enforces a second thing the first rule alone would not: that
+`player_id` may only ever travel toward NULL. Permitting the column to *change*
+would allow a contest to be reassigned to a different player — worse than the
+edit the trigger exists to prevent.
+
+### 35.2 Evidence visibility — the rule, and the one reading that needed stating
+
+**Ratified:** use the existing completed-game participant visibility rule.
+`revealed_target` may be included, because the result screen already exposes it
+symmetrically to both participants (`GameView.revealed_target`, written at the
+single declassification point in `/resolve`). `corpus.game_targets` stays out —
+a separate grant surface, intersecting the parked target-validator authority
+question.
+
+**The reading that had to be made explicit:** `revealed_target` has exactly one
+durable home, and it is `corpus.game_targets.target`. Redis is TTL-scoped, so
+the field the decision permits and the table the decision excludes are the same
+table. Implemented as: **select `target` and nothing else**. Definition,
+granularity, modifiers and locked_at are not read, not copied, and not
+reachable. The snapshot stops precisely where the result screen stops.
+
+Recorded rather than resolved silently, because a later reader comparing the
+decision to the SQL would otherwise see a contradiction.
+
+**Two further omissions, decided here on §8's do-not-weaken-isolation rule:**
+
+- `raw_output` is **not** copied. It carries the Racer's own `rationale` —
+  private reasoning that no live projection shows the Composer. Filing a
+  contest must not become the route by which one seat reads the other's
+  thinking.
+- The snapshot contains **no player identifiers at all**. Seats appear as roles
+  plus `*_seat_recorded` booleans. Had ids been embedded, erasing player B would
+  leave B's identifier inside player A's snapshot, out of reach of the sweep,
+  and decision B above would be false in practice while true in the schema.
+
+Neither is absent from the evidence base — both remain reachable through the
+corpus via `corpus_game_id`, under whatever grant a review runs with. They are
+absent from the SNAPSHOT, which is a participant-readable artefact.
+
+### 35.3 Why a new table, and why in `corpus.*`
+
+`corpus.games` is immutable once finalized. A contest is created long after
+finalization, so it could not be a column on that row without weakening the
+guarantee the corpus exists to provide.
+
+`corpus.*` rather than `derived.*` because a contest is not an interpretation of
+evidence. It is a new observable event — a named participant said this, at this
+time, about this verdict — plus a preserved copy of what the evidence was. That
+is raw record.
+
+### 35.4 One contest per participant, keyed on the SEAT
+
+`UNIQUE (corpus_game_id, contestant_seat)`, not `(corpus_game_id, player_id)`.
+
+`player_id` is nullable and actively nulled by erasure, and NULLs are distinct
+in a unique index — so a player_id key would silently stop enforcing anything
+the moment a player was unlinked, and the same seat could file again. A game has
+exactly one Composer seat and one Racer seat, so one row per seat IS one row per
+participant, and it holds whether or not the identities behind those seats still
+exist.
+
+Enforcement is at the durable layer and race-free: `ON CONFLICT DO NOTHING`
+plus `RETURNING`, so a second simultaneous submission returns no row and is
+reported as a duplicate. No read-then-write check decides it.
+
+The two seats are independent — a Composer contest does not block the Racer.
+
+### 35.5 Contestability is narrower than "any game record"
+
+`lifecycle_state = 'completed'` **AND** `outcome IS NOT NULL`. Both, because
+the two are orthogonal by schema design and §27's completeness invariant
+documents a real production row marked completed whose resolution never landed.
+
+`in_progress`, `abandoned_inferred`, `stalled_resolving` and `expired_unresolved`
+are all non-contestable. Each means the game stopped without producing a
+verdict, and contesting one would be contesting an absence.
+
+### 35.6 Residual concerns
+
+- **The trigger and the unique index are unproven in this environment.** There
+  is no PostgreSQL in the test run; the tests assert what the application does
+  plus static guards that the SQL still says what the application assumes. A
+  live Neon apply is required before the routes are exercised in production.
+  This is the same honest limit `test/corpusPersistence.test.ts` states.
+- **Contestability depends on corpus completeness.** A game whose corpus write
+  was deferred or partial is not contestable until reconciliation repairs it.
+  Correct, but it means eligibility is a property of the corpus rather than of
+  the player's memory of having finished a game.
+- **No UI exists**, so the only way to reach these routes today is a direct
+  request. Deliberate — Task 2 is foundation.
+- **`evidence_schema_version` has one value and no reader that branches on it.**
+  That is the intended shape: it is a fact recorded for a future reader, not a
+  migration framework.

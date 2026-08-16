@@ -60,6 +60,17 @@ const QUARANTINED = [
   "lib/corpus/db.ts",
   "lib/corpus/pendingQueue.ts",
   "lib/corpus/sqlStatements.ts",
+  // V2.6 — Contest Verdict. A contest snapshot is a participant-readable
+  // artefact assembled from the corpus, so the module that builds it must be
+  // structurally incapable of reaching the secret. The target text it does
+  // carry comes from corpus.game_targets, which was itself populated only from
+  // the revealed_* fields written at the single declassification point — the
+  // same seam gameCorpus has used since V2.2. The two routes are quarantined
+  // alongside it so a later edit cannot reach the secret through the handler
+  // rather than through the module.
+  "lib/corpus/gameContests.ts",
+  "app/api/game/[id]/contest/route.ts",
+  "app/api/contest/[id]/route.ts",
   // V2.4 — the entitlement gate is a PRE-game concern. It has no business near
   // game state, seat authorization or the secret, and quarantining it is what
   // keeps that true as it grows.

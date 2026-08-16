@@ -6,6 +6,7 @@ import {
   type SqlClient,
 } from "./db";
 import { enqueuePending, claimBatch, removePending } from "./pendingQueue";
+import { unlinkPlayerContests } from "./gameContests";
 import { env } from "../env";
 import { getAppVersion } from "../appVersion";
 import type { GameRecord, QuestionLogEntry } from "../types";
@@ -630,6 +631,28 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
           OR racer_player_id = ${playerId}
        RETURNING corpus_game_id
     `;
+
+    // V2.6: contests carry their own linkage and must be cleared by the SAME
+    // call. A contest is filed against a game the player may no longer be
+    // linked to, so the game sweep above cannot reach it — and a deletion that
+    // left a player_id sitting on a contest row would be the exact failure
+    // migration 0003 widened its trigger to prevent for the seat columns:
+    // the request appears to succeed and the link survives.
+    //
+    // Best-effort and separately caught. The contest table is newer than the
+    // erasure guarantee, and a failure here must not roll back the unlink that
+    // already succeeded — a partial erasure is strictly better than none, and
+    // it is logged loudly rather than swallowed.
+    try {
+      await unlinkPlayerContests(sql, playerId);
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] corpus: games unlinked for player ${playerId} but CONTEST unlink failed:`,
+        err
+      );
+    }
+
     return rows.length;
   } catch (err) {
     // eslint-disable-next-line no-console
