@@ -3191,13 +3191,57 @@ documents a real production row marked completed whose resolution never landed.
 are all non-contestable. Each means the game stopped without producing a
 verdict, and contesting one would be contesting an absence.
 
-### 35.6 Residual concerns
+### 35.6 Status and residual concerns
+
+**V2.6 TASK 2 — PROVISIONALLY CLOSED.** Implemented, deployed and migrated.
+**Live authorized Contest end-to-end verification is OUTSTANDING and has NOT
+been executed.** Final closure requires it.
+
+**What is verified in production:**
+
+- Deployed at `2.6.1.0` / `72a99cb`, confirmed by `/api/version`.
+- Migration 0006 applied successfully against production Neon.
+- **Route resolution confirmed**: `/api/game/[id]/contest` returns
+  `403 not_a_participant`. That proves Next resolves the path segment, the
+  handler executes, and the deny branch answers — which a successful deploy on
+  its own does not, since a wrong directory name would deploy just as cleanly.
+- 662 tests pass, `tsc --noEmit` clean, isolation invariant holds.
+
+**What remains unverified, stated precisely rather than assumed:**
+
+- **Zero contest rows exist in production.** No contest has ever been created,
+  so no authorized path has run end to end.
+- **The unique index has never fired.** Duplicate rejection is untested against
+  PostgreSQL.
+- **The immutability trigger has never fired.** Nothing has attempted a contest
+  UPDATE, and ordinary use never will — only the privacy unlink would.
+- **The evidence snapshot has never been assembled from real corpus rows.**
+  `buildContestEvidence()` has only ever run against fabricated fixtures. Column
+  shapes returned by the Neon HTTP driver — timestamps, `integer[]`, jsonb — are
+  inferred from how `gameCorpus.ts` handles them, not observed.
+- **Only the deny path of one route has been exercised.** `/api/contest/[id]`
+  has no production observation of any kind.
+
+Applying the migration proves the schema exists. It proves nothing about
+behaviour: the trigger and the index only act when rows arrive, and none have.
+
+**Why it is blocked:** the smoke test requires a freshly played game, and the
+test account holds zero entitlement. A supported `complimentary_grant` insert
+was attempted; the INSERT reported a returned grant row while an independent
+`SUM(amount)` still read 0. **That discrepancy is separately parked and
+uninvestigated** — it is an entitlement question, not a Contest Verdict
+finding, and it was deliberately not debugged inside this task. It belongs on
+the V2.6 open list in its own right.
+
+**Do not treat the contest routes as production-verified in any later handoff,
+and do not build on the assumption that a contest has ever been written.**
+
+Residual concerns beyond status:
 
 - **The trigger and the unique index are unproven in this environment.** There
   is no PostgreSQL in the test run; the tests assert what the application does
-  plus static guards that the SQL still says what the application assumes. A
-  live Neon apply is required before the routes are exercised in production.
-  This is the same honest limit `test/corpusPersistence.test.ts` states.
+  plus static guards that the SQL still says what the application assumes. This
+  is the same honest limit `test/corpusPersistence.test.ts` states.
 - **Contestability depends on corpus completeness.** A game whose corpus write
   was deferred or partial is not contestable until reconciliation repairs it.
   Correct, but it means eligibility is a property of the corpus rather than of
