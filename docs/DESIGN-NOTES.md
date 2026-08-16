@@ -2081,6 +2081,8 @@ there, and two claims in the original text became false. Current lineage:
 | `2.5.0.1` | B4 — recoverable Racer turn failures (GROK-02 / GROK-03) |
 | `2.5.0.2` / `5d76f12` | B5 — repaired `answered_at` and `branch_seq` capture |
 | `2.5.0.3` | Racer seat configuration reported at `/api/version` |
+| `2.5.0.4` / `c981504` | Guess Detector: `cél` added to the Hungarian candidate vocabulary (§31) |
+| `2.5.0.5` / `637833e` | game language separated from the UI shell (§32) |
 
 Between `2.5.0.0` and `2.5.0.2` the provider boundary and the xAI/Grok Racer
 also shipped (B2, B3) — see §29. Migration `0005_intelligence_provenance.sql`
@@ -2505,3 +2507,273 @@ migration 0001 are already the right home: they can hold two contradictory
 readings of the same turn, each attributable to the model, prompt version or
 human that produced it. That was the point of creating them before anything
 needed them.
+
+---
+
+## 31. Field Test #3 — the direct-guess leak, and `2.5.0.4`
+
+Second full Grok 4.20 game. Build `2.5.0.3`, target **Grok**, final guess
+**Windows**, lost at 20/20. Latency remained good; this test was not about speed.
+
+### What happened
+
+The Racer asked four candidate-identity questions as ordinary questions, and was
+answered four times:
+
+    A cél a Microsoft?   ·   A cél az Apple?
+    A cél a Google?      ·   A cél a Linux?
+
+Barkóba permits **one** guess. These were functionally four more.
+
+### The investigation, and why it did not become a new subsystem
+
+The obvious reaction — build a question gate, add an LLM referee, add a second
+classifier — was refused until the existing machinery had been measured. That
+measurement is the whole finding:
+
+| | Score | Flagged |
+|---|---|---|
+| `A cél a Microsoft?` | 2 | no |
+| `A célpont a Microsoft?` | 5 | **yes** |
+| `A cél a fül?` | **0** | no |
+
+`FLAG_THRESHOLD` is 3. The detector **ran on every question, was not bypassed,
+and returned the correct answer for the rules it had.** `CANDIDATE_IDENTIFICATION_HU`
+knew `célpont`, `válasz`, `megfejtés`, `megoldás` and `titok` — every natural
+Hungarian word for the target **except the shortest and most common one**, which
+is also the word the prompt and the interface both use throughout. Grok's four
+questions scored 2 from `proper_noun` alone, one point short.
+
+Worse, `A cél a fül?` scored **zero**: without a capitalised candidate, no rule
+fired at all.
+
+**Root cause: vocabulary, not architecture.** The fix was one token —
+`(?:célpont|cél|válasz|…)`. No new classifier, no referee, no prompt change.
+
+The fixtures had encoded the same blind spot: `CANDIDATE_QUESTIONS` already
+contained `A célpont a fül?`, the identical frame using the word the rule knew.
+The suite was green while production leaked. The four production strings are now
+fixtures, and the tests assert **which rule fired**, not merely that the score
+cleared the threshold — a future weight change could otherwise lift them over
+without the candidate rule matching, and the suite would pass while the defect
+returned.
+
+### What the system already did, and still does
+
+Investigation confirmed the enforcement path was never advisory:
+
+- the detector runs on every AI question **before** it reaches the human;
+- a flag re-prompts **the Racer itself** to declare intent;
+- `confirm_guess` converts the turn and **consumes the single guess**;
+- `continue_questioning` uses the **Racer's own** rewording — Barkóba never
+  silently rewrites a question;
+- `pre_revision_question_text` is captured on flag.
+
+So the deferred product question "should a functional guess consume the single
+guess?" was already answered in code. It simply never triggered.
+
+### Two residuals recorded at `2.5.0.4`, both deliberately unfixed
+
+**False positives on the same frame.** `A cél a konyhában található?`,
+`A cél a szabadban van?`, `A cél a te tulajdonod?` all flag. This is
+**pre-existing** — verified against the unmodified module, `A célpont a
+konyhában található?` already flagged — so `cél` broadens *exposure*, not the
+behaviour class. It is also the direction the module chose on purpose: a false
+flag costs one cheap internal re-prompt, a miss hands out a free guess.
+Tightening it means separating a naming noun phrase from a predicate in
+Hungarian, which needs the native-speaker review this codebase has never had.
+
+**Enforcement is fail-open on one path.** If a question flags but
+`resolveGuessIntent()` cannot complete — budget exhausted, or the call throws —
+the flagged question stands as an ordinary question. A functional guess can
+still reach the human under that failure mode. Fail-closed has product
+consequences (consume the guess / reject and regenerate / an explicit rule), so
+it is scoped separately rather than patched in.
+
+Both are documented in `lib/guessDetector.ts` itself, where the next person to
+edit the pattern will actually look.
+
+---
+
+## 32. Field Test #4, `2.5.0.5`, and the V2.5 closure audit
+
+### The language defect
+
+Game language was **hardcoded `"hu"` at all three creation sites**. Not derived
+from anything — there was no mechanism. Meanwhile the Validator reported the
+submission's dominant language on every single game, and the value was **read
+nowhere**.
+
+Both that behaviour and the one it replaced made the same mistake in opposite
+directions: an earlier build inferred language from the Composer's words alone,
+so an English target turned the entire product English, and the fix pinned the
+game to the interface. **Shell language and game language are separate.** The
+Hungarian shell may host either.
+
+`2.5.0.5` resolves one rule for both creation paths:
+
+```
+1. an explicit "hu" | "en" from the player   -> use it
+2. a valid detected language                  -> use it   (null on the AI path)
+3. otherwise                                  -> "hu"
+```
+
+Three-state control — **Automatikus / Magyar / English** — because a one-word
+target (Grok, Apple, Tesla, Air) tells a detector nothing about which language
+the human meant. AUTO restores the original intent; the explicit options handle
+what detection provably cannot.
+
+**No i18n layer, and none planned.** The buttons stay Hungarian. Only
+model-generated, player-visible output follows the value. Inspection confirmed
+the downstream plumbing was already complete and correct — Racer, Composer
+answer and re-answer, clue, Adjudicator and Integrity Review all read
+`game.game_language` — so setting it at creation was the entire fix. No schema,
+no migration.
+
+### Field Test #4 — PASS
+
+Build `2.5.0.5` / `637833e`.
+
+- Hungarian UI shell, selector left on **AUTO**.
+- Human entered the target **"Grok"** in English.
+- The entire Grok Racer game proceeded **in English**, with no manual selection.
+- **No drift back to Hungarian** at any point in the game.
+- Full 20-question game completed.
+- Grok speed remained excellent — observed as faster than Claude in this run.
+
+Dynamic game-language selection is **field-proven for this case**. GROK-01 stays
+closed; do not reopen absent contrary evidence.
+
+### Game Intelligence — separate from acceptance
+
+**Parent-hypothesis lock-in repeated. That is now three consecutive Grok 4.20
+games** (§29 "search engine" → Wolfram Alpha; §31 brand siblings → Windows;
+§32). Strong early narrowing, an intermediate hypothesis becoming over-trusted,
+accumulating contradictions absorbed as noise, sibling testing instead of
+reopening the parent, failed final guess. **n=3 is a pattern, not a game.**
+
+**New observation:** the game produced multiple IS-IS answers whose
+*explanations* carried information beyond the categorical label. The Racer
+receives `ambiguous_explanation` and appears not to use it as evidence. Recorded
+as a distinct hypothesis from lock-in, though the two plausibly interact.
+
+Candidate principle, still **NOT promoted**:
+
+> Narrow aggressively while evidence supports a branch; reopen aggressively when
+> accumulated contradictions weaken the parent hypothesis.
+
+No prompt or strategy change has been made for any of this, per §18's standing
+rule: record until there is something to measure a fix against.
+
+### G4 — CLOSED, and closed by the residual it was meant to measure
+
+Field Test #4 produced **10 turns at `app_version 2.5.0.5`** with
+`guess_detector_flagged = true`, `pre_revision_question_text` populated, and
+`guess_intent_outcome = continue_questioning`.
+
+The instrument built at `2.5.0.0` to measure the §18-B question/guess boundary
+has its first production rows, and the whole chain is verified end to end:
+detect → capture the original → re-prompt the Racer → record the outcome. **G4
+is closed with production evidence.**
+
+It closed for an unplanned reason, which is worth stating plainly: **not one of
+those ten was a real guess.** The column filled because the detector
+over-flagged, not because the Racer tried to sneak a guess through. The
+instrument works; what it caught was the residual next door.
+
+### The false-positive residual — CONFIRMED IN PRODUCTION, and it is TWO defects
+
+Field Test #4 flagged ordinary discovery questions:
+
+    Is the target a physical object?     ·  Is the target a person?
+    Is the target a concept or idea?     ·  Is the target a natural phenomenon?
+    Is the target a company or corporation?
+
+All resolved `continue_questioning`, so **no guess entitlement was wrongly
+consumed** and no game was decided incorrectly.
+
+**But these are English, and §31's residual is Hungarian. They are not the same
+defect and must not be filed together.**
+
+`CANDIDATE_IDENTIFICATION_EN` pattern 2 reads:
+
+```
+(?:is|was) the (?:target|answer|thing|object|word) (?:a|an|the) <noun phrase>
+                                                    ^^^^^^
+```
+
+It admits the **indefinite** article — while this module's own documented
+discriminator, three comment blocks above it, says the opposite:
+
+> `"Is it a vehicle?"` indefinite → asks which CATEGORY. Not a guess.
+> `"a"/"an"` is excluded — that is the category reading and must stay unflagged.
+
+Pattern 1 obeys that rule. Pattern 2 contradicts it. The consequence is measured:
+
+| Question | Score | Flagged |
+|---|---|---|
+| `Is it a physical object?` | −2 | no |
+| `Is the target a physical object?` | **+3** | **yes** |
+
+The same question, opposite verdicts, on phrasing alone.
+
+**This is an internal inconsistency in English, not an ambiguity in Hungarian.**
+The Hungarian residual is genuinely hard — separating a naming noun phrase from
+a predicate needs native-speaker judgement this codebase has never had. The
+English one needs no such review: the rule simply disagrees with its own stated
+doctrine, and the fix is to stop pattern 2 accepting `a|an`. Scoped separately
+and deliberately not patched here, but it is the strongest candidate for the
+first change after the freeze.
+
+### A confound this creates for the Game Intelligence evidence
+
+**Ten of roughly twenty turns were flagged, and every flag re-prompts the Racer
+to reword a question it had already framed correctly.**
+
+That is not free. `resolveGuessIntent` asks for "a rephrasing that cuts the space
+without naming a single specific candidate" — for questions that named no
+candidate to begin with. So in Field Test #4 the Racer was pushed off its own
+phrasing roughly half the time, and each flag also spent a second model call.
+
+Any reading of §29/§31/§32's parent-hypothesis lock-in **must account for this**.
+It does not invalidate the n=3 pattern — §29 and §31 were Hungarian games where
+this English rule could not fire — but it means Field Test #4 is the weakest of
+the three as evidence about the Racer's unaided reasoning, and a fourth data
+point should be gathered after the English pattern is corrected.
+
+Recorded here rather than in the deferred workstream because the confound is a
+property of *this* build, and whoever next reads the lock-in evidence needs to
+know before drawing a conclusion from it.
+
+### V2.5 closure audit
+
+| Item | Status | Evidence |
+|---|---|---|
+| G1 model/provider/version | **CLOSED** | 4 field tests, 100% per-turn coverage |
+| G2 prompt_version | **CLOSED** | `racer/2.5.0`, identical across providers |
+| G5 `answered_at` | **CLOSED** | B5 + Field Test #2 production timings |
+| G6 `branch_seq` | **CLOSED** | populated on a real abandoned rewind branch |
+| GROK-01 latency | **CLOSED** | 1.8–3.5s/turn, three consecutive games |
+| GROK-03 correction stall | **CLOSED** | B4; a production correction completed and recorded |
+| Game language vs shell | **CLOSED** | Field Test #4 |
+| Guess Detector `cél` leak | **CLOSED** | `2.5.0.4`, unit-proven |
+| G4 `pre_revision_question_text` | **CLOSED** | 10 production rows at `2.5.0.5`, full chain verified |
+| G3 benchmark ingress | **DEFERRED** | built at `2.5.0.0`, secret unset, **zero tagged games** |
+| GROK-02 recovery path | **ACCEPTED RESIDUAL** | live, never production-exercised; trigger window largely closed |
+| Guess Detector FP — English | **ACCEPTED RESIDUAL** | **confirmed in production**, ~10/20 turns; internal inconsistency, no review needed |
+| Guess Detector FP — Hungarian | **ACCEPTED RESIDUAL** | pre-existing family; needs native-speaker review |
+| Guess Intent fail-open | **ACCEPTED RESIDUAL** | §31; product decision pending |
+| B5 finalized re-sync window | **ACCEPTED RESIDUAL** | §27; bounded, self-clearing |
+| Grok 4.6 / 60s ceiling | **DEFERRED** | precondition on routing; nothing routes to 4.6 |
+| Fast→strong routing | **DEFERRED** | deliberately unbuilt |
+| Parent-hypothesis lock-in | **DEFERRED** | n=3; Game Intelligence workstream |
+| IS-IS explanations as evidence | **DEFERRED** | new at §32 |
+| Verdict / community review | **DEFERRED** | §30 |
+| English UI shell | **DEFERRED** | later scope; game language is now independent of it |
+| Hungarian native-speaker review | **DEFERRED** | §5, §31 |
+
+**Nothing in this table blocks the freeze.** V2.5's aim was an evidence
+foundation, and the foundation is production-proven: who played, under which
+prompt, at what speed, through which branch, in which language. What remains is
+either a bounded residual that is written down where it will be found, or a
+*use* of the foundation that belongs to the milestone which uses it.
