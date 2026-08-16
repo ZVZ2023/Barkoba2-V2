@@ -2777,3 +2777,149 @@ foundation, and the foundation is production-proven: who played, under which
 prompt, at what speed, through which branch, in which language. What remains is
 either a bounded residual that is written down where it will be found, or a
 *use* of the foundation that belongs to the milestone which uses it.
+
+---
+
+## 33. V2.5 post-freeze governance addendum
+
+**Documentation and classification only. No V2.5 engineering is reopened.**
+Written after the milestone-boundary review confirmed the freeze. Everything
+below records how decisions were made and how evidence should be weighed — none
+of it changes what was built.
+
+### 33.1 Grok was a deliberate scope expansion, not part of the original charter
+
+The V2.5 charter **explicitly excluded** Grok integration and multi-AI
+comparison. Every task brief through the evidence-foundation work carried the
+guardrail *"do not start Grok integration"* alongside no-RAG, no-agents and
+no-fine-tuning.
+
+That changed by an explicit **Mission Sovereign decision**: Zsolt authorised
+Grok/xAI to move out of an external feasibility harness and into the production
+Racer architecture, and the provider boundary (B2), the xAI adapter (B3) and
+everything downstream followed from that authorisation.
+
+Recorded because the record would otherwise read as though multi-provider work
+had always been in scope. It was not. It was added on purpose, by decision, in
+the middle of the milestone. **The implementation remains accepted and frozen —
+this documents the decision, it does not reconsider it.**
+
+### 33.2 Two-provider capacity — §14 carry-forward
+
+§14 defers capping the AI-Racer question budget before wider release, and its
+arithmetic rests on `RACER_DAILY_CALL_CEILING=2000`. Both were reasoned under
+**substantially single-provider, Claude-shaped assumptions**.
+
+V2.5 ended with two providers whose measured characteristics differ materially —
+`grok-4.20-0309-non-reasoning` at ~2.6s per turn against Claude Haiku's ~8.5s
+median, at different per-token prices, with `grok-4.6` at default effort
+unusable at 69.3s. The ceiling counts **calls, not cost or latency**, and it is
+shared across providers.
+
+Carried forward as an explicit requirement to reassess, **not solved in V2.5**:
+
+- whether the ceiling should stay combined or become provider-specific;
+- the pre-launch AI-Racer budget-cap decision in §14, now that per-game call
+  volume and per-call cost vary by provider;
+- provider-specific economics and capacity assumptions generally.
+
+Note that `lib/questionBudget.ts` already flags a related dependency: the Play
+Credit curve is explicitly arbitrary and awaits token-level telemetry. These
+should be reassessed together rather than separately.
+
+### 33.3 English Guess Detector — DIAGNOSED / UNFIXED DEFECT
+
+Reclassified from "accepted residual" to a **diagnosed, unfixed defect**.
+
+`CANDIDATE_IDENTIFICATION_EN` pattern 2 accepts `a|an` in a
+target-identification frame, contradicting the discriminator this module
+documents three comment blocks above it: *"`a`/`an` is excluded — that is the
+category reading and must stay unflagged."* Pattern 1 obeys the rule; pattern 2
+does not. Measured consequence: `Is it a physical object?` scores −2 and passes,
+`Is the target a physical object?` scores +3 and flags.
+
+**This is distinct from the Hungarian false-positive problem**, which is a
+genuine ambiguity between naming and predicating and stays deferred for
+native-speaker review. The English one requires no linguistic judgement — the
+rule simply disagrees with itself.
+
+**It should be the first engineering cleanup after the V2.5 boundary, and it
+should land before any serious English benchmark run**, because each false flag
+re-prompts the Racer to reword a question it had already framed correctly and
+therefore contaminates the question trajectory being measured.
+
+### 33.4 Parent-hypothesis lock-in — corrected evidence accounting
+
+Status: **REPEATED FIELD EVIDENCE / WORKING HYPOTHESIS.** Not an established
+causal diagnosis, and not a licence to change Racer strategy.
+
+The evidence is **two games, not three**:
+
+- **Field Test #2** (§29) — strong early hierarchical narrowing → "search
+  engine" parent → repeated sibling/candidate exploration despite accumulating
+  negative evidence → failed final guess, Wolfram Alpha.
+- **Field Test #3** (§31) — technology/software/brand branch → repeated
+  sibling/candidate exploration → failure to reopen the parent → final guess
+  Windows, while the target was Grok.
+
+**Field Test #4 is excluded from the evidentiary count.** Approximately ten
+Guess Detector interventions in that game re-prompted the Racer to reword
+questions it had framed correctly, so its question trajectory was not natural
+and cannot be read as unaided reasoning. It must not be used to strengthen the
+hypothesis.
+
+The hypothesis does **not** fall back to n=1: the two earlier games were
+Hungarian, where the English pattern-2 defect could not fire, and both show the
+pattern independently.
+
+Candidate principle, still not promoted:
+
+> Narrow aggressively while evidence supports a branch; reopen aggressively when
+> accumulated contradictions weaken the parent hypothesis.
+
+### 33.5 The V2.5-2A reconstruction gate — EXECUTED, not superseded
+
+**Correcting the premise: this gate was run.** It was not forgotten, and its
+evidentiary purpose was not superseded by later field testing.
+
+The read-only reconstruction was executed against a real completed AI-Racer
+game, `bd14b386-9837-4cd1-a293-0788aec77ce1` (`app_version` 2.4.0.0, hard,
+100-question budget, 84 questions used, 18 AMBIGUOUS, outcome
+`racer_incorrect`), using SELECT-only queries against production Neon. Its
+findings are recorded in §27 and are load-bearing rather than historical: that
+reconstruction is what established the transcript layer was sound, that G1 was
+the blocking gap, and — through the follow-up queries on the same game family —
+that G5 and G6 were broken.
+
+Later field testing **strengthened** those findings with independent evidence;
+it did not replace them. Nothing here was skipped, and no test is claimed that
+did not run.
+
+### 33.6 Grok Build CLI — UNCONFIRMED, and the original note is not in this repository
+
+**I could not locate the earlier note.** Searching `docs/`, `lib/`, `app/`,
+`scripts/` and `README.md` for "Grok Build", "grok-build", "build CLI" and
+"CLI" returns **no matches**. If that observation was recorded, it lives outside
+this repository — Notion, or another session — and this is the first time it
+appears here. It is written down now rather than left to memory.
+
+**The claim, carried forward as UNCONFIRMED:** Grok Build CLI capability was
+described by Grok itself and has never been independently verified.
+
+**What V2.5 does and does not verify.** V2.5 verified the **xAI HTTP API**:
+`POST https://api.x.ai/v1/chat/completions`, bearer auth, forced function
+calling, 3/3 contract compliance, and production games. That is the entire
+extent of the verification. It says nothing whatsoever about a Grok Build CLI —
+different product, different surface, different claim. **Do not treat the
+production API integration as evidence for the CLI.**
+
+Remains UNCONFIRMED unless independent evidence resolving it is added.
+
+### 33.7 Freeze status
+
+**V2.5 FREEZE REMAINS CONFIRMED.**
+
+This addendum changes documentation and governance classification only. No V2.5
+engineering is reopened, no code, schema, version, environment or deployment is
+affected, and every item above is either a record of how a decision was made or
+a requirement carried forward to a later milestone.
