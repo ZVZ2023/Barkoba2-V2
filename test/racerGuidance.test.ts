@@ -5,7 +5,9 @@ import { readFileSync } from "node:fs";
 import {
   CORE_RACER_RULES,
   RACER_PROMPT_VERSION,
+  buildGuessIntentMessage,
   buildRacerTurnMessage,
+  resolveGuessIntent,
   runRacerTurn,
 } from "../lib/prompts/racer";
 import { anthropicAdapter } from "../lib/providers/anthropic";
@@ -328,22 +330,159 @@ test("the canonical text is preserved in the design record against racer/2.6.0",
 // Nothing else moved.
 // ---------------------------------------------------------------------------
 
-test("the Guess Detector and Guess Intent paths are untouched", () => {
+test("the Guess Detector's own logic is untouched", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
-  // resolveGuessIntent keeps its own prompt and is deliberately NOT given the
-  // strategy block — it declares intent about an existing question rather than
-  // choosing a new one, and adding guidance there would blur the single
-  // experimental variable.
+  // The guess-intent SYSTEM prompt is unchanged — only the assembled user
+  // message gained the trailing block. The detector itself is a separate,
+  // deterministic module this change never reaches.
   assert.match(src, /GUESS_INTENT_SYSTEM_PROMPT/);
-  const intent = src.slice(src.indexOf("export async function resolveGuessIntent"));
-  assert.equal(
-    intent.includes("CORE_RACER_RULES"),
-    false,
-    "the guess-intent path must stay unchanged"
+  const systemPrompt = src.slice(
+    src.indexOf("const GUESS_INTENT_SYSTEM_PROMPT"),
+    src.indexOf("function turnInputSchema")
   );
-  // And the detector itself is a separate module that this change never touches.
+  assert.ok(systemPrompt.length > 0);
+  assert.equal(
+    /CORE RACER RULES|two consecutive NO/.test(systemPrompt),
+    false,
+    "the guess-intent system prompt must stay unedited"
+  );
   const detector = readFileSync("lib/guessDetector.ts", "utf8");
   assert.equal(/CORE RACER RULES/.test(detector), false);
+});
+
+// ---------------------------------------------------------------------------
+// THE GUESS-INTENT REVISION PATH.
+//
+// The audit gap this closes: `continue_questioning` returns a revised_question
+// that REPLACES the original in question_text, so it — not the first attempt —
+// is the question the human actually sees. Stamping racer/2.6.0 while that
+// question was authored without the block would make the version true of a
+// draft and false of the record. §32 measured 10 of ~20 turns flagged in one
+// game, so the gap was material rather than theoretical.
+// ---------------------------------------------------------------------------
+
+test("the revision path carries the canonical block, trailing", () => {
+  const content = buildGuessIntentMessage(answeredWith("NO"), "Is the target GPT-4?");
+  assert.ok(content.includes(CORE_RACER_RULES));
+  assert.ok(
+    content.endsWith(`${CORE_RACER_RULES}\n\nDeclare your intent.`),
+    `tail was:\n${content.slice(-300)}`
+  );
+});
+
+test("the revision path still carries the flagged question and the transcript", () => {
+  // The block must be additive. If it displaced the task, the resolution would
+  // be answering a different question than the one that was flagged.
+  const content = buildGuessIntentMessage(answeredWith("NO"), "Is the target GPT-4?");
+  assert.ok(content.includes("The question that was flagged: Is the target GPT-4?"));
+  assert.ok(content.includes("Transcript so far:"));
+  assert.ok(content.includes("A1: NO"));
+});
+
+test("the canonical block is SINGLE-SOURCED across both authoring paths", () => {
+  // Two divergent literals under one version string would make the audit claim
+  // unfalsifiable. This proves both assemblies embed the same constant rather
+  // than two texts that merely look alike today.
+  const turn = buildRacerTurnMessage(answeredWith("NO"), {
+    forceFinal: false,
+    clueAvailable: false,
+  });
+  const revision = buildGuessIntentMessage(answeredWith("NO"), "Is the target GPT-4?");
+  assert.ok(turn.includes(CORE_RACER_RULES));
+  assert.ok(revision.includes(CORE_RACER_RULES));
+
+  const src = readFileSync("lib/prompts/racer.ts", "utf8");
+  const definitions = src.match(/CORE RACER RULES — APPLY EVERY TURN/g) ?? [];
+  assert.equal(definitions.length, 1, "exactly one definition of the canonical text");
+});
+
+/** Capture what a transport is handed on the guess-intent path. */
+async function captureIntentRequest(provider: "anthropic" | "xai"): Promise<ToolCallRequest> {
+  const adapter = provider === "anthropic" ? anthropicAdapter : xaiAdapter;
+  const original = adapter.callTool;
+  let captured: ToolCallRequest | null = null;
+
+  adapter.callTool = (async (request: ToolCallRequest) => {
+    captured = request;
+    return {
+      output: {
+        resolution: "continue_questioning",
+        guess_text: null,
+        revised_question: "Does the target predate 2023?",
+      },
+      resolvedModel: `${provider}-stub`,
+    } as ToolCallResult<unknown>;
+  }) as typeof adapter.callTool;
+
+  try {
+    await resolveGuessIntent(answeredWith("NO"), "Is the target GPT-4?", provider);
+  } finally {
+    adapter.callTool = original;
+  }
+
+  assert.ok(captured, "the adapter was never called");
+  return captured as unknown as ToolCallRequest;
+}
+
+test("continue_questioning produces a revised question under the canonical guidance", async () => {
+  const original = xaiAdapter.callTool;
+  let seen: ToolCallRequest | null = null;
+  xaiAdapter.callTool = (async (request: ToolCallRequest) => {
+    seen = request;
+    return {
+      output: {
+        resolution: "continue_questioning",
+        guess_text: null,
+        revised_question: "Does the target predate 2023?",
+      },
+      resolvedModel: "grok-stub",
+    } as ToolCallResult<unknown>;
+  }) as typeof xaiAdapter.callTool;
+
+  try {
+    const r = await resolveGuessIntent(answeredWith("NO"), "Is the target GPT-4?", "xai");
+    assert.equal(r.resolution, "continue_questioning");
+    assert.equal(r.revised_question, "Does the target predate 2023?");
+  } finally {
+    xaiAdapter.callTool = original;
+  }
+
+  // The question the human will actually see was authored with the block present.
+  assert.ok(
+    (seen as unknown as ToolCallRequest).messages[0]?.content.includes(CORE_RACER_RULES)
+  );
+});
+
+test("Claude and Grok receive identical guidance on the revision path too", async () => {
+  const [claude, grok] = await Promise.all([
+    captureIntentRequest("anthropic"),
+    captureIntentRequest("xai"),
+  ]);
+  assert.equal(claude.system, grok.system);
+  assert.deepEqual(claude.messages, grok.messages);
+  for (const req of [claude, grok]) {
+    assert.ok(req.messages[0]?.content.includes(CORE_RACER_RULES));
+  }
+});
+
+test("BOTH authoring paths are guarded — neither can run without the block", () => {
+  const src = readFileSync("lib/prompts/racer.ts", "utf8");
+  const guards = src.match(/assertGuidanceApplied\(content\)/g) ?? [];
+  assert.equal(
+    guards.length,
+    2,
+    "runRacerTurn and resolveGuessIntent must each verify the assembled message"
+  );
+  // The guard's own predicate, pinned so it cannot be softened into a warning.
+  assert.match(src, /if \(!content\.includes\(CORE_RACER_RULES\)\)[\s\S]{0,120}throw new Error/);
+});
+
+test("the revision path does not contaminate the human's answer or the transcript", () => {
+  const g = game([entry({ turn_index: 1, composer_response: "NO" })]);
+  const before = JSON.stringify(g.qa_log);
+  buildGuessIntentMessage(toRacerPublicState(g), "Is the target GPT-4?");
+  assert.equal(JSON.stringify(g.qa_log), before);
+  assert.equal(JSON.stringify(g).includes("CORE RACER RULES"), false);
 });
 
 test("no Contest Verdict code path is touched", () => {

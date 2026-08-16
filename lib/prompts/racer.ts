@@ -38,6 +38,12 @@ import type {
  * turn cannot therefore be stamped with this version unless the guidance was
  * genuinely there — the call fails first. That converts "someone remembered to
  * bump the constant" into a structural guarantee.
+ *
+ * THE CLAIM COVERS EVERY PATH THAT CAN AUTHOR THE QUESTION THE HUMAN SEES.
+ * There are two: runRacerTurn(), and resolveGuessIntent() when it resolves
+ * `continue_questioning` and returns a revised_question that REPLACES the
+ * original. Both assemble the block and both are guarded. Covering only the
+ * first would make this version true of a draft and false of the record.
  */
 export const RACER_PROMPT_VERSION = "racer/2.6.0";
 
@@ -314,6 +320,39 @@ export function buildRacerTurnMessage(
 }
 
 /**
+ * Assemble the Guess-Intent message.
+ *
+ * PROVIDER-NEUTRAL, exactly like buildRacerTurnMessage, and for the same
+ * reason: it takes no provider argument, so the two transports cannot be handed
+ * different guidance on this path either.
+ *
+ * SINGLE-SOURCED. It reuses CORE_RACER_RULES rather than restating it. A second
+ * literal would drift, and two divergent "canonical" blocks under one version
+ * string would make the audit claim unfalsifiable.
+ */
+export function buildGuessIntentMessage(
+  state: RacerPublicState,
+  flaggedQuestion: string
+): string {
+  return [
+    renderLanguage(state),
+    "",
+    renderBudget(state, false),
+    "",
+    "Transcript so far:",
+    renderTranscript(state),
+    "",
+    `The question that was flagged: ${flaggedQuestion}`,
+    "",
+    // Trailing, as on the turn path. If this resolution produces a revised
+    // question, that question is authored here and under this guidance.
+    CORE_RACER_RULES,
+    "",
+    "Declare your intent.",
+  ].join("\n");
+}
+
+/**
  * THE GUARANTEE BEHIND `racer/2.6.0`.
  *
  * `prompt_version` is written into corpus.game_turns and will be queried as
@@ -450,26 +489,25 @@ export async function resolveGuessIntent(
   // the game's provider, not a default. A flagged question must not be re-read
   // by a different model than the one that wrote it, or the resolution would
   // describe an intent its author never had.
+  // V2.6 — THE SAME CANONICAL BLOCK, AND THE SAME GUARD.
+  //
+  // This path can AUTHOR the question the human actually sees:
+  // `continue_questioning` returns a revised_question that replaces the
+  // original in question_text. Without this, `racer/2.6.0` would describe only
+  // the first attempted question and not the one presented — a claim that is
+  // true of a draft and false of the record. §32 measured 10 of ~20 turns
+  // flagged in a single game, so the gap was material, not theoretical.
+  //
+  // The guidance is honestly applicable here rather than merely pasted in: a
+  // revision is question authoring, and Rule 5 is the very rule whose violation
+  // triggered the flag.
+  const content = buildGuessIntentMessage(state, flaggedQuestion);
+  assertGuidanceApplied(content);
+
   const { output: result } = await getAdapter(provider).callTool<GuessIntentResolution>({
     model: racerModelFor(provider),
     system: GUESS_INTENT_SYSTEM_PROMPT,
-    messages: [
-      {
-        role: "user",
-        content: [
-          renderLanguage(state),
-          "",
-          renderBudget(state, false),
-          "",
-          "Transcript so far:",
-          renderTranscript(state),
-          "",
-          `The question that was flagged: ${flaggedQuestion}`,
-          "",
-          "Declare your intent.",
-        ].join("\n"),
-      },
-    ],
+    messages: [{ role: "user", content }],
     toolName: "resolve_guess_intent",
     toolDescription:
       "Declare whether your flagged question was a guess or a narrowing question.",

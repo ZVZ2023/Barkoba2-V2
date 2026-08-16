@@ -3486,17 +3486,50 @@ two-NO sequences producing a genuine axis change; late-game candidate naming;
 whether an AMBIGUOUS explanation visibly informs the next question; and whether
 the block over-corrects into mechanical axis-jumping.
 
-### 37.7 Residual concerns
+### 37.7 The claim covers BOTH question-authoring paths
 
-- **`resolveGuessIntent()` is unchanged and stamps no provenance at all.** It is
-  deliberately not given the block — it declares intent about an existing
-  question rather than choosing a new one. But when it returns a
-  `revised_question`, that question was authored **without** the guidance while
-  the turn still carries `racer/2.6.0` from the original call. §32 recorded 10
-  of ~20 turns flagged in one game, so this is not hypothetical, though the
-  `2.6.0.0` English detector correction should reduce it sharply. Recorded
-  rather than resolved: it is a narrow, known limit on what the stamp means.
+The first implementation applied the block only to `runRacerTurn()`, and that
+was not sufficient. **Two paths can author the question the human actually
+sees:**
+
+1. `runRacerTurn()` — ordinary generation.
+2. `resolveGuessIntent()` resolving `continue_questioning` — the returned
+   `revised_question` **replaces** the original in `question_text`, so it, not
+   the first attempt, is what is presented and recorded.
+
+Covering only the first would have made `racer/2.6.0` true of a draft and false
+of the record. §32 measured 10 of ~20 turns flagged in a single game, so the gap
+was material rather than theoretical.
+
+Both paths now assemble the same constant and both call
+`assertGuidanceApplied()`. A test asserts there are exactly **two** guard sites
+and exactly **one** definition of the canonical text — two divergent literals
+under one version string would make the audit claim unfalsifiable.
+
+The guidance is honestly applicable on the revision path rather than merely
+pasted in: a revision *is* question authoring, and Rule 5 is the very rule whose
+apparent violation triggered the flag. The Guess-Intent **system** prompt is
+unedited; only the assembled user message gained the trailing block, and a test
+pins that.
+
+**`racer/2.6.0` is therefore a trustworthy statement about the AI-authored
+question presented to the human**, not about the first attempt. No new
+provenance field and no schema change were required.
+
+### 37.8 Residual concerns
+
+- **The revision path now carries strategy text it did not before**, which could
+  shift the balance between `confirm_guess` and `continue_questioning` — Rule 5
+  states plainly that naming a candidate is a guess. That is consistent with the
+  existing prompt rather than in tension with it, and the fairness requirement
+  demanded it, but it is a second behavioural change riding on this deployment
+  and should be watched in field play alongside Rule 2.
+- **`resolveGuessIntent()` still stamps no provenance of its own.** It does not
+  need to — the turn's `prompt_version` now describes both paths truthfully —
+  but it means the corpus cannot distinguish a revised question from an original
+  one by provenance alone. `pre_revision_question_text` already records that
+  distinction and is the field to use.
 - **No behavioural claim is made or testable here.** The tests prove the block
-  reaches the model, reaches both providers identically, and never touches
-  stored answers or the visible transcript. Whether the Racer plays better is a
-  field question.
+  reaches the model on both paths, reaches both providers identically, and never
+  touches stored answers or the visible transcript. Whether the Racer plays
+  better is a field question.
