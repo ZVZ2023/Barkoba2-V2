@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { getAppVersion } from "@/lib/appVersion";
 import { corpusConfigStatus } from "@/lib/corpus/db";
 import { entitlementStatus } from "@/lib/entitlements";
+import { isProviderAvailable } from "@/lib/providers";
+import { env } from "@/lib/env";
 
 // Deployment identity as JSON. Reads lib/appVersion.ts — the same source the
 // on-screen badge uses, so the two cannot disagree.
@@ -65,6 +67,30 @@ export async function GET() {
       store_ready: entitlement.storeReady,
       complimentary_grant: entitlement.complimentaryGrant,
       reason: entitlement.reason,
+    },
+    // V2.5 — WHICH MODEL FILLS THE RACER SEAT IN THIS RUNTIME.
+    //
+    // Same reasoning as the corpus and entitlement blocks above: the model is
+    // chosen by an environment variable, environment changes do not reach a
+    // running deployment, and until now there was no way to answer "is
+    // production actually racing the model I think it is?" without playing a
+    // game and reading the corpus afterwards. For a field test that is the
+    // wrong order — you want to confirm the configuration BEFORE spending the
+    // game, not diagnose it after.
+    //
+    // SAFE TO SERVE PUBLICLY: vendor model names and a boolean. No key, no
+    // fragment of one, nothing per-player. `xai_available` is the same
+    // predicate game creation refuses on, so a false here explains a refused
+    // Grok game exactly.
+    //
+    // NOT AUTHORITATIVE FOR EVIDENCE. This is the CONFIGURATION now; the record
+    // of what actually played is corpus.game_turns.model_id, written per turn.
+    // If the two ever disagree, believe the turn.
+    racer: {
+      anthropic_model: env.modelRacer(),
+      xai_available: isProviderAvailable("xai"),
+      xai_model: env.xaiModelRacer(),
+      xai_max_tokens: env.xaiMaxTokensRacer(),
     },
     served_at: new Date().toISOString(),
   });

@@ -57,6 +57,38 @@ test("no component hardcodes a version string; all read the single source", () =
   }
 });
 
+// ---------------------------------------------------------------------------
+// V2.5 — the Racer seat's configuration must be observable before a game.
+//
+// The model is chosen by an environment variable, and environment changes do
+// not reach a running deployment. Without this block the only way to find out
+// which model a runtime races is to play a game and read the corpus afterwards
+// — the wrong order for a field test, and the same blind spot corpusConfigStatus
+// was added to fix.
+// ---------------------------------------------------------------------------
+
+test("/api/version reports which model fills the Racer seat", () => {
+  const src = readFileSync("app/api/version/route.ts", "utf8");
+  assert.match(src, /racer: \{/);
+  assert.match(src, /xai_model: env\.xaiModelRacer\(\)/);
+  assert.match(src, /xai_available: isProviderAvailable\("xai"\)/);
+  assert.match(src, /anthropic_model: env\.modelRacer\(\)/);
+});
+
+test("/api/version leaks no credential while reporting the Racer seat", () => {
+  const src = readFileSync("app/api/version/route.ts", "utf8");
+  // Model names are vendor identifiers, not secrets. Keys are.
+  assert.doesNotMatch(src, /xaiApiKey|anthropicApiKey|XAI_API_KEY|ANTHROPIC_API_KEY/);
+  assert.doesNotMatch(src, /benchmarkIngressSecret|entitlementGrantSecret/);
+});
+
+test("the shipped default Racer model is unchanged by the field test", () => {
+  // The field test is switched on by SETTING XAI_MODEL_RACER, never by moving
+  // the default. A future deploy without the variable must behave as it always
+  // has, rather than silently racing whichever model was last experimented with.
+  assert.match(readFileSync("lib/env.ts", "utf8"), /XAI_MODEL_RACER \|\| "grok-4\.6"/);
+});
+
 test("player-facing counts use Hungarian formatting, never 'X of Y'", () => {
   for (const path of [
     "app/game/[id]/GameClient.tsx",
