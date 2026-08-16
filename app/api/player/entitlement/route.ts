@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
-import { getStatus, isEntitlementEnabled } from "@/lib/entitlements";
+import { getStatus, hasUnlimitedPlay, isEntitlementEnabled } from "@/lib/entitlements";
 import { playCreditCostForBudget, QUESTION_BUDGETS } from "@/lib/questionBudget";
 
 // ---------------------------------------------------------------------------
@@ -30,7 +30,10 @@ export async function GET(req: NextRequest) {
   if (!isEntitlementEnabled()) {
     // Not enforcing: there is no balance to speak of, and the client must not
     // render an affordability warning against a gate that is not running.
-    return NextResponse.json({ enforced: false, balance: null, costs });
+    // `unlimited` is false rather than true here on purpose — nobody is exempt
+    // from a gate that is not running, and claiming otherwise would make the
+    // badge assert a privilege the record does not contain.
+    return NextResponse.json({ enforced: false, unlimited: false, balance: null, costs });
   }
 
   if (!playerId) {
@@ -41,9 +44,20 @@ export async function GET(req: NextRequest) {
   }
 
   try {
-    const status = await getStatus(playerId);
+    // V2.6 — reported so the badge can say "unlimited" instead of the balance.
+    //
+    // Without this the two developer identities would read "Játékkereted 0 —
+    // elfogyott" while their games start perfectly, which looks like a defect
+    // and would be re-reported as one. The balance is still returned, honestly:
+    // an exempt player may also hold ordinary credits, and this endpoint's job
+    // is to report what is true, not to hide it.
+    const [status, unlimited] = await Promise.all([
+      getStatus(playerId),
+      hasUnlimitedPlay(playerId),
+    ]);
     return NextResponse.json({
       enforced: true,
+      unlimited,
       balance: status.balance,
       complimentary_granted: status.complimentary_granted,
       purchased: status.purchased,

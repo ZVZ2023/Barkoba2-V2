@@ -44,7 +44,7 @@ export interface EntitlementStatus {
 }
 
 export type ConsumeOutcome =
-  | { ok: true; reason: "consumed" | "already_consumed" | "disabled" }
+  | { ok: true; reason: "consumed" | "already_consumed" | "disabled" | "unlimited" }
   | { ok: false; reason: "insufficient_balance" | "unavailable" | "no_player" };
 
 /**
@@ -118,6 +118,75 @@ function requireSql(): SqlClient {
   const sql = getSql();
   if (!sql) throw new Error("entitlements: no database client");
   return sql;
+}
+
+// ---------------------------------------------------------------------------
+// V2.6 — DEVELOPER / TESTER UNLIMITED PLAY.
+//
+// A designated identity may start games without a balance and without spending
+// one. Two people, granted by hand in the database, so that development and
+// field testing are never blocked by credits.
+//
+// WHAT THIS IS NOT, AND THE DISTINCTION IS THE WHOLE DESIGN:
+//
+//   NOT a large balance. An artificial grant of 100000 credits would be
+//   indistinguishable from a real one in every provenance query, and would
+//   decay — it is a bigger number, not a different kind of thing.
+//
+//   NOT a ledger row of any kind. Balance is SUM(amount) and getStatus()
+//   buckets that sum into complimentary_granted / purchased / consumed. Any
+//   ledger expression of this lands in a bucket and corrupts the Play Credit
+//   curve, which is a live workstream awaiting token-level telemetry.
+//
+//   NOT an exemption from anything except entitlement. Game-creation rate
+//   limiting and the daily model-call ceiling remain fully in force. Unlimited
+//   PLAY must never become unlimited SPEND: a field-testing loop on an exempt
+//   identity could otherwise exhaust the provider budget and take production
+//   down for ordinary players, turning a convenience into an availability
+//   incident.
+//
+// It bypasses exactly two things — the balance test in canStartGame() and the
+// charge in consumeForGame() — and writes nothing anywhere.
+// ---------------------------------------------------------------------------
+
+/**
+ * Does this player hold an ACTIVE unlimited-play grant?
+ *
+ * FAILS CLOSED, INTO ORDINARY ENFORCEMENT. Every failure mode — no client, a
+ * throwing query, a missing table on a runtime whose migration has not been
+ * applied — returns false, which means the caller proceeds to the normal
+ * balance check. That is the safe direction in both senses: an outage of this
+ * table cannot hand out free play, and it cannot lock the two developers out of
+ * a system they still hold ordinary credits in.
+ *
+ * Note the ordering constraint this creates for callers: the result must be
+ * used to SKIP the balance check, never to gate it. `false` has to mean
+ * "carry on as normal", not "refuse".
+ *
+ * Cheap by construction — a partial index over a table with two rows.
+ */
+export async function hasUnlimitedPlay(playerId: string | null): Promise<boolean> {
+  if (!playerId) return false;
+  if (!isCorpusConfigured()) return false;
+
+  try {
+    const sql = getSql();
+    if (!sql) return false;
+    const rows = await sql`
+      SELECT 1
+        FROM accounts.unlimited_play
+       WHERE player_id = ${playerId}
+         AND revoked_at IS NULL
+       LIMIT 1
+    `;
+    return rows.length > 0;
+  } catch (err) {
+    // Deliberately NOT re-thrown and deliberately not treated as a grant. A
+    // player who should be exempt and is not merely sees the ordinary gate.
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] unlimited-play lookup failed for ${playerId}:`, err);
+    return false;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -323,6 +392,15 @@ export async function consumeForGame(
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
   if (!playerId) return { ok: false, reason: "no_player" };
 
+  // V2.6 — unlimited play, checked BEFORE the cost is derived.
+  //
+  // The position is what makes the grant budget-INDEPENDENT rather than
+  // budget-exempt: a 100-question game and a 20-question game take the same
+  // path, because no price is ever computed for an exempt identity. Returning
+  // here also means NO CONSUMPTION ROW IS WRITTEN — the ledger never learns
+  // that this game happened, which is precisely the analytics guarantee.
+  if (await hasUnlimitedPlay(playerId)) return { ok: true, reason: "unlimited" };
+
   // COST IS DERIVED HERE, FROM A BUDGET, NEVER RECEIVED AS A PRICE.
   //
   // The caller hands over the question budget it resolved server-side — the
@@ -423,6 +501,11 @@ export async function canStartGame(playerId: string | null): Promise<ConsumeOutc
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
   if (!playerId) return { ok: false, reason: "no_player" };
 
+  // V2.6 — an exempt identity is never refused here. This pre-check exists only
+  // to avoid burning a model call on someone who cannot play; an unlimited
+  // player always can, so there is nothing to pre-check.
+  if (await hasUnlimitedPlay(playerId)) return { ok: true, reason: "unlimited" };
+
   try {
     // DIMENSION-BLIND BY DESIGN. This runs before the request body is parsed,
     // so the game's budget — and therefore its cost — is not yet known. It asks
@@ -454,6 +537,16 @@ export async function ensureInitialComplimentary(playerId: string | null): Promi
   if (!isEntitlementEnabled() || !playerId) return;
   const amount = env.entitlementComplimentaryGrant();
   if (amount <= 0) return;
+
+  // V2.6 — an unlimited identity never accrues complimentary value.
+  //
+  // Not a micro-optimisation. A developer identity that collected the
+  // first-contact allowance would put a complimentary_grant row in the ledger
+  // that is never spent and never can be, permanently overstating
+  // `complimentary_granted` in exactly the provenance query this whole design
+  // exists to keep clean. Checked after the amount test so it costs nothing on
+  // deployments that grant no allowance at all.
+  if (await hasUnlimitedPlay(playerId)) return;
 
   try {
     await grantComplimentary(playerId, amount, {

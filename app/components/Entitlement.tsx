@@ -21,6 +21,15 @@ export interface EntitlementView {
   enforced: boolean;
   balance: number | null;
   costs: Record<string, number>;
+  /**
+   * V2.6 — this identity holds a developer/tester unlimited-play grant.
+   *
+   * Optional because a client may briefly be running against an older
+   * deployment that does not send the field. Absent is read as false, which is
+   * the safe default: the badge falls back to showing the real balance rather
+   * than claiming a privilege it cannot confirm.
+   */
+  unlimited?: boolean;
 }
 
 /** Shared fetch. Returns null when entitlement cannot be read at all. */
@@ -56,7 +65,26 @@ export function useEntitlement(): { view: EntitlementView | null; refresh: () =>
  * speak of, and a "0 credits" badge on an ungated deployment would be a lie.
  */
 export function BalanceBadge({ view }: { view: EntitlementView | null }) {
-  if (!view?.enforced || view.balance === null) return null;
+  if (!view?.enforced) return null;
+
+  // V2.6 — a developer/tester identity shows its access, not its balance.
+  //
+  // CHECKED BEFORE the balance guard below, and that ordering is the point: an
+  // exempt player's balance is legitimately 0, so the old code returned early
+  // and then rendered "0 — elfogyott" over a session that plays perfectly well.
+  // The badge would have been reporting the one number that is now irrelevant
+  // to whether they can play.
+  if (view.unlimited) {
+    return (
+      <div className="flex items-baseline gap-2 text-sm">
+        <span className="text-neutral-600">Játékkereted</span>
+        <span className="font-semibold text-[#1e3a24]">korlátlan</span>
+        <span className="text-neutral-500">— fejlesztői hozzáférés</span>
+      </div>
+    );
+  }
+
+  if (view.balance === null) return null;
 
   return (
     <div className="flex items-baseline gap-2 text-sm">

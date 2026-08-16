@@ -3255,3 +3255,115 @@ Residual concerns beyond status:
 - **`evidence_schema_version` has one value and no reader that branches on it.**
   That is the intended shape: it is a fact recorded for a future reader, not a
   migration framework.
+
+---
+
+## 36. `2.6.2.0` — developer / tester unlimited play
+
+Two designated identities may start games without a balance and without
+spending one, so development and field testing are never blocked by credits.
+Granted by hand in the database; **no grants have been issued yet**, pending
+separate confirmation of each production `player_id`.
+
+### 36.1 Why this is not a ledger construct — the decisive argument
+
+`balance` is `SUM(amount)` over `accounts.entitlement_ledger`, and
+`getStatus()` buckets that same sum into `complimentary_granted` / `purchased`
+/ `consumed`. **Any expression of unlimited play as a ledger row lands in one of
+those buckets and corrupts the Play Credit curve** — a live workstream awaiting
+token-level telemetry, which will be calibrated against exactly these numbers.
+
+A large artificial balance was rejected for the same reason and one more: it is
+a bigger number, not a different kind of thing. It would be indistinguishable
+from a real grant in every provenance query, and it would decay.
+
+Unlimited play is not an amount of value. It is a **property of an identity**,
+so it gets its own table. Same reasoning that keeps `corpus.game_targets`
+separate from `corpus.games`: a different kind of fact, with a different access
+profile, gets a different table rather than a column on someone else's.
+
+### 36.2 The exemption's exact boundary
+
+It bypasses **two things and nothing else**: the balance test in
+`canStartGame()` and the charge in `consumeForGame()`.
+
+**Game-creation rate limiting and `RACER_DAILY_CALL_CEILING` remain fully in
+force.** Unlimited PLAY must never become unlimited SPEND — a field-testing loop
+on an exempt identity could otherwise exhaust the provider budget and take
+production down for ordinary players, turning a convenience into an
+availability incident. A test asserts structurally that no module outside
+`lib/entitlements.ts` and `/api/player/entitlement` mentions the grant at all,
+so rate limiting and the call ceiling cannot have been made conditional on it.
+
+The V2.4 invariant is restated and re-asserted against the new code: no turn,
+answer, clue, correction or resolution route consults entitlement. Neither
+exhaustion nor an exemption can affect a game already under way.
+
+### 36.3 Checked before the cost is derived
+
+The short-circuit sits **above** `playCreditCostForBudget()`. That position is
+what makes the grant budget-*independent* rather than budget-*exempt*: no price
+is ever computed for an exempt identity, so a 100-question game and a
+20-question game take an identical path. Proven by the absence of any balance
+read on that path, not merely by the outcome.
+
+It also means **no consumption row is written** — the ledger never learns the
+game happened. That is the analytics guarantee, and it is asserted as a
+negative, because a test that only checked "the game starts" would pass just as
+happily against an implementation that silently granted itself credits.
+
+`ensureInitialComplimentary()` skips exempt identities for the same reason: a
+developer collecting the first-contact allowance would leave an unspendable
+`complimentary_grant` row permanently overstating `complimentary_granted`.
+
+### 36.4 Failure posture — fails closed, into ordinary enforcement
+
+Every failure mode of `hasUnlimitedPlay()` — no client, a throwing query, a
+missing table on a runtime whose migration has not been applied — returns
+`false`, and `false` means *carry on as normal*, never *refuse*.
+
+Both halves matter and both are tested. An outage of a two-row table must not
+become free play for everyone; and it must not lock a developer out of ordinary
+credits they also hold.
+
+### 36.5 Revocation is a timestamp, never a delete
+
+`UNIQUE (player_id) WHERE revoked_at IS NULL` — partial, so a player can be
+granted, revoked and granted again as several rows with at most one active. A
+plain `UNIQUE(player_id)` would have forced revocation to be an update-in-place
+and destroyed the history.
+
+That history is the point: *"was this identity ever exempt, and between which
+dates"* has to stay answerable. An unattributable privilege grant is one nobody
+dares revoke, which is also why `label` is `NOT NULL`.
+
+Revocation takes effect on the next request. There is no cache to invalidate.
+
+### 36.6 Security
+
+- **This is a privilege-escalation surface**, but it creates **no new trust
+  boundary**: whoever can write this table can already insert ledger grants.
+- **No API grant path.** Database access only, which satisfies "no admin panel
+  now" *and* makes self-grant impossible. Do not add an endpoint later without
+  a secret at least as strong as `ENTITLEMENT_GRANT_SECRET`.
+- **`player_id` is unvalidated** — there is no players table to reference, so a
+  typo grants unlimited play to an identity that will never appear. Inert, but
+  it is why identity must be confirmed by round trip before a row is written,
+  never inferred.
+- **Traceability is preserved.** Exempt players still write `corpus.games` rows
+  with their `player_id`, so their games remain fully auditable. Monetization
+  analysis should exclude them with a `LEFT JOIN` on this table — recommended as
+  standard in any future Play Credit curve query.
+
+### 36.7 Residual concerns
+
+- **The partial unique index is unproven in this environment.** No PostgreSQL in
+  the test run; static guards assert the SQL still says what the application
+  assumes. The same honest limit every database-facing suite here states.
+- **Up to three lookups per game creation on the create path** — one each in
+  `ensureInitialComplimentary`, `canStartGame` and `consumeForGame`. Indexed,
+  against a table with two rows, on a path that already makes a Validator model
+  call costing seconds. Negligible in context; the obvious fix if it ever
+  matters is to thread the boolean through the route rather than re-query.
+- **No grants exist.** The mechanism is inert until two rows are inserted, which
+  is deliberate — identity confirmation is a separate, evidence-based step.
