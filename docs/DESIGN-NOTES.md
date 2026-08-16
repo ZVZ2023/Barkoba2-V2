@@ -2069,10 +2069,22 @@ generating the code rather than after.
 
 ---
 
-## 27. `2.5.0.0` — Game Intelligence evidence foundation (MILESTONE FROZEN)
+## 27. `2.5.0.x` — Game Intelligence evidence foundation
 
-Frozen at `2.5.0.0` / `3123275`. Migration `0005_intelligence_provenance.sql`
-applied and verified in production Neon.
+**LINEAGE. This section was written at `2.5.0.0` and has been corrected since.**
+The foundation froze at `2.5.0.0` / `3123275`; the work below it did not stop
+there, and two claims in the original text became false. Current lineage:
+
+| Build | What it did |
+|---|---|
+| `2.5.0.0` / `3123275` | evidence foundation: migration 0005, per-turn provenance |
+| `2.5.0.1` | B4 — recoverable Racer turn failures (GROK-02 / GROK-03) |
+| `2.5.0.2` / `5d76f12` | B5 — repaired `answered_at` and `branch_seq` capture |
+| `2.5.0.3` | Racer seat configuration reported at `/api/version` |
+
+Between `2.5.0.0` and `2.5.0.2` the provider boundary and the xAI/Grok Racer
+also shipped (B2, B3) — see §29. Migration `0005_intelligence_provenance.sql`
+remains the only schema change; B4, B5 and the provider work are code-only.
 
 V2.5 began as foundation, not as an attempt to solve Racer intelligence, and it
 ends the same way. Nothing here makes the Racer better. It makes the Racer
@@ -2193,19 +2205,68 @@ override may move, and `prompt_version` can, because it is bumped on purpose —
 the trigger would raise and roll back the **entire transaction**, taking the
 repair pass with it.
 
-The guard is that all eight new columns are written on `INSERT` only and appear
-in no `ON CONFLICT … DO UPDATE` set-list. This is enforced by a test asserting
-their absence from the emitted SQL, not by anyone remembering.
+**CORRECTED AT `2.5.0.2`. The original text said all eight new columns are
+written on `INSERT` only and appear in no `DO UPDATE` set-list, and instructed
+anyone adding a column to keep it that way. That rule was too broad, it was
+wrong, and following it literally would re-break `answered_at`.**
 
-It has not been proven against live PostgreSQL, because at closure the corpus
-contained **zero** completed games missing a target or resolution row, so the
-repair pass had nothing to re-sync. No further testing was manufactured for it:
-forcing the path would have meant writing to production evidence to test a
-guarantee about not writing to production evidence.
+The distinction is not whether a column is new. It is **when its value becomes
+knowable**.
 
-The residual is therefore: guarded by design and by test, unexercised in the
-database. Anyone adding a column to `corpus.game_turns` must keep it out of the
-`DO UPDATE` set-list, and the test that pins this must not be relaxed.
+**Class A — known at row creation, and possibly different on a later re-sync.**
+`model_id`, `model_provider`, `prompt_version`, `pre_revision_question_text`.
+These are **INSERT-only** and must stay out of `DO UPDATE`. `model_id` can
+differ because the env override may move; `prompt_version` because it is bumped
+on purpose. Updating either would change a finalized row, raise, and roll back
+the whole transaction with the repair pass inside it. `COALESCE` would be wrong
+here even where it was safe: writing today's model id onto a turn played before
+capture existed asserts a fact nobody observed.
+
+**Class B — write-once-later: NULL becomes a value exactly once, during active
+play, and never changes again.** `answered_at`, `branch_seq`. Neither is
+knowable when the row is inserted — the answer arrives on the *next* request,
+and the branch number is assigned when a rewind happens. These belong in
+`DO UPDATE`, wrapped:
+
+```sql
+answered_at = COALESCE(corpus.game_turns.answered_at, EXCLUDED.answered_at)
+branch_seq  = COALESCE(corpus.game_turns.branch_seq,  EXCLUDED.branch_seq)
+```
+
+Sweeping Class B into the Class A rule is why neither column was ever written.
+Production proved it: `answered_at` appeared on `turn_index 001` alone — an
+artefact of the preservation threshold inserting turn 1 after it was answered —
+and `branch_seq` was NULL on 6 of 6 abandoned turns across 5 recorded
+corrections. Both are confirmed working since `2.5.0.2`.
+
+`branch_seq` needed a second fix as well: the demotion statement set `branch`
+alone over `turn_id = ANY(array)`, a shape that **cannot** carry a per-turn
+sequence number. It is now a per-turn `jsonb_to_recordset` join. The
+demote-before-upsert ordering is unchanged and still load-bearing.
+
+This is not a new pattern. `corpus.games.finalized_at` has used
+`COALESCE(existing, EXCLUDED)` since V2.2 for exactly this reason. V2.5-3 had
+the right idea and applied it to the wrong set.
+
+The test that pins this was **correctly relaxed** into two: Class A absent from
+`DO UPDATE`, Class B present *and* `COALESCE`-guarded rather than a bare
+`EXCLUDED` assignment. Do not merge them back.
+
+### The accepted residual, as it actually stands
+
+Class B fills a NULL on re-sync, which on a **finalized** row is a real change
+and would raise. In normal play this cannot happen: both fields are set while
+the game is still in the questioning phase, so the transition always lands
+before finalization, while the trigger is dormant.
+
+The bounded exception, **accepted by decision rather than engineered away**: a
+game finalized *before* B5, still resident in Redis (<24h TTL), re-synced
+*after* B5 would attempt a NULL→value fill on a finalized row and fail. It is
+non-destructive — nothing is written, the transaction rolls back, the failure is
+logged, and the finalized evidence is untouched — and the window self-clears
+with the Redis TTL. The alternative was a not-finalized guard permanently
+complicating the statement that carries every turn Barkóba records. The bounded,
+self-clearing, harmless failure was judged the better trade.
 
 ### Production acceptance — Field Test #1, "Air"
 
@@ -2322,3 +2383,125 @@ All five are open. None is promoted. The first three can only ever be re-run as
 *new* games under the new capture; they cannot be recovered as data. That is the
 permanent cost of having built the corpus after the benchmarks, and it is the
 reason V2.5 shipped provenance before anything else.
+
+---
+
+## 29. Field Test #2 — "Grok": the fast scout, and a new failure mode
+
+First full game played by a non-Anthropic Racer.
+
+| | |
+|---|---|
+| Build | `2.5.0.3` |
+| Provider / model | `xai` / `grok-4.20-0309-non-reasoning` |
+| Prompt version | `racer/2.5.0` — **identical to the Claude games** |
+| Game | 20 questions, completed |
+| Target | Grok |
+| Final guess | Wolfram Alpha — **incorrect** |
+| Server-side latency | ~1.8–3.5s per turn, measured from `answered_at` |
+
+### GROK-01 — CLOSED
+
+The Racer seat became provider-selectable in V2.5-B3, and the first Grok games
+were unplayable. The Step 0 probe found why, and the number is worth recording
+because it explains the entire GROK-01/02/03 cluster at once:
+
+| Configuration | Median turn | Verdict |
+|---|---|---|
+| `grok-4.6`, effort unset (= `high`) | **69.3s** (57.8–102.6) | above the 60s function ceiling |
+| `grok-4.6` + `reasoning_effort: low` | 10.0s | viable fallback |
+| `grok-4.20-0309-non-reasoning` | 2.6s | chosen |
+| `grok-4.3` + `effort: none` | 1.7s | reserve, untested for play |
+
+All four cleared Barkóba's forced-tool contract 3/3 with the existing schema —
+including the nullable `["string","null"]` unions, which xAI documents as the
+correct form. No prompt or schema change was needed for any of them.
+
+Barkóba had never sent `reasoning_effort`, and grok-4.6 defaults to `high`. So
+the **median** Grok turn was being killed by Vercel before it could return. The
+early Grok games did not stall; they were terminated. Field Test #2's production
+timings (1.8–3.5s) confirm the probe independently.
+
+**GROK-01 is closed for the fast-scout configuration.** No further latency work
+unless field evidence reopens it.
+
+### The Racer-intelligence specimen — observation, NOT a promoted rule
+
+**Observed.** Strong early hierarchical narrowing: the Racer moved down the
+ladder cleanly and reached "search engine" quickly and correctly. Then it locked
+on that parent. It spent its remaining questions testing *siblings within the
+branch* while negative and ambiguous answers accumulated against the branch
+itself, never reopened the parent hypothesis, and guessed Wolfram Alpha.
+
+**The failure is not the final guess.** Given "search engine", Wolfram Alpha is
+defensible. The failure is that a run of contradictions never triggered a
+re-examination of the category that generated the candidates.
+
+**Relationship to the existing set.** Adjacent to §18-A (weak global hypothesis
+management) and §28 (elimination without narrowing), but distinct from both.
+§18-A is failing to *maintain* a candidate set; §28 is failing to convert
+negatives into a positive hypothesis. This is the inverse: a positive hypothesis
+held *too well*, with contradictory evidence absorbed as noise instead of
+counted against the parent. Recorded separately because a fix for any one would
+not obviously fix the others.
+
+**The candidate principle, stated but not adopted:**
+
+> Narrow aggressively while evidence supports a branch; reopen aggressively when
+> accumulated contradictions weaken the parent hypothesis.
+
+**Status: open, n=1, NOT promoted.** No prompt or strategy change was made. One
+game cannot distinguish a pattern from a game, and the §18 rule holds: recording
+beats fixing until there is something to measure a fix against.
+
+**Attributable.** Like §28 and unlike §18/§24, this specimen names its player:
+`grok-4.20-0309-non-reasoning` under `racer/2.5.0`, recorded per turn. It can be
+replayed against Claude or against Grok 4.6 on the same prompt, honestly.
+
+### V2.5 open items at this point
+
+- **G3 — benchmark identity: built, never exercised.** The columns, the index
+  and the secret-gated ingress all shipped at `2.5.0.0`.
+  `BENCHMARK_INGRESS_SECRET` is unset and **no game has ever been tagged**. The
+  three pre-corpus cases (§18-A, §18-B, §24) still cannot be re-run as data.
+- **G4 — `pre_revision_question_text`: still unobserved.** The Guess Detector
+  has not fired in any recorded game, so the column built to measure §18-B's
+  question/guess boundary has zero rows. Shipped and unproven.
+- **GROK-02 — recovery live, not production-exercised.** B4's guard reset and
+  retry control work by test, but no production stall has exercised them, and at
+  ~2.6s per turn the window that triggered them has largely closed.
+- **`grok-4.6` at default/high remains incompatible with the 60s ceiling.** A
+  standing precondition on any fast→strong routing design. Final guesses must
+  not be routed to it without resolving the timeout separately.
+- **Routing deliberately unbuilt.** Scout-quality evidence is n=1. The decision
+  waits on evidence, not on the mechanism being available.
+
+---
+
+## 30. Verdict challenge and community review — DEFERRED
+
+Recorded so it survives the session it was thought of in. **No V2.5
+implementation commitment, and none is scoped.**
+
+Either participant — human **or AI** — should eventually be able to challenge a
+verdict, and to request community review of an adjudication that is borderline,
+perspective-dependent, internally inconsistent, or simply wrong.
+
+Barkóba already produces the raw material: `corpus.game_resolutions` stores the
+Adjudicator's verdict, its confidence and its reasoning, the Integrity Review's
+verdict and the turns it flagged, and `corpus.game_targets` holds the target and
+the definition adjudication rested on. A challenge would be an interpretation of
+that evidence, so it belongs in `derived.*` — a challenge is a *reading* of a
+game, never a rewrite of it. `corpus.*` stays immutable; a contested verdict
+gains a second opinion beside it rather than a correction inside it.
+
+**Why it is deferred, not scheduled.** It needs durable community identity,
+moderation, and a sharing surface — none of which exist — and it presupposes the
+provenance work that only just landed. It is the same shape as §17's deferred
+community layer and blocks on the same missing infrastructure.
+
+The `derived.analysis_runs` / `derived.turn_annotations` tables created empty in
+migration 0001 are already the right home: they can hold two contradictory
+readings of the same turn, each attributable to the model, prompt version or
+human that produced it. That was the point of creating them before anything
+needed them.
