@@ -50,6 +50,10 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   const [clarification, setClarification] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
+  // V2.5-B3 — which AI races. A NAME only; the model behind it is server-held,
+  // so nothing here can put a model id on Barkóba's bill or in the corpus.
+  // Defaults to the opponent every previous game was played against.
+  const [racerProvider, setRacerProvider] = useState<"anthropic" | "xai">("anthropic");
   // V2.4 - refusal for lack of Play Credits must lead somewhere.
   const [noCredit, setNoCredit] = useState(false);
   const entitlement = useEntitlement();
@@ -72,6 +76,9 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
           // this only proposes.
           difficulty,
           max_questions: pickedBudget(difficulty, budgetOverride),
+          // V2.5-B3 — proposes an opponent. The server validates it, refuses an
+          // unknown or unconfigured one, and never substitutes a different AI.
+          racer_provider: racerProvider,
           // Set once the player has seen the warning and chosen to continue.
           force,
         }),
@@ -161,6 +168,34 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
               placeholder="Csak ha a szó többfélét is jelenthet — pl. a fűnyíróm indítózsinórjának fogantyúja"
             />
           </label>
+
+          {/* V2.5-B3 — which AI takes the guessing seat. Deliberately the same
+              pill idiom as the difficulty control rather than a new pattern:
+              this is one added choice, not a redesign of the page. */}
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-[var(--ink)]">Ki találgasson?</span>
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: "anthropic", label: "Claude" },
+                  { value: "xai", label: "Grok" },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setRacerProvider(option.value)}
+                  className={`min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
+                    racerProvider === option.value
+                      ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+                      : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* V2.3 — shared with the two-player setup screen: one rule for
               difficulty, recommendation and override. See BudgetPicker. */}

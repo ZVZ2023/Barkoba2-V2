@@ -4,6 +4,8 @@ import { getGame, saveGame } from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
+import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
+import type { ModelProviderId } from "@/lib/providers/types";
 import { detectGuess } from "@/lib/guessDetector";
 import { consumeModelCall } from "@/lib/callBudget";
 import { env } from "@/lib/env";
@@ -205,10 +207,42 @@ export async function POST(
   const forceFinal = game.question_count >= game.max_questions;
   const racerState = toRacerPublicState(game);
 
+  // V2.5-B3 — WHO is playing this seat, read from the game and not from the
+  // request. Fixed at creation; every turn of a game reaches the same provider.
+  //
+  // A stored value that is no longer a registered provider REFUSES the turn.
+  // The alternative — quietly playing the rest of the game on Anthropic — would
+  // produce one game whose turns were played by two different models while the
+  // transcript read as one continuous player. That is worse than a stalled
+  // game: it is evidence that looks correct and is not.
+  let racerProvider: ModelProviderId;
+  if (game.racer_provider === null || game.racer_provider === undefined) {
+    racerProvider = DEFAULT_RACER_PROVIDER;
+  } else if (isModelProviderId(game.racer_provider)) {
+    racerProvider = game.racer_provider;
+  } else {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[barkoba] game ${game.game_id} names unknown racer_provider ` +
+        `"${game.racer_provider}" — refusing rather than substituting a model.`
+    );
+    return NextResponse.json(
+      {
+        error: "racer_unavailable",
+        message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
+        game,
+      },
+      { status: 502 }
+    );
+  }
+
   let turn;
   let provenance;
   try {
-    const racerResult = await runRacerTurn(racerState, { forceFinal });
+    const racerResult = await runRacerTurn(racerState, {
+      forceFinal,
+      provider: racerProvider,
+    });
     turn = racerResult.output;
     provenance = racerResult.provenance;
   } catch (err) {
@@ -258,7 +292,11 @@ export async function POST(
         intentOutcome = "continue_questioning";
       } else {
         try {
-          const resolution = await resolveGuessIntent(racerState, turn.question_text);
+          const resolution = await resolveGuessIntent(
+            racerState,
+            turn.question_text,
+            racerProvider
+          );
           intentOutcome = resolution.resolution;
 
           if (resolution.resolution === "confirm_guess") {

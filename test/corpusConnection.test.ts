@@ -174,7 +174,7 @@ function game(): GameRecord {
     phase: "questioning",
     created_at: new Date().toISOString(), expires_at: new Date().toISOString(),
     max_questions: 20, game_language: "hu", private_target: false,
-    composer_kind: "ai", racer_kind: "human", difficulty: "easy", clue_mode: "none",
+    composer_kind: "ai", racer_kind: "human", racer_provider: null, difficulty: "easy", clue_mode: "none",
     question_count: 1, ambiguous_count: 0, qa_log: [entry()],
     final_action: null, final_guess_text: null, result: null,
     integrity_notes: null, integrity_flagged_turns: null, adjudication_notes: null,

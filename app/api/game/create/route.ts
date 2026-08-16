@@ -42,6 +42,12 @@ import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
 import { consumeModelCall } from "@/lib/callBudget";
 import type { ClueMode, Difficulty } from "@/lib/types";
 import { resolveQuestionBudget } from "@/lib/questionBudget";
+import {
+  DEFAULT_RACER_PROVIDER,
+  isModelProviderId,
+  isProviderAvailable,
+} from "@/lib/providers";
+import type { ModelProviderId } from "@/lib/providers/types";
 import { env } from "@/lib/env";
 
 /**
@@ -88,6 +94,66 @@ function resolveBenchmark(req: NextRequest): {
   return { benchmark_case_id: caseId, benchmark_run_id: randomUUID() };
 }
 
+/**
+ * V2.5-B3 — which AI fills the Racer seat.
+ *
+ * The client PROPOSES; the server decides, exactly as it does for the question
+ * budget and the Play Credit price. What the client may state is a provider
+ * NAME. It may never state a model id — that stays in the environment, so no
+ * request can put an arbitrary model on Barkóba's bill or into the corpus.
+ *
+ * TWO REFUSALS, NEVER A SUBSTITUTION:
+ *
+ *   unknown provider     -> 400. The name means nothing here.
+ *   unavailable provider -> 503. Registered, but this runtime has no key.
+ *
+ * Falling back to Anthropic in either case would create a game the player
+ * believes was played by Grok and the corpus records as Claude — or worse,
+ * records honestly while the player reports the wrong result. Barkóba's whole
+ * reason for adding a second provider is to compare them; a silent substitution
+ * poisons exactly the evidence the feature exists to produce.
+ */
+function resolveRacerProvider(
+  requested: unknown
+): { ok: true; provider: ModelProviderId } | { ok: false; response: NextResponse } {
+  if (requested === undefined || requested === null || requested === "") {
+    return { ok: true, provider: DEFAULT_RACER_PROVIDER };
+  }
+
+  if (!isModelProviderId(requested)) {
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "unknown_provider",
+          message: "Ismeretlen ellenfél. Válassz a felkínált lehetőségek közül.",
+        },
+        { status: 400 }
+      ),
+    };
+  }
+
+  if (!isProviderAvailable(requested)) {
+    // eslint-disable-next-line no-console
+    console.error(
+      `[barkoba] racer provider "${requested}" was requested but is not ` +
+        "configured in this runtime — refusing rather than substituting."
+    );
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "provider_unavailable",
+          message: "Ez az ellenfél most nem elérhető. Válassz másikat.",
+        },
+        { status: 503 }
+      ),
+    };
+  }
+
+  return { ok: true, provider: requested };
+}
+
 interface CreateGameBody {
   /** 0.3.x — human Composer. */
   target?: string;
@@ -102,6 +168,12 @@ interface CreateGameBody {
   difficulty?: Difficulty;
   clue_mode?: ClueMode;
   max_questions?: number;
+  /**
+   * V2.5-B3 — which AI should race. A NAME only: "anthropic" or "xai". The
+   * model id behind it is server-held and never client-authoritative.
+   * Meaningful only when the Racer seat is the AI.
+   */
+  racer_provider?: string;
 }
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
@@ -336,6 +408,14 @@ export async function POST(req: NextRequest) {
     ? resolveQuestionBudget(humanDifficulty, body.max_questions)
     : env.maxQuestions();
 
+  // V2.5-B3 — resolved BEFORE the Validator runs, so a refusal costs no model
+  // call. Only meaningful when the AI races; a Human↔Human game has no provider
+  // and must not be refused because one was unavailable.
+  const racerProviderChoice = resolveRacerProvider(
+    humanVsHuman ? undefined : body.racer_provider
+  );
+  if (!racerProviderChoice.ok) return racerProviderChoice.response;
+
   let validation;
   try {
     validation = await runValidator(target, clarification, maxQuestions);
@@ -390,6 +470,9 @@ export async function POST(req: NextRequest) {
     // the seat model has one meaning everywhere rather than a special case.
     composer_player_id: playerId,
     racer_kind: humanVsHuman ? "human" : "ai",
+    // Recorded only where an AI actually races. A Human↔Human game has no
+    // provider, and writing one would claim a player that does not exist.
+    racer_provider: humanVsHuman ? null : racerProviderChoice.provider,
     // Recorded whenever the Composer actually expressed one, in either human
     // flow, so the corpus knows what the allowance was chosen against. Stays
     // null when no choice was made, so games that never had a difficulty are

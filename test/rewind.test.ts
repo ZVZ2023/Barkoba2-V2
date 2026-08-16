@@ -198,6 +198,7 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
     private_target: false,
     composer_kind: "human",
     racer_kind: "ai",
+    racer_provider: null,
     difficulty: null,
     clue_mode: null,
     question_count: 0,

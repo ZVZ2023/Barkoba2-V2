@@ -41,7 +41,7 @@ function hhGame(o: Partial<GameRecord> = {}): GameRecord {
     composer_player_id: COMPOSER, racer_player_id: RACER, join_code: "ABCD2345",
     phase: "questioning", created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(), max_questions: 20, game_language: "hu",
-    private_target: false, composer_kind: "human", racer_kind: "human",
+    private_target: false, composer_kind: "human", racer_kind: "human", racer_provider: null,
     difficulty: null, clue_mode: null, question_count: 0, ambiguous_count: 0,
     qa_log: [], final_action: null, final_guess_text: null, result: null,
     integrity_notes: null, integrity_flagged_turns: null, adjudication_notes: null,
@@ -95,7 +95,7 @@ test("a stranger and a wrong-seat participant are distinguished", () => {
 test("single-human modes keep working without recorded seats", () => {
   // Games created before 2.3.0.0 are still live in Redis for up to 24h.
   const legacy = hhGame({
-    composer_kind: "human", racer_kind: "ai",
+    composer_kind: "human", racer_kind: "ai", racer_provider: null,
     composer_player_id: null, racer_player_id: null,
   });
   assert.equal(isHumanVsHuman(legacy), false);

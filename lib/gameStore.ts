@@ -37,6 +37,8 @@ export async function createGame(
     // the configuration, it does not select it. No code branches on these.
     composer_kind: "human",
     racer_kind: "ai",
+    // V2.5-B3 — null means Anthropic, which is what every game before B3 was.
+    racer_provider: null,
     difficulty: null,
     clue_mode: null,
     question_count: 0,
@@ -111,6 +113,9 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   // GAME_TTL_SECONDS, so normalize rather than trust their presence.
   if (record.benchmark_case_id === undefined) record.benchmark_case_id = null;
   if (record.benchmark_run_id === undefined) record.benchmark_run_id = null;
+  // V2.5-B3. Games created before B3 live for up to GAME_TTL_SECONDS and were
+  // all played by Anthropic, so null is the only correct backfill.
+  if (record.racer_provider === undefined) record.racer_provider = null;
   // V2.5 per-turn provenance. Same TTL window, same reasoning — and note this
   // repairs the SHAPE only. A turn played before 2.5.0.0 had no provenance
   // observed, so it stays null forever. Filling it in from today's config

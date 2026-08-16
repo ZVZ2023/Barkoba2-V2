@@ -197,4 +197,47 @@ export const env = {
    * the correct and harmless default.
    */
   benchmarkIngressSecret: () => process.env.BENCHMARK_INGRESS_SECRET || null,
+
+  // --- V2.5-B3: xAI / Grok as a selectable Racer --------------------------
+  //
+  // Racer seat only. The Validator, Adjudicator, Integrity Review and AI
+  // Composer stay on Anthropic permanently — they are the measuring instrument,
+  // and the Composer path additionally reads the locked target, which is what
+  // keeps the secret from ever reaching a second vendor.
+
+  /**
+   * SERVER SIDE ONLY. Never NEXT_PUBLIC_, never returned by any route.
+   *
+   * OPTIONAL, NOT `required()`. A deployment without this key must keep playing
+   * Anthropic games normally; only the xAI path may fail. `required()` throws
+   * at call time, which would turn a missing optional key into a broken product.
+   *
+   * Null means Grok is not selectable in this runtime, and game creation
+   * REFUSES a Grok game rather than quietly starting a Claude one.
+   */
+  xaiApiKey: () => process.env.XAI_API_KEY || null,
+
+  /**
+   * The Grok model that fills the Racer seat. Server-controlled: no request may
+   * state it, exactly as no request may state a Play Credit price.
+   *
+   * Default is the plain alias while the account's actual entitlements are
+   * unverified. A benchmark corpus should eventually PIN a dated snapshot —
+   * xAI aliases `<model>` to whatever is newest, and a benchmark whose player
+   * silently changes is not a benchmark. The recorded model_id proves which was
+   * really used either way, so this is a sharpening step, not a correctness one.
+   */
+  xaiModelRacer: () => process.env.XAI_MODEL_RACER || "grok-4.6",
+
+  /**
+   * Minimum output allowance for a Grok Racer turn.
+   *
+   * Grok 4.6 is a reasoning model and reasoning tokens count against the output
+   * cap. Barkóba asks for 512, sized for Haiku emitting a question plus a
+   * two-sentence rationale; the same cap can truncate a reasoning model before
+   * it reaches the tool call, which would look like bad play rather than a cut
+   * -off response. This is a TRANSPORT parameter — prompt, schema, transcript
+   * and question budget stay byte-identical across providers.
+   */
+  xaiMaxTokensRacer: () => optionalInt("XAI_MAX_TOKENS_RACER", 2048),
 };

@@ -1,5 +1,6 @@
-import { callAnthropicTool, MODEL_PROVIDER } from "../anthropic";
+import { DEFAULT_RACER_PROVIDER, getAdapter } from "../providers";
 import { env } from "../env";
+import type { ModelProviderId } from "../providers/types";
 import type {
   GuessIntentResolution,
   ModelProvenance,
@@ -204,24 +205,39 @@ function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
   return `Questions used: ${state.question_count} of ${state.max_questions}. Remaining: ${state.questions_remaining}.`;
 }
 
+/**
+ * Which model this call runs on. Both fields are SERVER-RESOLVED — the provider
+ * comes from the game record, the model id from the environment. No request may
+ * state either, exactly as no request may state a Play Credit price.
+ */
+function racerModelFor(provider: ModelProviderId): string {
+  return provider === "xai" ? env.xaiModelRacer() : env.modelRacer();
+}
+
 export async function runRacerTurn(
   state: RacerPublicState,
-  options: { forceFinal: boolean }
+  options: { forceFinal: boolean; provider?: ModelProviderId }
 ): Promise<RacerTurnResult> {
   const { forceFinal } = options;
+  const provider = options.provider ?? DEFAULT_RACER_PROVIDER;
   // Eligibility only. The Racer is never told to take a clue, and the prompt
   // below says so explicitly — an available credit is an option, not an
   // instruction. No other part of its strategy is touched by this feature.
   const clueAvailable = !forceFinal && state.clue_credits_available > 0;
 
-  const requestedModel = env.modelRacer();
-  let resolvedModel = requestedModel;
+  // V2.5-B3 — the transport comes from the game record, resolved through the
+  // registry. An unknown provider THROWS here; it never falls back.
+  //
+  // Everything below the call — the system prompt, the schema, the rendered
+  // transcript, the question budget — is built here, once, provider-neutrally,
+  // and handed over untouched. No adapter may rewrite any of it. Two providers
+  // must receive the same task, or a comparison between them measures the
+  // prompt and not the model.
+  const adapter = getAdapter(provider);
+  const requestedModel = racerModelFor(provider);
 
-  const result = await callAnthropicTool<RacerTurnOutput>({
+  const { output: result, resolvedModel } = await adapter.callTool<RacerTurnOutput>({
     model: requestedModel,
-    onModelResolved: (id) => {
-      resolvedModel = id;
-    },
     system: RACER_SYSTEM_PROMPT,
     messages: [
       {
@@ -268,8 +284,11 @@ export async function runRacerTurn(
       rationale: result.rationale ?? "",
     },
     provenance: {
+      // The adapter's own id, not a separate constant. There is exactly one
+      // place a provider name is written down, so the transport that made the
+      // call and the evidence recording who made it cannot drift apart.
       model_id: resolvedModel,
-      model_provider: MODEL_PROVIDER,
+      model_provider: adapter.id,
       prompt_version: RACER_PROMPT_VERSION,
     },
   };
@@ -286,10 +305,15 @@ export async function runRacerTurn(
  */
 export async function resolveGuessIntent(
   state: RacerPublicState,
-  flaggedQuestion: string
+  flaggedQuestion: string,
+  provider: ModelProviderId = DEFAULT_RACER_PROVIDER
 ): Promise<GuessIntentResolution> {
-  const result = await callAnthropicTool<GuessIntentResolution>({
-    model: env.modelRacer(),
+  // Same seat, same provider as the turn it is resolving — the caller passes
+  // the game's provider, not a default. A flagged question must not be re-read
+  // by a different model than the one that wrote it, or the resolution would
+  // describe an intent its author never had.
+  const { output: result } = await getAdapter(provider).callTool<GuessIntentResolution>({
+    model: racerModelFor(provider),
     system: GUESS_INTENT_SYSTEM_PROMPT,
     messages: [
       {

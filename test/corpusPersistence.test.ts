@@ -109,6 +109,7 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     private_target: false,
     composer_kind: "ai",
     racer_kind: "human",
+    racer_provider: null,
     difficulty: "easy",
     clue_mode: "none",
     question_count: 1,

@@ -350,6 +350,28 @@ export interface GameRecord {
   /** "ai" in 0.3.x (human Composer), "human" in 0.6.x (AI Composer). */
   racer_kind: ParticipantKind;
   /**
+   * V2.5-B3 — WHICH AI fills the Racer seat.
+   *
+   * A string rather than the `ModelProviderId` union on purpose: GameRecord is
+   * serialized into Redis and read back by a later deployment, so a record
+   * written when a provider existed could be read after it was removed. Storing
+   * the narrow type would let a stale record masquerade as valid; storing text
+   * and validating on read keeps the record honest about what it actually says.
+   *
+   * Null means Anthropic — the behaviour of every game recorded before B3, and
+   * the value for any game whose Racer is a human. Fixed at creation and never
+   * renegotiated: every turn of a game must be played by the same player, or
+   * the transcript describes no one.
+   *
+   * OPERATIONAL STATE ONLY. The durable evidence of who played is
+   * corpus.game_turns.model_provider, written per turn since 2.5.0.0. This
+   * field exists so turn N+1 reaches the same provider as turn N; it is
+   * deliberately NOT mirrored into a corpus column, for the same reason
+   * migration 0003 refused a game-mode column — a second source of truth that
+   * can drift from the first.
+   */
+  racer_provider: string | null;
+  /**
    * Set only when the AI is the Composer. Null in 0.3.x games, where the
    * human chose the target and difficulty is not a meaningful concept.
    */

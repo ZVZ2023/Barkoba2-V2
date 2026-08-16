@@ -73,6 +73,17 @@ const QUARANTINED = [
   "lib/recoveryCode.ts",
   "middleware.ts",
   "lib/prompts/racer.ts",
+  // V2.5-B2 — the provider transports sit directly under the Racer seat, which
+  // has been quarantined since V1. They carry whatever the Racer is given to
+  // an external endpoint, so a secretStore import here would exfiltrate the
+  // target to a vendor rather than merely leak it into a prompt. Quarantined
+  // before a second provider exists, so the rule is already in force when
+  // lib/providers/xai.ts is written rather than being added afterwards.
+  "lib/providers/index.ts",
+  "lib/providers/types.ts",
+  "lib/providers/anthropic.ts",
+  "lib/providers/xai.ts",
+  "lib/anthropic.ts",
   "lib/racerState.ts",
   "lib/gameStore.ts",
   "lib/resolveResult.ts",
