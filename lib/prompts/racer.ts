@@ -1,10 +1,46 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, MODEL_PROVIDER } from "../anthropic";
 import { env } from "../env";
 import type {
   GuessIntentResolution,
+  ModelProvenance,
   RacerPublicState,
   RacerTurnOutput,
 } from "../types";
+
+/**
+ * V2.5 — the identity of the Racer's strategy, bumped BY HAND whenever
+ * RACER_SYSTEM_PROMPT changes.
+ *
+ * WHY NOT DERIVE IT FROM commit_sha. The corpus already records app_version and
+ * commit_sha, and while one prompt exists per deployment those locate the exact
+ * source text and are a working proxy. They stop being one the moment two Racer
+ * variants run at a single commit — which is the entire point of V2.5
+ * benchmarking, so the proxy expires exactly when it starts to matter.
+ *
+ * WHY NOT HASH THE PROMPT. A hash changes on a typo fix and says nothing about
+ * whether the strategy changed. A deliberate label is a claim someone made on
+ * purpose, which is what a benchmark comparison needs to rest on.
+ *
+ * THE FAILURE MODE THIS CARRIES: a changed prompt with an unbumped constant
+ * produces confidently mislabelled evidence, which is worse than no label.
+ * Treat bumping this as part of editing the prompt, not as follow-up.
+ */
+export const RACER_PROMPT_VERSION = "racer/2.5.0";
+
+/**
+ * A Racer turn plus the provenance of the call that produced it.
+ *
+ * `output` is exactly what it was before and is what gets serialized into
+ * racer_output_raw. Provenance rides ALONGSIDE it, never inside it: the V2.5-1
+ * audit verified that every persisted raw_output in production carries exactly
+ * four keys (action, question_text, guess_text, rationale), and raw_output is
+ * defined as the participant's own structured output. A model id is a fact
+ * about the call, not a move the Racer made.
+ */
+export interface RacerTurnResult {
+  output: RacerTurnOutput;
+  provenance: ModelProvenance;
+}
 
 // ---------------------------------------------------------------------------
 // The Racer.
@@ -171,15 +207,21 @@ function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
 export async function runRacerTurn(
   state: RacerPublicState,
   options: { forceFinal: boolean }
-): Promise<RacerTurnOutput> {
+): Promise<RacerTurnResult> {
   const { forceFinal } = options;
   // Eligibility only. The Racer is never told to take a clue, and the prompt
   // below says so explicitly — an available credit is an option, not an
   // instruction. No other part of its strategy is touched by this feature.
   const clueAvailable = !forceFinal && state.clue_credits_available > 0;
 
+  const requestedModel = env.modelRacer();
+  let resolvedModel = requestedModel;
+
   const result = await callAnthropicTool<RacerTurnOutput>({
-    model: env.modelRacer(),
+    model: requestedModel,
+    onModelResolved: (id) => {
+      resolvedModel = id;
+    },
     system: RACER_SYSTEM_PROMPT,
     messages: [
       {
@@ -218,10 +260,18 @@ export async function runRacerTurn(
   const safeAction = action === "clue" && !clueAvailable ? "question" : action;
 
   return {
-    action: safeAction,
-    question_text: safeAction === "question" ? (result.question_text ?? null) : null,
-    guess_text: safeAction === "guess" ? (result.guess_text ?? result.question_text ?? null) : null,
-    rationale: result.rationale ?? "",
+    output: {
+      action: safeAction,
+      question_text: safeAction === "question" ? (result.question_text ?? null) : null,
+      guess_text:
+        safeAction === "guess" ? (result.guess_text ?? result.question_text ?? null) : null,
+      rationale: result.rationale ?? "",
+    },
+    provenance: {
+      model_id: resolvedModel,
+      model_provider: MODEL_PROVIDER,
+      prompt_version: RACER_PROMPT_VERSION,
+    },
   };
 }
 

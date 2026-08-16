@@ -160,7 +160,9 @@ function entry(): QuestionLogEntry {
     ambiguous_explanation: null, guess_detector_flagged: false, guess_detector_method: null,
     guess_intent_outcome: null, clue_text: null, original_question_text: null,
     edit_status: null, edit_reason: null, ambiguous_consumed_credit: false,
-    timestamp: new Date().toISOString(), quality_score: null, information_gain: null,
+    timestamp: new Date().toISOString(), model_id: null, model_provider: null, prompt_version: null,
+    answered_at: null, pre_revision_question_text: null,
+    quality_score: null, information_gain: null,
     strategy_classification: null, integrity_flag: null, confidence: null, latency_ms: null,
   };
 }
@@ -180,6 +182,7 @@ function game(): GameRecord {
     revealed_target: null, revealed_definition: null, revealed_granularity: null,
     revealed_modifiers: null, revealed_locked_at: null,
     corrections: [], abandoned_branches: [], clarification_prompt: null,
+    benchmark_case_id: null, benchmark_run_id: null,
   };
 }
 

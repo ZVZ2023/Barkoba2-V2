@@ -74,6 +74,14 @@ function newEntry(turnIndex: number): QuestionLogEntry {
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
+    // Human↔Human makes no model call, so these three stay null for the life of
+    // the turn. That is a finding, not a gap: a null model on an H↔H turn
+    // correctly says no model produced it.
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,
@@ -198,6 +206,9 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     if (!entry) return NextResponse.json({ error: "no_pending_question" }, { status: 409 });
 
     entry.composer_response = answer;
+    // V2.5 — when the other human answered. No model provenance: Human↔Human
+    // makes no model call, and a null model here correctly says so.
+    entry.answered_at = new Date().toISOString();
     entry.ambiguous_explanation =
       answer === "AMBIGUOUS"
         ? (body.ambiguous_explanation || "").trim().slice(0, MAX_TEXT) || null

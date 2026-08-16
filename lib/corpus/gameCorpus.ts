@@ -138,6 +138,17 @@ interface TurnRow {
   turn_id: string;
   turn_index: number;
   branch: "main" | "abandoned";
+  /**
+   * V2.5 — which rewind discarded this turn. 1-based, null on the main branch.
+   *
+   * GameRecord.abandoned_branches is an array of arrays, and this module used
+   * to flatten it into one undifferentiated bucket. turn_index legitimately
+   * repeats across branches, so with two or more corrections the discarded runs
+   * could not be told apart afterwards. occurred_at does not separate them
+   * either: an abandoned turn carries its ORIGINAL creation time, not its
+   * discard time, so overlapping index ranges interleave.
+   */
+  branch_seq: number | null;
   turn_type: string;
   actor: string;
   question_text: string | null;
@@ -153,12 +164,19 @@ interface TurnRow {
   edit_reason: string | null;
   raw_output: unknown;
   occurred_at: string;
+  // --- V2.5 provenance -----------------------------------------------------
+  model_id: string | null;
+  model_provider: string | null;
+  prompt_version: string | null;
+  answered_at: string | null;
+  pre_revision_question_text: string | null;
 }
 
 function toTurnRow(
   game: GameRecord,
   entry: QuestionLogEntry,
-  branch: "main" | "abandoned"
+  branch: "main" | "abandoned",
+  branchSeq: number | null
 ): TurnRow {
   let raw: unknown = null;
   if (entry.racer_output_raw) {
@@ -176,6 +194,7 @@ function toTurnRow(
     turn_id: entry.id,
     turn_index: entry.turn_index,
     branch,
+    branch_seq: branchSeq,
     turn_type: entry.turn_type,
     actor: actorFor(game, entry),
     question_text: entry.question_text,
@@ -191,6 +210,15 @@ function toTurnRow(
     edit_reason: entry.edit_reason,
     raw_output: raw,
     occurred_at: entry.timestamp,
+    // V2.5. Null on every turn played before 2.5.0.0 and null forever on those
+    // turns — nothing observed them, and inventing a value would be worse than
+    // recording none. `?? null` because a record recovered from Redis may
+    // predate the field entirely.
+    model_id: entry.model_id ?? null,
+    model_provider: entry.model_provider ?? null,
+    prompt_version: entry.prompt_version ?? null,
+    answered_at: entry.answered_at ?? null,
+    pre_revision_question_text: entry.pre_revision_question_text ?? null,
   };
 }
 
@@ -202,9 +230,12 @@ function toTurnRow(
  * structurally separate so they can never be mistaken for the game as played.
  */
 export function buildTurnRows(game: GameRecord): TurnRow[] {
-  const main = game.qa_log.map((e) => toTurnRow(game, e, "main"));
-  const abandoned = game.abandoned_branches.flatMap((branch) =>
-    branch.map((e) => toTurnRow(game, e, "abandoned"))
+  const main = game.qa_log.map((e) => toTurnRow(game, e, "main", null));
+  // V2.5: the ARRAY POSITION is the branch identity. corrections are appended
+  // newest-last and so are abandoned_branches, so index i here is the i-th
+  // rewind of this game. 1-based, to match turn_index and the corrections log.
+  const abandoned = game.abandoned_branches.flatMap((branch, i) =>
+    branch.map((e) => toTurnRow(game, e, "abandoned", i + 1))
   );
   return [...abandoned, ...main];
 }
@@ -272,7 +303,8 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       max_questions, private_target,
       lifecycle_state, outcome, termination_reason, last_phase,
       question_count, ambiguous_count,
-      created_at, last_activity_at, finalized_at, collection_context
+      created_at, last_activity_at, finalized_at, collection_context,
+      benchmark_case_id, benchmark_run_id
     ) VALUES (
       ${game.game_id}, ${game.player_id},
       ${game.composer_player_id}, ${game.racer_player_id},
@@ -282,8 +314,13 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       ${life.lifecycle_state}, ${life.outcome}, ${life.termination_reason}, ${game.phase},
       ${game.question_count}, ${game.ambiguous_count},
       ${game.created_at}, ${lastActivityAt(game)}, ${life.finalized_at},
-      ${env.collectionContext()}
+      ${env.collectionContext()},
+      ${game.benchmark_case_id}, ${game.benchmark_run_id}
     )
+    -- V2.5: the two benchmark columns are ABSENT from this set-list on purpose.
+    -- They are settled at creation and never change, and corpus.games is
+    -- immutable once finalized — a re-sync that tried to rewrite them would
+    -- raise and roll back the whole transaction, taking the repair pass with it.
     ON CONFLICT (operational_game_id) DO UPDATE SET
       player_id          = EXCLUDED.player_id,
       composer_player_id = EXCLUDED.composer_player_id,
@@ -327,29 +364,53 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
     // near user text.
     statements.push(sql`
       INSERT INTO corpus.game_turns (
-        turn_id, corpus_game_id, turn_index, branch, turn_type, actor,
+        turn_id, corpus_game_id, turn_index, branch, branch_seq, turn_type, actor,
         question_text, guess_text, clue_text, composer_response,
         ambiguous_explanation, guess_detector_flagged, guess_detector_method,
         guess_intent_outcome, original_question_text, edit_status, edit_reason,
-        raw_output, occurred_at
+        raw_output, occurred_at,
+        model_id, model_provider, prompt_version, answered_at,
+        pre_revision_question_text
       )
       SELECT
         t.turn_id,
         (SELECT corpus_game_id FROM corpus.games
           WHERE operational_game_id = ${game.game_id}::uuid),
-        t.turn_index, t.branch, t.turn_type, t.actor,
+        t.turn_index, t.branch, t.branch_seq, t.turn_type, t.actor,
         t.question_text, t.guess_text, t.clue_text, t.composer_response,
         t.ambiguous_explanation, t.guess_detector_flagged, t.guess_detector_method,
         t.guess_intent_outcome, t.original_question_text, t.edit_status, t.edit_reason,
-        t.raw_output, t.occurred_at
+        t.raw_output, t.occurred_at,
+        t.model_id, t.model_provider, t.prompt_version, t.answered_at,
+        t.pre_revision_question_text
       FROM jsonb_to_recordset(${JSON.stringify(turns)}::jsonb) AS t(
-        turn_id uuid, turn_index integer, branch text, turn_type text, actor text,
+        turn_id uuid, turn_index integer, branch text, branch_seq integer,
+        turn_type text, actor text,
         question_text text, guess_text text, clue_text text, composer_response text,
         ambiguous_explanation text, guess_detector_flagged boolean,
         guess_detector_method text, guess_intent_outcome text,
         original_question_text text, edit_status text, edit_reason text,
-        raw_output jsonb, occurred_at timestamptz
+        raw_output jsonb, occurred_at timestamptz,
+        model_id text, model_provider text, prompt_version text,
+        answered_at timestamptz, pre_revision_question_text text
       )
+      -- ---------------------------------------------------------------------
+      -- V2.5: NONE of the six new columns appear below, deliberately.
+      --
+      -- reject_finalized_turn_mutation (0002) permits a no-op re-sync of a
+      -- finalized game's turns and raises on any real change. model_id and
+      -- prompt_version CAN legitimately differ between the original write and a
+      -- later re-sync — the env override may have moved, the prompt version may
+      -- have been bumped — so updating them here would raise and roll back the
+      -- entire transaction, including the repair pass that re-sync exists for.
+      --
+      -- COALESCE was considered and rejected twice over. It does not even work:
+      -- on a finalized row with a NULL model_id, filling it in is still a change
+      -- and still raises. And it would be wrong where it did work — writing
+      -- today's model id onto a turn played before capture existed asserts a
+      -- fact nobody observed, which is the one thing this whole workstream
+      -- exists to prevent.
+      -- ---------------------------------------------------------------------
       ON CONFLICT (turn_id) DO UPDATE SET
         branch                 = EXCLUDED.branch,
         question_text          = EXCLUDED.question_text,

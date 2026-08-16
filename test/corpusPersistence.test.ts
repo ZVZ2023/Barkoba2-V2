@@ -79,6 +79,11 @@ function entry(overrides: Partial<QuestionLogEntry> = {}): QuestionLogEntry {
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: "2026-08-11T10:00:00.000Z",
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,
@@ -126,6 +131,8 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     corrections: [],
     abandoned_branches: [],
     clarification_prompt: null,
+    benchmark_case_id: null,
+    benchmark_run_id: null,
     ...overrides,
   };
 }

@@ -33,6 +33,11 @@ function entry(turnIndex: number, answer: ComposerAnswer | null): QuestionLogEnt
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,
@@ -217,6 +222,8 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
     corrections: [],
     abandoned_branches: abandoned,
     clarification_prompt: null,
+    benchmark_case_id: null,
+    benchmark_run_id: null,
   };
 }
 

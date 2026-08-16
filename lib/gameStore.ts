@@ -59,6 +59,10 @@ export async function createGame(
     corrections: [],
     abandoned_branches: [],
     clarification_prompt: null,
+    // V2.5 — null unless /api/game/create accepted a secret-gated benchmark
+    // header. Ordinary play never sets these.
+    benchmark_case_id: null,
+    benchmark_run_id: null,
     ...overrides,
   };
 
@@ -103,6 +107,25 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.clue_mode === undefined) record.clue_mode = null;
   if (!Array.isArray(record.corrections)) record.corrections = [];
   if (!Array.isArray(record.abandoned_branches)) record.abandoned_branches = [];
+  // V2.5 benchmark identity. Games created before 2.5.0.0 live for up to
+  // GAME_TTL_SECONDS, so normalize rather than trust their presence.
+  if (record.benchmark_case_id === undefined) record.benchmark_case_id = null;
+  if (record.benchmark_run_id === undefined) record.benchmark_run_id = null;
+  // V2.5 per-turn provenance. Same TTL window, same reasoning — and note this
+  // repairs the SHAPE only. A turn played before 2.5.0.0 had no provenance
+  // observed, so it stays null forever. Filling it in from today's config
+  // would be inventing evidence.
+  // Abandoned branches are included: they are written to the corpus too, so a
+  // missing field there would reach the writer exactly as one on the main log.
+  for (const entry of [...(record.qa_log ?? []), ...(record.abandoned_branches ?? []).flat()]) {
+    if (entry.model_id === undefined) entry.model_id = null;
+    if (entry.model_provider === undefined) entry.model_provider = null;
+    if (entry.prompt_version === undefined) entry.prompt_version = null;
+    if (entry.answered_at === undefined) entry.answered_at = null;
+    if (entry.pre_revision_question_text === undefined) {
+      entry.pre_revision_question_text = null;
+    }
+  }
   // Participant kinds, added in 0.3.0.1. Every pre-existing game was
   // human-vs-AI, so that is the only correct backfill.
   if (record.composer_kind !== "human" && record.composer_kind !== "ai") {
@@ -184,6 +207,13 @@ export function newLogEntry(turnIndex: number): QuestionLogEntry {
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
+    // V2.5 provenance. Stamped by the route that authored the turn, if a model
+    // authored it at all; a Human↔Human turn legitimately keeps all three null.
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,

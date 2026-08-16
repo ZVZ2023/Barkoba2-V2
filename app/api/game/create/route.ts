@@ -44,6 +44,50 @@ import type { ClueMode, Difficulty } from "@/lib/types";
 import { resolveQuestionBudget } from "@/lib/questionBudget";
 import { env } from "@/lib/env";
 
+/**
+ * V2.5 — resolve whether this creation is a tagged benchmark run.
+ *
+ * WHY A SECRET-GATED HEADER AND NOT A BODY FIELD. `benchmark_case_id` is the
+ * key that makes N games comparable as one case. A benchmark set that any
+ * client can write into is not a benchmark set — one mistagged ordinary game
+ * silently corrupts every comparison drawn from it, and because
+ * `corpus.games` is immutable once finalized, a mistag can never be removed.
+ *
+ * FAILS CLOSED, exactly like /api/entitlement/grant: no configured secret means
+ * no tagging, and a wrong secret is ignored rather than rejected. This is
+ * deliberately NOT a 401 — an unauthenticated caller must not be able to probe
+ * whether benchmark ingress is configured, and refusing to start their game
+ * over a header they did not knowingly send would be the wrong trade. They get
+ * an ordinary, untagged game, which is the correct default.
+ *
+ * `benchmark_run_id` is minted here and never accepted from the caller, so no
+ * request can merge itself into an existing comparison set.
+ */
+function resolveBenchmark(req: NextRequest): {
+  benchmark_case_id: string | null;
+  benchmark_run_id: string | null;
+} {
+  const none = { benchmark_case_id: null, benchmark_run_id: null };
+
+  const configured = env.benchmarkIngressSecret();
+  if (!configured) return none;
+
+  const presented = (req.headers.get("x-barkoba-benchmark-secret") ?? "").trim();
+  if (!presented || presented.length !== configured.length) return none;
+  let diff = 0;
+  for (let i = 0; i < presented.length; i += 1) {
+    diff |= presented.charCodeAt(i) ^ configured.charCodeAt(i);
+  }
+  if (diff !== 0) return none;
+
+  // Bounded and normalised: this becomes a join key across games, so a stray
+  // newline or 4KB of text would either split a case in two or bloat the row.
+  const caseId = (req.headers.get("x-barkoba-benchmark-case") ?? "").trim().slice(0, 120);
+  if (!caseId) return none;
+
+  return { benchmark_case_id: caseId, benchmark_run_id: randomUUID() };
+}
+
 interface CreateGameBody {
   /** 0.3.x — human Composer. */
   target?: string;
@@ -69,6 +113,9 @@ export async function POST(req: NextRequest) {
   // V2.1.1 — who is acting. Null whenever identity is unconfigured; the game is
   // fully playable either way, which is why nothing below branches on it.
   const playerId = playerIdFromHeaders(req.headers);
+
+  // V2.5 — resolved once, applied to whichever branch creates the game below.
+  const benchmark = resolveBenchmark(req);
 
   // Refuse to start a game that cannot survive its own second request. On a
   // serverless host without Upstash, creation succeeds and every turn then
@@ -223,6 +270,7 @@ export async function POST(req: NextRequest) {
       racer_kind: "human",
       difficulty,
       clue_mode: clueMode,
+      ...benchmark,
     });
 
     // Authoritative charge, once the game exists and its id is known. If it
@@ -358,6 +406,7 @@ export async function POST(req: NextRequest) {
     // an English target ("My Friend Otto") produced an English game inside a
     // Hungarian product. V1 is Hungarian-first, so the interface language wins.
     game_language: "hu",
+    ...benchmark,
   });
 
   // The invitation exists only for Human↔Human. Separate from the game id on

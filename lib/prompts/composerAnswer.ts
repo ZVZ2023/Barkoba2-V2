@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, MODEL_PROVIDER } from "../anthropic";
 import { scrubClue, scrubExplanation } from "../disclosureGuard";
 import { env } from "../env";
 import type {
@@ -6,8 +6,23 @@ import type {
   TargetGranularity,
   ComposerAnswerResult,
   GameLanguage,
+  ModelProvenance,
   QuestionLogEntry,
 } from "../types";
+
+/**
+ * V2.5 — an answer plus the provenance of the call that produced it.
+ *
+ * A WRAPPER, not extra fields on ComposerAnswerResult, for the same reason as
+ * RacerTurnResult: `result` is serialized verbatim into racer_output_raw and
+ * thence into corpus.game_turns.raw_output, which is defined as the
+ * participant's own structured output. Folding a model id into it would change
+ * what that column means.
+ */
+export interface ComposerAnswerOutcome {
+  result: ComposerAnswerResult;
+  provenance: ModelProvenance;
+}
 
 // ---------------------------------------------------------------------------
 // The AI Composer answering one question. Fires once per question asked.
@@ -22,6 +37,13 @@ import type {
 // that fires up to 100 times in a long game. It is a lookup-and-compare against
 // a definition it is given, not an open reasoning problem.
 // ---------------------------------------------------------------------------
+
+/**
+ * V2.5 — identity of the Composer's answering strategy. Bumped by hand when
+ * COMPOSER_ANSWER_SYSTEM_PROMPT changes. Same contract and same failure mode as
+ * RACER_PROMPT_VERSION in lib/prompts/racer.ts.
+ */
+export const COMPOSER_ANSWER_PROMPT_VERSION = "composer-answer/2.5.0";
 
 export const COMPOSER_ANSWER_SYSTEM_PROMPT = `You are the Composer in Barkóba. You have already locked a secret target and a definition of it. A human player is trying to deduce the target by asking yes/no questions. You answer them.
 
@@ -183,12 +205,18 @@ export async function answerAsComposer(params: {
   questionsAsked: number;
   maxQuestions: number;
   gameLanguage: GameLanguage;
-}): Promise<ComposerAnswerResult> {
+}): Promise<ComposerAnswerOutcome> {
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
   const remaining = Math.max(0, params.maxQuestions - params.questionsAsked);
 
+  const requestedModel = env.modelRacer();
+  let resolvedModel = requestedModel;
+
   const result = await callAnthropicTool<ComposerAnswerResult>({
-    model: env.modelRacer(),
+    model: requestedModel,
+    onModelResolved: (id) => {
+      resolvedModel = id;
+    },
     system: COMPOSER_ANSWER_SYSTEM_PROMPT,
     messages: [
       {
@@ -239,11 +267,18 @@ export async function answerAsComposer(params: {
   }
 
   return {
-    reasoning: result.reasoning ?? "",
-    answer,
-    ambiguous_explanation: explanation.value,
-    // Ordinary answers no longer carry clues. SÚGÓ is the only help channel.
-    clue_text: null,
+    result: {
+      reasoning: result.reasoning ?? "",
+      answer,
+      ambiguous_explanation: explanation.value,
+      // Ordinary answers no longer carry clues. SÚGÓ is the only help channel.
+      clue_text: null,
+    },
+    provenance: {
+      model_id: resolvedModel,
+      model_provider: MODEL_PROVIDER,
+      prompt_version: COMPOSER_ANSWER_PROMPT_VERSION,
+    },
   };
 }
 
@@ -287,14 +322,31 @@ export async function requestClueFromComposer(params: {
   maxQuestions: number;
   clueMode: ClueMode;
   gameLanguage: GameLanguage;
-}): Promise<{ clue_text: string | null; redacted: boolean }> {
-  if (params.clueMode === "none") return { clue_text: null, redacted: false };
+  // V2.5: `provenance` is ADDITIVE on the existing return shape rather than a
+  // wrapper. Nothing serializes this result into raw_output, so there is no
+  // purity argument for a wrapper here, and an added field keeps every existing
+  // caller and test reading `.clue_text` / `.redacted` unchanged. Null on the
+  // clueMode==="none" early return, which never reaches a model.
+}): Promise<{
+  clue_text: string | null;
+  redacted: boolean;
+  provenance: ModelProvenance | null;
+}> {
+  if (params.clueMode === "none") {
+    return { clue_text: null, redacted: false, provenance: null };
+  }
 
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
   const remaining = Math.max(0, params.maxQuestions - params.questionsAsked);
 
+  const requestedClueModel = env.modelRacer();
+  let resolvedClueModel = requestedClueModel;
+
   const result = await callAnthropicTool<{ reasoning?: string; clue_text?: string }>({
-    model: env.modelRacer(),
+    model: requestedClueModel,
+    onModelResolved: (id) => {
+      resolvedClueModel = id;
+    },
     system: COMPOSER_ANSWER_SYSTEM_PROMPT,
     messages: [
       {
@@ -340,5 +392,13 @@ export async function requestClueFromComposer(params: {
     // eslint-disable-next-line no-console
     console.warn("[barkoba] A requested clue disclosed the target and was redacted.");
   }
-  return { clue_text: clue.value, redacted: clue.redacted };
+  return {
+    clue_text: clue.value,
+    redacted: clue.redacted,
+    provenance: {
+      model_id: resolvedClueModel,
+      model_provider: MODEL_PROVIDER,
+      prompt_version: COMPOSER_ANSWER_PROMPT_VERSION,
+    },
+  };
 }

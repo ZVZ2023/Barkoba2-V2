@@ -62,6 +62,11 @@ function newEntry(turnIndex: number): QuestionLogEntry {
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,
@@ -279,9 +284,15 @@ export async function POST(
     last.question_text = edited;
     last.edit_status = "accepted";
     last.edit_reason = verdict.reasoning;
-    last.composer_response = reanswer.answer;
-    last.ambiguous_explanation = reanswer.ambiguous_explanation;
-    last.racer_output_raw = JSON.stringify(reanswer);
+    last.composer_response = reanswer.result.answer;
+    last.ambiguous_explanation = reanswer.result.ambiguous_explanation;
+    // Only the participant's own structured output — provenance rides in its
+    // own fields so raw_output keeps meaning exactly what it claims to.
+    last.racer_output_raw = JSON.stringify(reanswer.result);
+    last.answered_at = new Date().toISOString();
+    last.model_id = reanswer.provenance.model_id;
+    last.model_provider = reanswer.provenance.model_provider;
+    last.prompt_version = reanswer.provenance.prompt_version;
 
     await saveGame(game);
     return respond(game);
@@ -361,9 +372,16 @@ export async function POST(
 
   const entry = newEntry(game.qa_log.length + 1);
   entry.question_text = question;
-  entry.composer_response = answer.answer;
-  entry.ambiguous_explanation = answer.ambiguous_explanation;
-  entry.racer_output_raw = JSON.stringify(answer);
+  entry.composer_response = answer.result.answer;
+  entry.ambiguous_explanation = answer.result.ambiguous_explanation;
+  entry.racer_output_raw = JSON.stringify(answer.result);
+  // The human Racer asked and the model answered in one request, so creation
+  // and answering are the same instant here. Recorded anyway: the field must
+  // mean "when the answer landed" in every mode, or it means nothing.
+  entry.answered_at = new Date().toISOString();
+  entry.model_id = answer.provenance.model_id;
+  entry.model_provider = answer.provenance.model_provider;
+  entry.prompt_version = answer.provenance.prompt_version;
 
   game.qa_log.push(entry);
   // Every question costs one, whatever the answer — the 0.3.4.0 rule, unchanged.

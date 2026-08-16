@@ -178,4 +178,23 @@ export const env = {
    * would be worse than one that did not exist.
    */
   entitlementGrantSecret: () => process.env.ENTITLEMENT_GRANT_SECRET || null,
+
+  // --- V2.5: Game Intelligence benchmark ingress ---------------------------
+
+  /**
+   * Shared secret authorising a game to be TAGGED as a benchmark run at
+   * creation.
+   *
+   * SERVER SIDE ONLY, and deliberately NOT a reuse of ENTITLEMENT_GRANT_SECRET.
+   * Those are two unrelated authorities — one hands out money-adjacent value,
+   * one labels research evidence — and giving them one secret would mean a
+   * rotation or a leak in either blast-radiuses into the other.
+   *
+   * Null means benchmark tagging is out of service and every attempt is
+   * refused. It must never fall open: an unguarded tag would let any client
+   * mark its own game as `red-citroen-c4`, and a benchmark set anyone can write
+   * into is not a benchmark set. An untagged game is ordinary play, which is
+   * the correct and harmless default.
+   */
+  benchmarkIngressSecret: () => process.env.BENCHMARK_INGRESS_SECRET || null,
 };

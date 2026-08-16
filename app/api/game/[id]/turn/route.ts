@@ -60,6 +60,11 @@ function newLogEntry(turnIndex: number): QuestionLogEntry {
     edit_reason: null,
     ambiguous_consumed_credit: false,
     timestamp: new Date().toISOString(),
+    model_id: null,
+    model_provider: null,
+    prompt_version: null,
+    answered_at: null,
+    pre_revision_question_text: null,
     quality_score: null,
     information_gain: null,
     strategy_classification: null,
@@ -132,6 +137,11 @@ export async function POST(
     }
 
     pending.composer_response = answer;
+    // V2.5 — `timestamp` is when the Racer's question was created; this is when
+    // the human answered it. Without both, the only derivable quantity was the
+    // interval to the next turn, which also contains the model call, so think
+    // time and model latency were inseparable.
+    pending.answered_at = new Date().toISOString();
 
     if (answer === "AMBIGUOUS") {
       pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
@@ -196,8 +206,11 @@ export async function POST(
   const racerState = toRacerPublicState(game);
 
   let turn;
+  let provenance;
   try {
-    turn = await runRacerTurn(racerState, { forceFinal });
+    const racerResult = await runRacerTurn(racerState, { forceFinal });
+    turn = racerResult.output;
+    provenance = racerResult.provenance;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] Racer call failed:", err);
@@ -222,11 +235,21 @@ export async function POST(
   // -------------------------------------------------------------------------
   let flagged = false;
   let intentOutcome: GuessIntentOutcome | null = null;
+  // V2.5 — the question as the Racer FIRST emitted it.
+  //
+  // Both resolution branches below destroy it: confirm_guess nulls
+  // question_text, continue_questioning replaces it with the revision. Until
+  // 2.5.0.0 the corpus recorded the second question as though it were the
+  // first, next to guess_detector_flagged=true with no evidence of what was
+  // actually flagged — which made the §18-B question/guess-boundary benchmark
+  // unmeasurable by construction. Captured BEFORE either branch can run.
+  let preRevisionQuestion: string | null = null;
 
   if (turn.action === "question" && turn.question_text) {
     const detection = detectGuess(turn.question_text);
     if (detection.flagged) {
       flagged = true;
+      preRevisionQuestion = turn.question_text;
 
       const resolutionBudget = await consumeModelCall("racer");
       if (!resolutionBudget.allowed) {
@@ -269,6 +292,13 @@ export async function POST(
   entry.guess_detector_flagged = flagged;
   entry.guess_detector_method = flagged ? "heuristic" : null;
   entry.guess_intent_outcome = intentOutcome;
+  entry.pre_revision_question_text = preRevisionQuestion;
+  // V2.5 — who produced this turn, under which prompt. The provenance of the
+  // PRIMARY turn call; the guess-intent sub-call above uses the same model and
+  // is deliberately not given a second provenance triple.
+  entry.model_id = provenance.model_id;
+  entry.model_provider = provenance.model_provider;
+  entry.prompt_version = provenance.prompt_version;
   // latency_ms and the other dormant fields stay null. They are schema-ready,
   // not implemented — populating them is a separate, explicit decision.
 

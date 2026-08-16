@@ -49,7 +49,24 @@ interface AnthropicToolCallParams {
    * `npm run eval:adjudicator -- --repeat N`.
    */
   temperature?: number;
+  /**
+   * V2.5 — receives the model the API reported having used, once, on success.
+   *
+   * OPTIONAL SO NOTHING ELSE CHANGES. Eight call sites use this wrapper; only
+   * the two that write turn provenance pass a callback, and the other six are
+   * untouched. Widening the return type instead would have forced every caller
+   * to unwrap a result it does not need.
+   *
+   * WHY THE RESPONSE MODEL AND NOT `params.model`: they differ whenever a
+   * configured alias resolves to a dated snapshot, and only the resolved id is
+   * evidence of what actually played. The V2.5-1 audit found neither recorded
+   * anywhere; recording the weaker of the two would have been a half-fix.
+   */
+  onModelResolved?: (modelId: string) => void;
 }
+
+/** Every call this wrapper makes goes to Anthropic. One constant, one source. */
+export const MODEL_PROVIDER = "anthropic";
 
 /** Models observed to reject sampling parameters, learned at runtime. */
 const modelsRejectingSamplingParams = new Set<string>();
@@ -153,6 +170,16 @@ export async function callAnthropicTool<T>(
   }
 
   const data = await response.json();
+
+  // V2.5 provenance. Reported before any parsing below can throw, so a
+  // truncated or malformed response still tells us which model produced it.
+  // Falls back to the requested id when the response omits `model`.
+  if (params.onModelResolved) {
+    const resolved = typeof data.model === "string" && data.model.length > 0
+      ? data.model
+      : params.model;
+    params.onModelResolved(resolved);
+  }
 
   // DIAGNOSTIC ONLY (0.3.0.12) — no behavioural change.
   //

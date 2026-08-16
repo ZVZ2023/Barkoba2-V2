@@ -139,6 +139,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   let clueText: string | null = null;
+  let clueProvenance: import("@/lib/types").ModelProvenance | null = null;
   try {
     const clue = await requestClueFromComposer({
       target: secret.target,
@@ -152,6 +153,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       gameLanguage: game.game_language,
     });
     clueText = clue.clue_text;
+    clueProvenance = clue.provenance;
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] Clue request failed:", err);
@@ -181,6 +183,13 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const entry = newLogEntry(game.qa_log.length + 1);
   entry.turn_type = "clue";
   entry.clue_text = clueText;
+  // Null on the human-Composer direction of this route, where the human wrote
+  // the clue themselves and no model authored anything.
+  if (clueProvenance) {
+    entry.model_id = clueProvenance.model_id;
+    entry.model_provider = clueProvenance.model_provider;
+    entry.prompt_version = clueProvenance.prompt_version;
+  }
   game.qa_log.push(entry);
 
   await saveGame(game);

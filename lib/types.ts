@@ -80,6 +80,35 @@ export type RacerAction = "question" | "guess" | "concede" | "clue";
 export type GuessDetectorMethod = "heuristic" | "classifier";
 
 /**
+ * V2.5 — WHO produced a model-authored turn, and under which prompt.
+ *
+ * The V2.5-1 evidence audit found this recorded nowhere. Verified against a
+ * real completed game: the only keys in any persisted raw_output are `action`,
+ * `guess_text`, `question_text` and `rationale`. The reasoning was durable; the
+ * identity of the reasoner was not, which makes fair model-vs-model comparison
+ * impossible and every historical game model-ambiguous.
+ *
+ * DELIBERATELY NOT PART OF RacerTurnOutput OR ComposerAnswerResult. Those types
+ * are serialized verbatim into `racer_output_raw` and thence into
+ * corpus.game_turns.raw_output, which is defined as the participant's own raw
+ * structured output. Provenance is a fact about the CALL, not about the move,
+ * and it travels in dedicated columns so raw_output stays exactly what it
+ * claims to be. test/corpusEvidence.test.ts pins that key set.
+ */
+export interface ModelProvenance {
+  /**
+   * The model the API reported having used, not the alias requested. They
+   * differ whenever a configured id resolves to a dated snapshot, and only the
+   * resolved one is evidence. Falls back to the requested id if absent.
+   */
+  model_id: string;
+  /** "anthropic" for every call this codebase makes today. */
+  model_provider: string;
+  /** Bumped by hand in the prompt module. See RACER_PROMPT_VERSION. */
+  prompt_version: string;
+}
+
+/**
  * How a flagged guess was resolved. In V1 the Racer is an AI with forced
  * structured output, so there is no human on that side of the table to show a
  * confirmation control to. A flag is resolved by re-prompting the Racer
@@ -146,6 +175,39 @@ export interface QuestionLogEntry {
   edit_status: "accepted" | "rejected" | null;
   /** The judge's one-line reason, for both accepted and rejected edits. */
   edit_reason: string | null;
+
+  // --- V2.5: Game Intelligence provenance ---------------------------------
+  //
+  // Null on every turn written before 2.5.0.0, and null forever on those turns.
+  // That is the honest record: nothing observed them, and a backfill would be
+  // inventing data. Analysis must EXCLUDE null-provenance turns from model
+  // comparison rather than assume a model for them.
+
+  /** Resolved model that produced this turn. Null when no model authored it. */
+  model_id: string | null;
+  model_provider: string | null;
+  prompt_version: string | null;
+  /**
+   * When the Composer's answer landed on this entry. ISO 8601.
+   *
+   * `timestamp` is when the entry was CREATED — for an AI-Racer game, the
+   * moment the Racer's question was appended. The answer arrives on a later
+   * request and, before 2.5.0.0, left no trace of when. Without this the only
+   * derivable quantity was the interval to the next turn, which also contains
+   * the model call, so Composer think time and model latency were inseparable.
+   */
+  answered_at: string | null;
+  /**
+   * The question as first emitted, before the Guess Detector's intent
+   * resolution rewrote it.
+   *
+   * Both resolution branches destroy the original: `confirm_guess` nulls
+   * question_text, `continue_questioning` replaces it. Distinct from
+   * `original_question_text`, which records a HUMAN Racer's own typo repair in
+   * /ask. These are different events by different actors and must not share a
+   * field, or "who changed this question, and why" stops being answerable.
+   */
+  pre_revision_question_text: string | null;
 
   // --- dormant in V1: present in schema, unused until explicitly defined ---
   quality_score: number | null; // Z-Score successor
@@ -375,6 +437,22 @@ export interface GameRecord {
    */
   abandoned_branches: QuestionLogEntry[][];
   clarification_prompt: string | null; // set when phase = clarification_required
+
+  // --- V2.5: benchmark identity -------------------------------------------
+  //
+  // PROSPECTIVE ONLY. corpus.games is immutable once finalized, and 0003's
+  // exemption list covers participant unlink and collection_context alone.
+  // A finalized game therefore cannot be tagged retroactively, and the
+  // exemption list is deliberately not being widened to allow it. Retroactive
+  // designation of an existing game belongs in derived.*.
+  //
+  // Set at creation, from a server-secret-gated header, so an ordinary client
+  // cannot mark its own game as a benchmark and pollute the comparison set.
+
+  /** Which benchmark case this run instantiates. Null is ordinary play. */
+  benchmark_case_id: string | null;
+  /** Groups repeated runs of one case. Minted server-side; never client-supplied. */
+  benchmark_run_id: string | null;
 }
 
 /**
