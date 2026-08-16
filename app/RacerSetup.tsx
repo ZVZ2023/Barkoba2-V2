@@ -31,6 +31,10 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [clueMode, setClueMode] = useState<ClueMode>("none");
   const [budget, setBudget] = useState(20);
+  // V2.5 — the language of PLAY, not of this screen. There is no human target
+  // text to read here, so "Automatikus" means Hungarian; choosing English makes
+  // the AI pick AND play its target in English.
+  const [gameLanguage, setGameLanguage] = useState<"auto" | "hu" | "en">("auto");
   const [busy, setBusy] = useState(false);
   const [naming, setNaming] = useState(askForName);
   const [error, setError] = useState<string | null>(null);
@@ -51,6 +55,7 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
           difficulty,
           clue_mode: difficulty === "hard" ? clueMode : "none",
           max_questions: budget,
+          game_language: gameLanguage,
         }),
       });
       const data = await res.json();
@@ -83,6 +88,30 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
       ) : (
       <>
       <BalanceBadge view={entitlement.view} />
+
+      {/* V2.5 — the language of PLAY. Barkóba's interface stays Hungarian
+          whichever option is chosen. */}
+      <div className="flex flex-col gap-2">
+        <span className="text-sm text-[var(--ink)]">A játék nyelve</span>
+        <div className="flex flex-wrap gap-2">
+          {(
+            [
+              { value: "auto", label: "Automatikus" },
+              { value: "hu", label: "Magyar" },
+              { value: "en", label: "English" },
+            ] as const
+          ).map((l) => (
+            <button
+              key={l.value}
+              onClick={() => setGameLanguage(l.value)}
+              disabled={busy}
+              className={pill(gameLanguage === l.value)}
+            >
+              {l.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Nehézség</span>

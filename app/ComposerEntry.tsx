@@ -54,6 +54,11 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   // so nothing here can put a model id on Barkóba's bill or in the corpus.
   // Defaults to the opponent every previous game was played against.
   const [racerProvider, setRacerProvider] = useState<"anthropic" | "xai">("anthropic");
+  // V2.5 — the language of PLAY, not of this screen. "auto" lets Barkóba read
+  // it from how the target was written; the explicit options exist because a
+  // one-word target (Grok, Apple, Tesla) reveals nothing about which language
+  // the player meant. The interface stays Hungarian in every case.
+  const [gameLanguage, setGameLanguage] = useState<"auto" | "hu" | "en">("auto");
   // V2.4 - refusal for lack of Play Credits must lead somewhere.
   const [noCredit, setNoCredit] = useState(false);
   const entitlement = useEntitlement();
@@ -79,6 +84,9 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
           // V2.5-B3 — proposes an opponent. The server validates it, refuses an
           // unknown or unconfigured one, and never substitutes a different AI.
           racer_provider: racerProvider,
+          // "auto" is sent as-is; the server treats anything that is not "hu"
+          // or "en" as a request to decide, so it never becomes game state.
+          game_language: gameLanguage,
           // Set once the player has seen the warning and chosen to continue.
           force,
         }),
@@ -168,6 +176,35 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
               placeholder="Csak ha a szó többfélét is jelenthet — pl. a fűnyíróm indítózsinórjának fogantyúja"
             />
           </label>
+
+          {/* V2.5 — the language of PLAY. Not the language of this screen:
+              Barkóba's interface stays Hungarian whichever option is chosen.
+              "Automatikus" reads it from how the target was written. */}
+          <div className="flex flex-col gap-2">
+            <span className="text-sm font-medium text-[var(--ink)]">A játék nyelve</span>
+            <div className="flex gap-2">
+              {(
+                [
+                  { value: "auto", label: "Automatikus" },
+                  { value: "hu", label: "Magyar" },
+                  { value: "en", label: "English" },
+                ] as const
+              ).map((option) => (
+                <button
+                  key={option.value}
+                  type="button"
+                  onClick={() => setGameLanguage(option.value)}
+                  className={`min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
+                    gameLanguage === option.value
+                      ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+                      : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
+                  }`}
+                >
+                  {option.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* V2.5-B3 — which AI takes the guessing seat. Deliberately the same
               pill idiom as the difficulty control rather than a new pattern:

@@ -42,6 +42,7 @@ import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
 import { consumeModelCall } from "@/lib/callBudget";
 import type { ClueMode, Difficulty } from "@/lib/types";
 import { resolveQuestionBudget } from "@/lib/questionBudget";
+import { resolveGameLanguage } from "@/lib/gameLanguage";
 import {
   DEFAULT_RACER_PROVIDER,
   isModelProviderId,
@@ -174,6 +175,12 @@ interface CreateGameBody {
    * Meaningful only when the Racer seat is the AI.
    */
   racer_provider?: string;
+  /**
+   * V2.5 — the language the game is PLAYED in: "hu", "en", or absent/"auto"
+   * to let Barkóba decide. The shell stays Hungarian either way; this governs
+   * model-generated, player-visible output only.
+   */
+  game_language?: string;
 }
 
 const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
@@ -278,6 +285,12 @@ export async function POST(req: NextRequest) {
     // "easy" as the fallback basis rather than adopting the new recommendation.
     const budgetChoice = resolveQuestionBudget("easy", body.max_questions);
 
+    // V2.5 — AI Composer: there is no human text to detect a language from,
+    // because the AI picks the target only AFTER the language is fixed. So
+    // detection is null and AUTO resolves to "hu" through the shared rule.
+    // An explicit English choice makes the AI choose AND play in English.
+    const aiGameLanguage = resolveGameLanguage(body.game_language, null);
+
     const callBudget = await consumeModelCall("resolve");
     if (!callBudget.allowed) {
       return NextResponse.json(
@@ -298,7 +311,7 @@ export async function POST(req: NextRequest) {
         // The V1 interface is Hungarian, so the game is played in Hungarian.
         // This used to be hardcoded "en", which is why AI questions, guesses
         // and adjudication all came back in English under a Hungarian UI.
-        gameLanguage: "hu",
+        gameLanguage: aiGameLanguage,
         maxQuestions: budgetChoice,
       });
     } catch (err) {
@@ -337,7 +350,7 @@ export async function POST(req: NextRequest) {
       player_id: playerId,
       phase: "questioning",
       max_questions: budgetChoice,
-      game_language: "hu",
+      game_language: aiGameLanguage,
       composer_kind: "ai",
       racer_kind: "human",
       difficulty,
@@ -483,12 +496,18 @@ export async function POST(req: NextRequest) {
     phase: "questioning",
     max_questions: maxQuestions,
     private_target: validation.private_knowledge,
-    // Detected by the Validator from the Composer's own wording — no extra
-    // model call, no setup question. Fixed for the life of the game.
-    // Detection decided the language from the Composer's own words, which meant
-    // an English target ("My Friend Otto") produced an English game inside a
-    // Hungarian product. V1 is Hungarian-first, so the interface language wins.
-    game_language: "hu",
+    // V2.5 — the language of PLAY, which is not the language of the shell.
+    //
+    // An explicit choice from the Composer wins. Absent one, this is the
+    // Validator's reading of their own wording — already computed on every
+    // game, and until now silently discarded because game_language was pinned
+    // to "hu" to stop an English target turning the whole product English.
+    //
+    // Both earlier behaviours made the same mistake in opposite directions:
+    // they treated shell language and game language as one setting. They are
+    // separate. The buttons stay Hungarian; only model-generated, player-facing
+    // output follows this value. See lib/gameLanguage.ts.
+    game_language: resolveGameLanguage(body.game_language, validation.game_language),
     ...benchmark,
   });
 
