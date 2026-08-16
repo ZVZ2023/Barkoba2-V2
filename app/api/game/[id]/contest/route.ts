@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
 import {
   createContest,
-  listContestsForGame,
+  listOwnContestsForGame,
   resolveContestSeat,
 } from "@/lib/corpus/gameContests";
 
@@ -97,22 +97,28 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
 }
 
 /**
- * Every contest filed against this game, for a durable participant of it.
+ * The requesting player's OWN contest against this game.
  *
- * Both seats may read both contests. That is the same symmetry the completed
- * game already has — after resolution each participant sees the full
- * transcript, the verdict and the revealed target — and a contest snapshot
- * contains strictly less than that (see the omissions note in
- * lib/corpus/gameContests.ts). No new visibility is created.
+ * CONTESTANT-OWNED, NOT PARTICIPANT-SHARED. Occupying the other seat in the
+ * source game does not grant access to the opponent's contest. Creation
+ * authorization and retrieval authorization are deliberately different rules:
+ * "may you contest this verdict?" is a question about the game, "is this
+ * yours?" is a question about the contest.
+ *
+ * The seat check below does not authorize the payload — the `player_id`
+ * predicate inside listOwnContestsForGame does that, in SQL, where a route
+ * cannot forget it. The seat check exists so that "you are not in this game"
+ * and "you have not contested it" stay distinguishable, because they are
+ * genuinely different answers.
  *
  * A non-participant gets 403 and learns nothing else: not whether the game
- * exists, not whether any contest was filed.
+ * exists, not whether any contest was filed, and never anything about one.
  */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
   const playerId = playerIdFromHeaders(req.headers);
   if (!playerId) return fail("not_a_participant");
 
-  const loaded = await listContestsForGame(params.id);
+  const loaded = await listOwnContestsForGame(params.id, playerId);
   // A missing game and an unauthorized reader are answered identically on
   // purpose: probing this endpoint must not reveal which games exist.
   if (!loaded) return fail("not_a_participant");
@@ -120,5 +126,8 @@ export async function GET(req: NextRequest, { params }: { params: { id: string }
   const seat = resolveContestSeat(loaded.subject, playerId);
   if (!seat) return fail("not_a_participant");
 
+  // An empty list is a legitimate answer for a participant who has not
+  // contested — and is also what a participant sees after their own contest was
+  // privacy-unlinked. V2.6 adds no way to tell those apart, deliberately.
   return NextResponse.json({ seat, contests: loaded.contests });
 }

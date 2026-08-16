@@ -599,22 +599,45 @@ export async function createContest(input: {
   }
 }
 
-/**
- * One contest by id, together with the seat ids of its game.
- *
- * The seat columns come back so the ROUTE can authorize the reader without a
- * second query and without this module deciding policy. Retrieval
- * authorization is deliberately the same rule as creation: a durable
- * participant seat on the underlying game.
- */
-export interface ContestWithSubject {
-  contest: ContestRecord;
-  subject: ContestSubject;
-}
+// ---------------------------------------------------------------------------
+// RETRIEVAL IS CONTESTANT-OWNED, NOT PARTICIPANT-SHARED.
+//
+// The frozen V2.6 product decision. A contest is retrievable by the player who
+// FILED it, and by nobody else — not by the opponent, not by anyone who merely
+// occupies the other seat in the source game.
+//
+// This is deliberately NARROWER than creation authorization, and the asymmetry
+// is the point. Creation asks "may you contest this verdict?", which is a
+// question about the game. Retrieval asks "is this yours?", which is a question
+// about the contest. They are different questions and V2.6 answers them
+// differently.
+//
+// THE OWNERSHIP TEST LIVES IN THE SQL, not in the route. A route can forget a
+// guard; a query that cannot return another player's row has no guard to
+// forget. This is the same reasoning that put the identity check inside
+// getSecretForComposer() rather than in the route that calls it.
+//
+// CONSEQUENCE, ACCEPTED AND STATED: player_id is nulled by privacy unlink, and
+// a NULL never equals a requester. An erased contest therefore remains durable
+// historical evidence with no end-user retrieval path. That is intended, not a
+// gap to be patched with a fallback — reviewer and community authorization are
+// separate scope, and V2.6 adds no admin door.
+// ---------------------------------------------------------------------------
 
+/**
+ * One contest by id, only if it belongs to the requesting player.
+ *
+ * Returns null for "no such contest", "not yours" and "erased" alike. The route
+ * cannot distinguish them and neither can a caller — which is what stops a
+ * contest id from being an enumeration oracle over a table of transcripts.
+ */
 export async function getContestById(
-  contestId: string
-): Promise<ContestWithSubject | null> {
+  contestId: string,
+  playerId: string | null
+): Promise<ContestRecord | null> {
+  // An unauthenticated caller can own nothing. Checked before any query so the
+  // ownership predicate is never handed a null to compare against.
+  if (!playerId) return null;
   if (!isCorpusConfigured()) return null;
   let sql: SqlClient | null;
   try {
@@ -626,29 +649,17 @@ export async function getContestById(
 
   try {
     const rows = await sql`
-      SELECT c.contest_id, c.corpus_game_id, c.operational_game_id, c.player_id,
-             c.contestant_seat, c.contested_outcome, c.player_argument, c.status,
-             c.evidence_schema_version, c.evidence, c.created_at,
-             g.lifecycle_state, g.outcome,
-             g.composer_player_id, g.racer_player_id
-        FROM corpus.game_contests c
-        JOIN corpus.games g USING (corpus_game_id)
-       WHERE c.contest_id = ${contestId}::uuid
+      SELECT contest_id, corpus_game_id, operational_game_id, player_id,
+             contestant_seat, contested_outcome, player_argument, status,
+             evidence_schema_version, evidence, created_at
+        FROM corpus.game_contests
+       WHERE contest_id = ${contestId}::uuid
+         AND player_id IS NOT NULL
+         AND player_id = ${playerId}
     `;
     const row = rows[0];
     if (!row) return null;
-
-    return {
-      contest: toContestRecord(row),
-      subject: {
-        corpus_game_id: String(row.corpus_game_id),
-        operational_game_id: String(row.operational_game_id),
-        lifecycle_state: s(row.lifecycle_state) ?? "",
-        outcome: s(row.outcome),
-        composer_player_id: s(row.composer_player_id),
-        racer_player_id: s(row.racer_player_id),
-      },
-    };
+    return toContestRecord(row);
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[barkoba] contest read failed for ${contestId}:`, err);
@@ -656,10 +667,23 @@ export async function getContestById(
   }
 }
 
-/** Every contest filed against one game, newest last. Authorization is the caller's. */
-export async function listContestsForGame(
-  operationalGameId: string
+/**
+ * The requesting player's OWN contests against one game.
+ *
+ * At most one row today — uniqueness is per seat and a player holds one seat —
+ * but the shape stays a list so the endpoint does not have to change meaning if
+ * that ever stops being true.
+ *
+ * The seat check is still performed and still gates the response. It is NOT
+ * what authorizes the payload — the `player_id` predicate below does that — but
+ * it is what lets the route distinguish "you are not in this game" from "you
+ * have not contested it", which are different answers and deserve to be.
+ */
+export async function listOwnContestsForGame(
+  operationalGameId: string,
+  playerId: string | null
 ): Promise<{ subject: ContestSubject; contests: ContestRecord[] } | null> {
+  if (!playerId) return null;
   if (!isCorpusConfigured()) return null;
   let sql: SqlClient | null;
   try {
@@ -679,6 +703,8 @@ export async function listContestsForGame(
              evidence_schema_version, evidence, created_at
         FROM corpus.game_contests
        WHERE corpus_game_id = ${loaded.subject.corpus_game_id}::uuid
+         AND player_id IS NOT NULL
+         AND player_id = ${playerId}
        ORDER BY created_at ASC
     `;
     return { subject: loaded.subject, contests: rows.map(toContestRecord) };

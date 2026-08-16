@@ -10,7 +10,7 @@ import {
   createContest,
   getContestById,
   hasContestableVerdict,
-  listContestsForGame,
+  listOwnContestsForGame,
   normalizePlayerArgument,
   resolveContestSeat,
   type ContestSubject,
@@ -533,76 +533,116 @@ test("the snapshot is a copy, not a pointer — it survives without a live re-re
 // Retrieval.
 // ---------------------------------------------------------------------------
 
-test("a durable participant can retrieve a contest on their game", async () => {
-  responses = [
-    [
-      {
-        ...insertedRow(),
-        lifecycle_state: "completed",
-        outcome: "racer_incorrect",
-        composer_player_id: COMPOSER,
-        racer_player_id: RACER,
-      },
-    ],
-  ];
-  const loaded = await getContestById(randomUUID());
-  assert.ok(loaded);
-  assert.equal(resolveContestSeat(loaded.subject, COMPOSER), "composer");
-  assert.equal(resolveContestSeat(loaded.subject, RACER), "racer");
+test("the contestant can retrieve their own contest", async () => {
+  responses = [[insertedRow()]];
+  const contest = await getContestById(randomUUID(), COMPOSER);
+  assert.ok(contest);
+  assert.equal(contest.contestant_seat, "composer");
+  assert.equal(contest.evidence_schema_version, CONTEST_EVIDENCE_SCHEMA_VERSION);
 });
 
-test("an unauthorized reader resolves to no seat and therefore no evidence", async () => {
-  responses = [
-    [
-      {
-        ...insertedRow(),
-        lifecycle_state: "completed",
-        outcome: "racer_incorrect",
-        composer_player_id: COMPOSER,
-        racer_player_id: RACER,
-      },
-    ],
-  ];
-  const loaded = await getContestById(randomUUID());
-  assert.ok(loaded);
-  // The route denies on a null seat. Holding the contest id buys nothing.
-  assert.equal(resolveContestSeat(loaded.subject, STRANGER), null);
-  assert.equal(resolveContestSeat(loaded.subject, null), null);
+test("V2.6: retrieval is CONTESTANT-OWNED — ownership is tested in the SQL", async () => {
+  // The route cannot forget a guard that lives in the query. This asserts the
+  // predicate is actually there and actually bound to the requester, because
+  // the fake driver would happily return a row regardless.
+  responses = [[insertedRow()]];
+  await getContestById("33333333-3333-4333-8333-333333333333", COMPOSER);
+
+  const read = calls.find((c) => c.sql.includes("FROM corpus.game_contests"));
+  assert.ok(read);
+  assert.match(read.sql, /player_id\s+IS NOT NULL/i);
+  assert.match(read.sql, /AND\s+player_id\s*=\s*\?/i);
+  assert.ok(read.values.includes(COMPOSER), "the requester must be bound into the predicate");
 });
 
-test("retrieval authorizes against the GAME, so erasure does not orphan a contest", async () => {
-  // contest.player_id is nullable by design. Authorizing on it would make an
-  // erased contest readable by nobody — or, written the other way, by anyone.
-  responses = [
-    [
-      {
-        ...insertedRow({ player_id: null }),
-        lifecycle_state: "completed",
-        outcome: "racer_incorrect",
-        composer_player_id: COMPOSER,
-        racer_player_id: RACER,
-      },
-    ],
-  ];
-  const loaded = await getContestById(randomUUID());
-  assert.ok(loaded);
-  assert.equal(loaded.contest.player_id, null);
-  assert.equal(resolveContestSeat(loaded.subject, COMPOSER), "composer");
+test("V2.6: the OTHER seat cannot retrieve a contest it did not file", async () => {
+  // The correction that separates V2.6 from participant-shared access.
+  // Occupying the other seat in the source game grants nothing here.
+  responses = [[]]; // the ownership predicate matches no row
+  const contest = await getContestById(randomUUID(), RACER);
+  assert.equal(contest, null);
 });
 
-test("listing contests for a game returns the game's durable seats for authorization", async () => {
+test("an outsider and an unauthenticated caller retrieve nothing", async () => {
+  responses = [[]];
+  assert.equal(await getContestById(randomUUID(), STRANGER), null);
+
+  // Null identity is refused before any query: an unauthenticated caller can
+  // own nothing, and the predicate is never handed a null to compare against.
+  calls = [];
+  assert.equal(await getContestById(randomUUID(), null), null);
+  assert.equal(calls.length, 0, "an unauthenticated read must not reach the database");
+});
+
+test("a privacy-erased contest has no end-user retrieval path, by design", async () => {
+  // ACCEPTED CONSEQUENCE, ratified: unlink sets player_id to NULL, and a NULL
+  // matches no requester. The record survives as durable historical evidence
+  // with nobody able to fetch it through the participant API. `IS NOT NULL` is
+  // explicit rather than relying on SQL's NULL comparison semantics, so the
+  // intent is readable and cannot be lost to a later rewrite.
+  responses = [[]];
+  assert.equal(await getContestById(randomUUID(), COMPOSER), null);
+
+  const read = calls.find((c) => c.sql.includes("FROM corpus.game_contests"));
+  assert.match(read!.sql, /player_id\s+IS NOT NULL/i);
+});
+
+test("V2.6 adds no reviewer, admin or community access path", () => {
+  // The erased-contest gap above is only acceptable while nothing quietly
+  // fills it. If a bypass appears in either the module or a route, this fails.
+  const sources = [
+    "lib/corpus/gameContests.ts",
+    "app/api/contest/[id]/route.ts",
+    "app/api/game/[id]/contest/route.ts",
+  ].map((f) => readFileSync(f, "utf8"));
+
+  for (const src of sources) {
+    for (const bypass of ["admin", "reviewer", "moderator", "is_staff", "bypass"]) {
+      assert.equal(
+        new RegExp(`\\b${bypass}\\b`, "i").test(src.replace(/\/\/[^\n]*|\/\*[\s\S]*?\*\//g, "")),
+        false,
+        `V2.6 must not introduce a '${bypass}' access path`
+      );
+    }
+  }
+});
+
+test("listing returns only the requester's own contest, and gates on the seat too", async () => {
   responses = [[gameRow({ racer_player_id: RACER })], [insertedRow()]];
-  const loaded = await listContestsForGame(OPERATIONAL_GAME_ID);
+  const loaded = await listOwnContestsForGame(OPERATIONAL_GAME_ID, COMPOSER);
   assert.ok(loaded);
   assert.equal(loaded.contests.length, 1);
+
+  const list = calls.find(
+    (c) => c.sql.includes("FROM corpus.game_contests") && c.sql.includes("corpus_game_id")
+  );
+  assert.ok(list);
+  assert.match(list.sql, /player_id\s+IS NOT NULL/i);
+  assert.ok(list.values.includes(COMPOSER));
+
+  // The seat check does not authorize the payload — the predicate above does —
+  // but it is what keeps "not in this game" distinguishable from "has not
+  // contested it".
   assert.equal(resolveContestSeat(loaded.subject, STRANGER), null);
+});
+
+test("a participant who has not contested gets an empty list, not an error", async () => {
+  responses = [[gameRow({ racer_player_id: RACER })], []];
+  const loaded = await listOwnContestsForGame(OPERATIONAL_GAME_ID, RACER);
+  assert.ok(loaded);
+  assert.deepEqual(loaded.contests, []);
+  assert.equal(resolveContestSeat(loaded.subject, RACER), "racer");
 });
 
 test("a missing game and an unauthorized reader are indistinguishable from outside", async () => {
   responses = [[]];
-  assert.equal(await listContestsForGame(OPERATIONAL_GAME_ID), null);
+  assert.equal(await listOwnContestsForGame(OPERATIONAL_GAME_ID, COMPOSER), null);
   // The route maps both null and a null seat to the same 403 body — asserted
   // here as the contract the route depends on.
+
+  calls = [];
+  assert.equal(await listOwnContestsForGame(OPERATIONAL_GAME_ID, null), null);
+  assert.equal(calls.length, 0, "an unauthenticated list must not reach the database");
 });
 
 // ---------------------------------------------------------------------------

@@ -3113,6 +3113,46 @@ Neither is absent from the evidence base — both remain reachable through the
 corpus via `corpus_game_id`, under whatever grant a review runs with. They are
 absent from the SNAPSHOT, which is a participant-readable artefact.
 
+### 35.2a Retrieval is contestant-owned, not participant-shared
+
+**Frozen V2.6 product decision, ratified as a pre-production correction to the
+first implementation.** The first cut authorized retrieval against the source
+game's durable seats — either participant could read either contest. That is
+broader than V2.6 supports and was corrected before migration 0006 was applied.
+
+**The rule now:**
+
+| Operation | Authorization |
+|---|---|
+| POST create | durable seat on the corpus row matches the caller |
+| GET list for a game | durable seat gates the response; only the caller's OWN contest is returned |
+| GET one contest | authenticated player equals a **non-null** `contest.player_id` |
+
+**Creation and retrieval deliberately ask different questions.** "May you
+contest this verdict?" is a question about the game. "Is this yours?" is a
+question about the contest. The asymmetry is intentional, not an inconsistency.
+
+**The ownership test lives in the SQL**, not in the route. A route can forget a
+guard; a query that cannot return another player's row has no guard to forget.
+Same reasoning that put the identity check inside `getSecretForComposer()`
+rather than in the route calling it.
+
+**Accepted consequence, stated rather than patched.** Privacy unlink sets
+`player_id` to NULL, and a NULL matches no requester. An erased contest
+therefore remains durable historical evidence — argument, snapshot, seat,
+captured verdict and timestamps all intact — **with no end-user retrieval
+path**. This is intended. It is not approximated with a fallback, and V2.6 adds
+no reviewer, admin or community door. A test greps the module and both routes
+for `admin`, `reviewer`, `moderator`, `is_staff` and `bypass` outside comments,
+so the gap cannot be quietly filled later without that showing up as a failure.
+
+Reviewer and community authorization are separate scope.
+
+The list endpoint returns an empty array both for a participant who never
+contested and for one whose contest was erased. V2.6 provides no way to tell
+those apart, deliberately — distinguishing them would leak the existence of a
+record the erasure was meant to detach.
+
 ### 35.3 Why a new table, and why in `corpus.*`
 
 `corpus.games` is immutable once finalized. A contest is created long after
@@ -3164,6 +3204,10 @@ verdict, and contesting one would be contesting an absence.
   the player's memory of having finished a game.
 - **No UI exists**, so the only way to reach these routes today is a direct
   request. Deliberate — Task 2 is foundation.
+- **Erased contests accumulate with no reader.** A direct consequence of
+  §35.2a, accepted on the record. If reviewer authorization is never built,
+  these rows are write-only forever. That is a scope decision to revisit, not a
+  defect to fix inside V2.6.
 - **`evidence_schema_version` has one value and no reader that branches on it.**
   That is the intended shape: it is a fact recorded for a future reader, not a
   migration framework.
