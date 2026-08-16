@@ -2066,3 +2066,259 @@ and no migration work is authorized.
 A bearer code is exactly as strong as the player's ability to keep it. There is
 no reset, because there is nothing to reset it against. The UI says so before
 generating the code rather than after.
+
+---
+
+## 27. `2.5.0.0` — Game Intelligence evidence foundation (MILESTONE FROZEN)
+
+Frozen at `2.5.0.0` / `3123275`. Migration `0005_intelligence_provenance.sql`
+applied and verified in production Neon.
+
+V2.5 began as foundation, not as an attempt to solve Racer intelligence, and it
+ends the same way. Nothing here makes the Racer better. It makes the Racer
+**measurable**, which is the precondition for ever knowing whether a later
+change helped.
+
+### What the audit actually found
+
+The V2.5-1 evidence audit was verified read-only against a real completed
+AI-Racer game — `bd14b386-9837-4cd1-a293-0788aec77ce1`, `app_version` 2.4.0.0,
+hard, 100-question budget, 84 questions used, 18 AMBIGUOUS, outcome
+`racer_incorrect`.
+
+The result was the opposite of the expected one. The transcript layer was
+**sound**: `turn_index` contiguous 1–85, counters reconciling exactly, no
+timestamp disorder, and raw Racer output preserved with a non-empty rationale on
+86 of 86 stored turns. The reasoning was already durable.
+
+What was missing was never the reasoning. It was everything needed to say
+**whose** reasoning it was. Across every persisted `raw_output` object in that
+game the only keys were `action`, `guess_text`, `question_text`, `rationale`.
+No model, no provider, no version, anywhere in the record.
+
+That is the finding the milestone rests on: an 84-question hard game against an
+unknown model is analysable as reasoning and worthless as a benchmark. Every
+game in the corpus before 2.5.0.0 is in that condition, permanently, and the
+three named benchmarks (§18-A Red Citroën C4, §18-B My Left Leg, §24 compound
+questions) are worse still — they predate the corpus entirely and exist only as
+prose describing games nobody can now identify the player of.
+
+### What was added, and what was deliberately not
+
+Six nullable columns on `corpus.game_turns`, two on `corpus.games`. No trigger
+change, no backfill, no default, no `NOT NULL`, no table rewrite.
+
+- `model_id` — the model the **API reported having used**, not the alias the
+  request asked for. Those differ whenever a configured id resolves to a dated
+  snapshot, and only the resolved one is evidence. Recording the requested id
+  would have been a half-fix.
+- `model_provider` — constant today. The column exists now because adding it
+  later would mean altering the schema in the middle of the first comparison
+  that needed it, and a column added mid-experiment cannot describe the rows
+  already collected.
+- `prompt_version` — `app_version` and `commit_sha` locate the exact source
+  text and are a working proxy **while one prompt exists per deployment**. They
+  stop being one the moment two Racer variants run at a single commit, which is
+  the entire point of benchmarking. The proxy expires exactly when it starts to
+  matter.
+- `answered_at` — `occurred_at` is when the *Racer's* turn row was created. The
+  answer was written back onto that same row later with no timestamp of its own,
+  so the only derivable quantity was an interval that also contained the model
+  call. Composer think time and model latency were inseparable.
+- `pre_revision_question_text` — a Guess-Detector flag destroyed the original
+  question on **both** resolution branches: `confirm_guess` nulls it,
+  `continue_questioning` replaces it. The corpus recorded the second question as
+  though it were the first, beside `guess_detector_flagged=true` with no
+  evidence of what was flagged. §18-B's question/guess-boundary observation was
+  unmeasurable by construction until this column existed.
+- `branch_seq` — `buildTurnRows` flattened `abandoned_branches` into one bucket
+  with no marker, and `turn_index` legitimately repeats across branches.
+  `occurred_at` does not separate them: an abandoned turn carries its original
+  creation time, not its discard time.
+- `benchmark_case_id` / `benchmark_run_id` — prospective only. See below.
+
+Deliberately still absent, all logged as useful-later and none blocking: token
+usage and per-call latency (the dependency `lib/questionBudget.ts` already names
+for recalibrating the Play Credit curve), truncation events, failure/retry
+events, and the guess-intent sub-call's raw output.
+
+### Why model and prompt live on the turn, not the game
+
+Identical reasoning to migration 0003's refusal of a game-mode column. A
+game-level `racer_model_id` would restate what the turns already say and create
+two sources of truth that can drift — and it would silently lie about a game
+that straddled a configuration change, attributing every turn to whichever model
+happened to be configured at the end.
+
+### Why NULL had to stay meaningless
+
+No column got a default and none got `NOT NULL`. `NULL` must keep meaning
+"not captured", never "unknown model". A backfill would assert a fact about
+historical rows that nobody observed. Analysis must **exclude** null-provenance
+turns from model comparison rather than assume a model for them.
+
+This is also why `COALESCE(existing, EXCLUDED.…)` was rejected in the writer's
+upsert. It fails twice over: on a finalized row with a NULL `model_id`, filling
+it in is still a change and still raises the immutability trigger — and it would
+be wrong where it worked, because writing today's model id onto a turn played
+before capture existed invents evidence.
+
+### Benchmark identity is prospective, and that is a constraint not a choice
+
+`corpus.reject_finalized_mutation` (0001, amended 0003) exempts exactly four
+fields from the finalized-row lock: `player_id`, `composer_player_id`,
+`racer_player_id`, `collection_context`. `benchmark_case_id` is not among them
+and will not be added — widening an immutability exemption to buy a convenience
+is how the guarantee erodes.
+
+The accepted consequence: a game that has already finalized can **never** be
+tagged. `bd14b386` is an excellent benchmark candidate and is permanently
+untaggable in `corpus.*`. Retroactive designation of an existing game has one
+legal home, `derived.*`, and populating it was explicitly out of V2.5 scope.
+
+Ingress fails closed. `BENCHMARK_INGRESS_SECRET` unset means tagging is out of
+service and every attempt is silently ignored — the game is still created, just
+untagged. A benchmark set any client can write into is not a benchmark set, and
+because the row is immutable once finalized, a mistag can never be removed.
+
+### The acknowledged residual — READ THIS BEFORE CHANGING THE CORPUS WRITER
+
+**The finalized-game re-sync mutation path remains unexercised in PostgreSQL.**
+
+`reject_finalized_turn_mutation` (0002) permits a no-op re-sync of a finalized
+game's turns and raises on any real change. The repair and replay passes re-sync
+completed games routinely. If a new column's value could differ between the
+original write and a later re-sync — and `model_id` can, because the env
+override may move, and `prompt_version` can, because it is bumped on purpose —
+the trigger would raise and roll back the **entire transaction**, taking the
+repair pass with it.
+
+The guard is that all eight new columns are written on `INSERT` only and appear
+in no `ON CONFLICT … DO UPDATE` set-list. This is enforced by a test asserting
+their absence from the emitted SQL, not by anyone remembering.
+
+It has not been proven against live PostgreSQL, because at closure the corpus
+contained **zero** completed games missing a target or resolution row, so the
+repair pass had nothing to re-sync. No further testing was manufactured for it:
+forcing the path would have meant writing to production evidence to test a
+guarantee about not writing to production evidence.
+
+The residual is therefore: guarded by design and by test, unexercised in the
+database. Anyone adding a column to `corpus.game_turns` must keep it out of the
+`DO UPDATE` set-list, and the test that pins this must not be relaxed.
+
+### Production acceptance — Field Test #1, "Air"
+
+Deployed `2.5.0.0` / `3123275`. Verified on real production data:
+
+- 21/21 turns captured `model_id`, `model_provider`, `prompt_version`.
+- Recorded identity: `claude-haiku-4-5-20251001` / `anthropic` / `racer/2.5.0`.
+  The model id is the dated snapshot, confirming the resolved-not-requested
+  capture works rather than echoing configuration.
+- Counter reconciliation exact: questions 20 = 20, ambiguous 1 = 1.
+- Main turns 21 = highest `turn_index` 21. No gaps.
+- `raw_output` impurity: **0 turns**. Provenance did not leak into the
+  participant's own structured output, which is what the wrapper types
+  (`RacerTurnResult`, `ComposerAnswerOutcome`) exist to guarantee.
+- 13 pre-V2.5 completed games. **0** historical turns retroactively
+  provenance-stamped — the additive migration touched no existing evidence.
+- 0 incomplete historical records requiring repair.
+
+### A process obligation, not a feature
+
+`RACER_PROMPT_VERSION` is bumped **by hand**. A changed prompt with an unbumped
+constant produces confidently mislabelled evidence, which is worse than no
+label. Treat bumping it as part of editing the prompt, not as follow-up.
+
+A hash was considered and rejected: it changes on a typo fix and says nothing
+about whether the strategy changed. A deliberate label is a claim someone made
+on purpose, which is what a benchmark comparison has to rest on.
+
+---
+
+## 28. Field Test #1 — "Air": two observations, NEITHER PROMOTED
+
+First game played under `2.5.0.0`. Both entries below are **observations
+only**. Neither is promoted to implementation work, and no Racer prompt or
+strategy change was made for either — the same posture as §18 and §24.
+
+What is different this time, and it is the whole reason the milestone existed:
+**these observations are attributable.** They belong to
+`claude-haiku-4-5-20251001` under `racer/2.5.0`, recorded per turn. Every prior
+benchmark describes a game whose player cannot now be identified. This one can
+be re-run against another model and compared honestly.
+
+### RACER-INTELLIGENCE — elimination without narrowing
+
+**Target:** air. **Budget:** 20 questions, fully consumed. **Outcome:** guessed
+water.
+
+**Observed:** the Racer spent its budget largely on serial category elimination
+and failed to convert accumulated NO answers into positive narrowing of the
+hypothesis space. Having excluded many ordinary categories, it did not pivot
+toward substance, gas, or environmental questions, and ended by naming water.
+
+**The failure is not any single question.** Each exclusion is defensible alone.
+The failure is that a long run of NOs carried no cumulative inference: the
+Racer treated elimination as progress in itself rather than as evidence
+constraining what the target must be.
+
+**Relationship to the existing set.** This is adjacent to §18-A (weak global
+hypothesis management) but not identical. §18-A is about failing to maintain a
+candidate set across a transcript. This is narrower and sharper: negative
+evidence accumulating without ever being turned into a positive hypothesis.
+Recorded separately rather than folded in, because a fix for one would not
+obviously be a fix for the other.
+
+**What a fix would have to demonstrate:** that after a run of NO answers the
+Racer can state what the target must therefore *be*, and ask against that —
+not merely continue proposing untried categories.
+
+**Status: open. Not promoted.**
+
+### LANGUAGE-CONTAMINATION — `химикус` in Q20
+
+**Observed:** question 20 contained the Cyrillic, non-Hungarian token
+`химикус`, rendering part of an otherwise Hungarian question unreadable to the
+player.
+
+**What worked, and is worth stating plainly.** The human answered AMBIGUOUS,
+which is exactly correct: a question that cannot be read cannot be answered as
+a binary proposition, and AMBIGUOUS means *the framing is wrong, not the topic*.
+Integrity adjudication then recognised and contained the problem. Nothing about
+the game's outcome was distorted, and no mechanism had to be invented — the
+existing IS-IS channel absorbed it.
+
+**Q20 is preserved as the reference specimen.** It is the first recorded
+instance of the Racer emitting text outside the language of play, and it is
+attributable to a specific model and prompt version. That makes it a usable
+regression case rather than an anecdote.
+
+**Deliberately not treated as a prompt bug to patch.** `RACER_SYSTEM_PROMPT`
+already carries explicit language-of-play instruction and extensive Hungarian
+phrasing guidance. A model that violated it anyway is evidence about the model,
+and editing the prompt in response would destroy that evidence before anyone has
+measured how often it happens or whether another model does it at all. The
+§24 principle applies: repairing a defect for the Racer hides it and makes the
+weakness unmeasurable.
+
+**What a fix would have to demonstrate:** that the Racer emits only the language
+of play, without the prompt being made more emphatic about a rule it already
+states.
+
+**Status: open. Not promoted.**
+
+### The deferred Racer-intelligence set, as it now stands
+
+| Ref | Case | Attributable? |
+|---|---|---|
+| §18-A | Red Citroën C4 — weak global hypothesis management | No — predates the corpus |
+| §18-B | My left leg — no reconsideration of the parent abstraction | No — predates the corpus |
+| §24 | Compound questions — question form, not reasoning | No — predates the corpus |
+| §28 | Air — elimination without narrowing | **Yes** |
+| §28 | `химикус` — language contamination | **Yes** |
+
+All five are open. None is promoted. The first three can only ever be re-run as
+*new* games under the new capture; they cannot be recovered as data. That is the
+permanent cost of having built the corpus after the benchmarks, and it is the
+reason V2.5 shipped provenance before anything else.
