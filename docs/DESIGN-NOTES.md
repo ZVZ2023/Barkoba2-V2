@@ -3639,3 +3639,145 @@ path was involved, and Rule 5 was not followed.
 **But it is worse than non-compliance**, because the detector was supposed to be
 the backstop and it failed silently. Guidance asks; the detector enforces. Only
 the second was defective, and only the second is fixed here.
+
+---
+
+## 39. Block 1 — Digital Ice Cream bridge: open UX requirements
+
+**RECORDED, NOT IMPLEMENTED.** Frozen scope for the Block 1 implementation task.
+No code has been written against any of this.
+
+### 39.1 Play Credit status must be discoverable before commitment
+
+**Field finding, production `2.6.4.0`.** Play Credit state is buried too deep. A
+player makes one or two navigation choices — enter Play, choose a game mode,
+fill in a setup form, submit — before discovering they have zero credits. The
+refusal arrives after the commitment, not before it.
+
+**Frozen requirement.** Balance must be visible on the **first actionable
+screen**, before the player commits to a game path. A zero or insufficient
+balance must expose the credit-acquisition path **there**, not several screens
+in.
+
+**Placement, as specified:** on the landing page, directly beneath the
+profile/player control in the upper-right account area.
+
+### 39.2 Two implementation constraints found while recording this
+
+Both are real and neither is obvious from the requirement text.
+
+**(a) The placement anchor is currently a painted control.** The upper-right
+"profile/player control" is the `👤 Login` button in
+`app/components/SiteHeader.tsx`, and it does not do anything — it routes to the
+Coming Soon dialog, as the header's own comment says: *"Real controls, not
+painted ones... both route to the honest Coming Soon treatment rather than
+pretending to work."* The visual anchor exists; the account behaviour behind it
+does not. Attaching a live balance beneath a non-functional Login is
+implementable but reads oddly, and whether Login becomes real in the same task
+is a scope decision, not an implementation detail.
+
+`SiteHeader` is already a client component, so `useEntitlement()` can be used
+directly. But it renders on **every** page, so "landing page only" versus
+"global header" is a second scope decision.
+
+**(b) THE NEW-PLAYER TRAP — this requirement could make the experience worse
+before it makes it better.**
+
+The first-contact complimentary allowance
+(`ENTITLEMENT_COMPLIMENTARY_GRANT`, default 10) is granted **lazily**, by
+`ensureInitialComplimentary()` inside `/api/game/create` — not at first contact
+with the site. A visitor who has never started a game therefore has an **empty
+ledger**, and `getStatus()` correctly reports a balance of **0**.
+
+Show that on the landing page and a brand-new player is greeted with
+`Játékkereted 0 — elfogyott` **and a prompt to buy credits**, when in fact their
+first game is free and already paid for. That is a worse first impression than
+today's silence, and it would be entirely self-inflicted.
+
+**RESOLVED in §39.4** by the four-state model, without moving the grant. The
+option of granting at first contact was considered and **rejected**: it would
+put a ledger row against every visitor, including bots, and would change grant
+semantics to make a badge easier to render.
+
+### 39.3 Identity caution for the purchase proof
+
+**William likely played only on his phone.** A desktop browser he has used is
+therefore probably carrying a *different, anonymous* identity — the cookie is
+per-browser and nothing links them.
+
+**Do not use a desktop William session for the purchase proof** unless his
+identity has been explicitly recovered and confirmed. A `purchase_ref` minted
+from the wrong session would credit an identity nobody is watching, and the
+proof would appear to fail while having succeeded against a stranger.
+
+**William, on the same phone session throughout, is the manual purchase-proof
+identity.** Mint the `purchase_ref` and read the resulting balance in that one
+session. The same caution applies to any later test.
+
+### 39.4 The four-state play model — RATIFIED
+
+Server-authoritative. Evaluated in this order:
+
+| State | Condition | Presentation |
+|---|---|---|
+| `unlimited` | `hasUnlimitedPlay()` | `korlátlan — fejlesztői hozzáférés` |
+| `has_balance` | `balance > 0` | the number |
+| `introductory_available` | allowance configured **and** no `initial_complimentary` row | welcoming / free-play indication — **no `0`, no exhausted language, no purchase CTA** |
+| `exhausted` | none of the above | `0 — elfogyott` **+ Digital Ice Cream acquisition CTA** |
+
+**The authoritative marker is the `initial_complimentary` grant key**, not
+`complimentary_granted`. This is a hard requirement, not a preference: the sum
+is satisfied by *any* complimentary grant — the V2.6 smoke-test grant would
+have satisfied it — whereas the grant key identifies the introductory allowance
+specifically. `ensureInitialComplimentary()` is its only production writer, and
+`entitlement_grant_key_once` makes it at-most-once per player permanently, so
+the marker is already durable and authoritative. **Nothing needs to be built to
+make it so.**
+
+**The server resolves `play_state`; the client never reconstructs it.**
+Returning raw flags and letting the badge derive the state would break the rule
+`app/components/Entitlement.tsx` already states — *"No balance or price is
+computed on the client — the server stays the sole authority."* The resolution
+belongs in `lib/entitlements.ts`, the quarantined module that already owns every
+entitlement decision.
+
+**The derivation stays honest under every configuration.** With
+`ENTITLEMENT_COMPLIMENTARY_GRANT=0` there is no allowance,
+`introductory_available` is false, and a brand-new player correctly reads as
+`exhausted` — because they genuinely cannot play.
+
+**The introductory grant does not move.** It remains lazy, inside
+`/api/game/create`. The marker makes relocation unnecessary, and relocating it
+for UI convenience was explicitly rejected.
+
+**No schema work.** One additional `bool_or(...)` inside the existing
+`getStatus()` aggregate — no extra round trip, no new index, no migration.
+
+### 39.5 Placement and query discipline
+
+Balance and status belong **globally** in the upper-right account area,
+beneath or associated with the player/profile control — not landing-only.
+`SiteHeader.tsx` is already a client component, so the existing
+`useEntitlement()` hook drops in unchanged.
+
+**Login remains out of scope.** It stays a painted control routing to Coming
+Soon; authentication and profile expansion are separate scope, and this task
+must not quietly become that one.
+
+**Only query entitlement once Barkóba has an established player identity.**
+Global placement otherwise puts a Neon aggregate on every page view — landing,
+`/rules`, `/about`, `/privacy`, every game page — for every visitor including
+bots, converting a load proportional to *games* into one proportional to
+*traffic*. The gate already short-circuits without touching Neon when
+entitlement is disabled; this adds the second condition.
+
+### 39.6 Frozen scope — what this section does and does not authorise
+
+**Authorised:** the four-state model, the `play_state` field, the `bool_or`
+addition to `getStatus()`, badge presentation for all four states, `CreditGateway`
+on `exhausted` only, and global placement in the header behind an
+established-identity check.
+
+**Not authorised here:** making Login functional, moving the introductory grant,
+any schema or migration work, the package allowlist, the storefront, the return
+leg, and pricing. Each is separately scoped.
