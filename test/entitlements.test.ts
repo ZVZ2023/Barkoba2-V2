@@ -65,6 +65,9 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
         purchased: sum("purchase"),
         consumed: -sum("consumption"),
         expired: -sum("expiry"),
+        initial_complimentary_granted: mine.some(
+          (r) => r.kind === "complimentary_grant" && r.grant_key === "initial_complimentary"
+        ),
       },
     ]);
   }

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import SiteHeader from "./SiteHeader";
+import PlayerAwareSiteHeader from "./PlayerAwareSiteHeader";
 import SiteFooter from "./SiteFooter";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 
@@ -26,7 +26,7 @@ export default function ContentPage({
 }) {
   return (
     <div className="flex min-h-screen w-full flex-col bg-[#f6ece0] text-neutral-900">
-      <SiteHeader />
+      <PlayerAwareSiteHeader />
 
       <main className="w-full flex-1 px-4 py-6 sm:px-6 sm:py-10">
         <article className="mx-auto w-full max-w-2xl">

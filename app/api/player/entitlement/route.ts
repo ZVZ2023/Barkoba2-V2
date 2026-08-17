@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
-import { getStatus, hasUnlimitedPlay, isEntitlementEnabled } from "@/lib/entitlements";
+import {
+  entitlementStatus,
+  getStatus,
+  hasUnlimitedPlay,
+  resolvePlayState,
+} from "@/lib/entitlements";
 import { playCreditCostForBudget, QUESTION_BUDGETS } from "@/lib/questionBudget";
 
 // ---------------------------------------------------------------------------
@@ -19,6 +24,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   const playerId = playerIdFromHeaders(req.headers);
+  const runtime = entitlementStatus();
 
   // The prices are the same for everyone and are not secret — the player is
   // about to be charged them. Sent even when entitlement is off, so the picker
@@ -27,13 +33,19 @@ export async function GET(req: NextRequest) {
     QUESTION_BUDGETS.map((b) => [b, playCreditCostForBudget(b)])
   );
 
-  if (!isEntitlementEnabled()) {
+  if (!runtime.enforced) {
     // Not enforcing: there is no balance to speak of, and the client must not
     // render an affordability warning against a gate that is not running.
     // `unlimited` is false rather than true here on purpose — nobody is exempt
     // from a gate that is not running, and claiming otherwise would make the
     // badge assert a privilege the record does not contain.
-    return NextResponse.json({ enforced: false, unlimited: false, balance: null, costs });
+    return NextResponse.json({
+      enforced: false,
+      unlimited: false,
+      play_state: null,
+      balance: null,
+      costs,
+    });
   }
 
   if (!playerId) {
@@ -58,6 +70,12 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({
       enforced: true,
       unlimited,
+      play_state: resolvePlayState({
+        unlimited,
+        balance: status.balance,
+        complimentaryGrant: runtime.complimentaryGrant,
+        initialComplimentaryGranted: status.initial_complimentary_granted,
+      }),
       balance: status.balance,
       complimentary_granted: status.complimentary_granted,
       purchased: status.purchased,

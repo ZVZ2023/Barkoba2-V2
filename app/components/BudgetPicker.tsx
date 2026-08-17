@@ -1,6 +1,7 @@
 "use client";
 
 import { QUESTION_BUDGETS, recommendedBudget } from "@/lib/questionBudget";
+import type { PlayState } from "@/lib/entitlements";
 import type { Difficulty } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -47,6 +48,7 @@ export interface BudgetPickerProps {
    */
   costs?: Record<string, number> | null;
   balance?: number | null;
+  playState?: PlayState | null;
 }
 
 /** The allowance this picker currently resolves to. Exported so callers submit the same value. */
@@ -63,6 +65,7 @@ export default function BudgetPicker({
   racer,
   costs = null,
   balance = null,
+  playState = null,
 }: BudgetPickerProps) {
   const recommended = recommendedBudget(difficulty);
   const budget = pickedBudget(difficulty, budgetOverride);
@@ -103,7 +106,11 @@ export default function BudgetPicker({
             // Marked, not blocked. The server decides refusals; this only
             // spares the player a wasted attempt.
             const unaffordable =
-              typeof cost === "number" && typeof balance === "number" && balance < cost;
+              playState !== "unlimited" &&
+              playState !== "introductory_available" &&
+              typeof cost === "number" &&
+              typeof balance === "number" &&
+              balance < cost;
             return (
               <button
                 key={b}

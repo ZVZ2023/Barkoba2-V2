@@ -41,7 +41,15 @@ export interface EntitlementStatus {
   purchased: number;
   consumed: number;
   expired: number;
+  /** Durable marker for whether the lazy introductory allowance was ever written. */
+  initial_complimentary_granted: boolean;
 }
+
+export type PlayState =
+  | "unlimited"
+  | "has_balance"
+  | "introductory_available"
+  | "exhausted";
 
 export type ConsumeOutcome =
   | { ok: true; reason: "consumed" | "already_consumed" | "disabled" | "unlimited" }
@@ -219,7 +227,12 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
       COALESCE(SUM(amount) FILTER (WHERE kind = 'complimentary_grant'), 0)       AS complimentary_granted,
       COALESCE(SUM(amount) FILTER (WHERE kind = 'purchase'), 0)                  AS purchased,
       COALESCE(-SUM(amount) FILTER (WHERE kind = 'consumption'), 0)              AS consumed,
-      COALESCE(-SUM(amount) FILTER (WHERE kind = 'expiry'), 0)                   AS expired
+      COALESCE(-SUM(amount) FILTER (WHERE kind = 'expiry'), 0)                   AS expired,
+      COALESCE(
+        BOOL_OR(grant_key = 'initial_complimentary')
+          FILTER (WHERE kind = 'complimentary_grant'),
+        false
+      )                                                                          AS initial_complimentary_granted
     FROM accounts.entitlement_ledger
     WHERE player_id = ${playerId}
   `;
@@ -230,7 +243,32 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
     purchased: Number(r.purchased ?? 0),
     consumed: Number(r.consumed ?? 0),
     expired: Number(r.expired ?? 0),
+    initial_complimentary_granted: r.initial_complimentary_granted === true,
   };
+}
+
+/**
+ * The one server-side interpretation of a player's visible Play Credit state.
+ * Ordering is contractual: unlimited access wins over every ledger value,
+ * followed by spendable balance, then the still-unwritten introductory grant.
+ */
+export function resolvePlayState({
+  unlimited,
+  balance,
+  complimentaryGrant,
+  initialComplimentaryGranted,
+}: {
+  unlimited: boolean;
+  balance: number;
+  complimentaryGrant: number;
+  initialComplimentaryGranted: boolean;
+}): PlayState {
+  if (unlimited) return "unlimited";
+  if (balance > 0) return "has_balance";
+  if (complimentaryGrant > 0 && !initialComplimentaryGranted) {
+    return "introductory_available";
+  }
+  return "exhausted";
 }
 
 // ---------------------------------------------------------------------------

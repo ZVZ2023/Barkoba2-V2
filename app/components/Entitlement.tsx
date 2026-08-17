@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import type { PlayState } from "@/lib/entitlements";
 import ClaimPrompt from "./ClaimPrompt";
 
 // ---------------------------------------------------------------------------
@@ -21,6 +22,8 @@ export interface EntitlementView {
   enforced: boolean;
   balance: number | null;
   costs: Record<string, number>;
+  /** Server-resolved. UI code must never infer this from balance or provenance. */
+  play_state?: PlayState | null;
   /**
    * V2.6 — this identity holds a developer/tester unlimited-play grant.
    *
@@ -33,11 +36,18 @@ export interface EntitlementView {
 }
 
 /** Shared fetch. Returns null when entitlement cannot be read at all. */
-export function useEntitlement(): { view: EntitlementView | null; refresh: () => void } {
+export function useEntitlement(
+  enabled = true
+): { view: EntitlementView | null; refresh: () => void } {
   const [view, setView] = useState<EntitlementView | null>(null);
   const [nonce, setNonce] = useState(0);
 
   useEffect(() => {
+    // Global headers render for anonymous traffic and crawlers too. Do not
+    // turn those page views into ledger aggregates: the server wrapper enables
+    // this only after it verifies an existing signed Player cookie.
+    if (!enabled) return;
+
     let live = true;
     void (async () => {
       try {
@@ -53,7 +63,7 @@ export function useEntitlement(): { view: EntitlementView | null; refresh: () =>
     return () => {
       live = false;
     };
-  }, [nonce]);
+  }, [enabled, nonce]);
 
   return { view, refresh: useCallback(() => setNonce((n) => n + 1), []) };
 }
@@ -67,14 +77,7 @@ export function useEntitlement(): { view: EntitlementView | null; refresh: () =>
 export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (!view?.enforced) return null;
 
-  // V2.6 — a developer/tester identity shows its access, not its balance.
-  //
-  // CHECKED BEFORE the balance guard below, and that ordering is the point: an
-  // exempt player's balance is legitimately 0, so the old code returned early
-  // and then rendered "0 — elfogyott" over a session that plays perfectly well.
-  // The badge would have been reporting the one number that is now irrelevant
-  // to whether they can play.
-  if (view.unlimited) {
+  if (view.play_state === "unlimited") {
     return (
       <div className="flex items-baseline gap-2 text-sm">
         <span className="text-neutral-600">Játékkereted</span>
@@ -84,15 +87,30 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
     );
   }
 
-  if (view.balance === null) return null;
+  if (view.play_state === "introductory_available") {
+    return (
+      <div className="text-sm font-medium text-[#1e3a24]">
+        Kezdő játékkeret vár rád
+      </div>
+    );
+  }
+
+  if (view.play_state === "has_balance" && view.balance !== null) {
+    return (
+      <div className="flex items-baseline gap-2 text-sm">
+        <span className="text-neutral-600">Játékkereted</span>
+        <span className="font-semibold text-[#1e3a24]">{view.balance}</span>
+      </div>
+    );
+  }
+
+  if (view.play_state !== "exhausted") return null;
 
   return (
     <div className="flex items-baseline gap-2 text-sm">
       <span className="text-neutral-600">Játékkereted</span>
-      <span className="font-semibold text-[#1e3a24]">{view.balance}</span>
-      {view.balance === 0 && (
-        <span className="text-[#8b2f2f]">— elfogyott</span>
-      )}
+      <span className="font-semibold text-[#1e3a24]">0</span>
+      <span className="text-[#8b2f2f]">— elfogyott</span>
     </div>
   );
 }

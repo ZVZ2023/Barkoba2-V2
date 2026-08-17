@@ -124,10 +124,13 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
         racer="human"
         costs={entitlement.view?.costs ?? null}
         balance={entitlement.view?.balance ?? null}
+        playState={entitlement.view?.play_state ?? null}
       />
 
       {error && <p className="text-sm text-[#8b2f2f]">{error}</p>}
-      {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
+      {noCredit && entitlement.view?.play_state === "exhausted" && (
+        <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+      )}
 
       <button
         onClick={() => void create(needsForce)}

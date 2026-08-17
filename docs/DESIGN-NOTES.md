@@ -3644,8 +3644,9 @@ the second was defective, and only the second is fixed here.
 
 ## 39. Block 1 — Digital Ice Cream bridge: open UX requirements
 
-**RECORDED, NOT IMPLEMENTED.** Frozen scope for the Block 1 implementation task.
-No code has been written against any of this.
+**IMPLEMENTED IN `2.6.7.0` (TASK 3).** The four-state server model, established-
+identity query guard, global header presentation and exhausted-only acquisition
+path are complete.
 
 ### 39.1 Play Credit status must be discoverable before commitment
 
@@ -3758,7 +3759,11 @@ for UI convenience was explicitly rejected.
 Balance and status belong **globally** in the upper-right account area,
 beneath or associated with the player/profile control — not landing-only.
 `SiteHeader.tsx` is already a client component, so the existing
-`useEntitlement()` hook drops in unchanged.
+`useEntitlement()` hook is reused with an enable guard. A small server wrapper
+verifies that the signed, httpOnly Player cookie was already present on the
+incoming request before enabling the hook. A first-contact request on which
+middleware is only now issuing the cookie therefore does not query the ledger;
+the next player-facing navigation can show the status.
 
 **Login remains out of scope.** It stays a painted control routing to Coming
 Soon; authentication and profile expansion are separate scope, and this task

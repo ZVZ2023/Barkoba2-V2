@@ -199,7 +199,9 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
         </div>
       )}
 
-      {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
+      {noCredit && entitlement.view?.play_state === "exhausted" && (
+        <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+      )}
       </>
       )}
     </GameShell>

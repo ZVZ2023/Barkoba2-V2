@@ -3,7 +3,7 @@ import { PurchaseReturnSlot } from "../components/PurchaseReturn";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Stage from "../components/Stage";
-import SiteHeader from "../components/SiteHeader";
+import PlayerAwareSiteHeader from "../components/PlayerAwareSiteHeader";
 import { copy } from "@/lib/ui/copy";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 
@@ -18,7 +18,7 @@ export default function PlayPage() {
     <>
       <Stage />
       <div className="flex min-h-screen w-full flex-col text-neutral-900">
-        <SiteHeader />
+        <PlayerAwareSiteHeader />
         <main className="w-full flex-1 px-4 py-6 sm:px-6">
           <div className="mx-auto flex w-full max-w-2xl flex-col gap-5">
             <div>

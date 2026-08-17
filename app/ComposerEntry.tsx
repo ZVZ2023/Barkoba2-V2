@@ -244,6 +244,7 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
             racer="ai"
             costs={entitlement.view?.costs ?? null}
             balance={entitlement.view?.balance ?? null}
+            playState={entitlement.view?.play_state ?? null}
           />
 
           <button
@@ -304,7 +305,9 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
       {view.step === "error" && (
         <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
           <p className="text-sm text-[var(--red)]">{view.message}</p>
-          {noCredit && <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />}
+          {noCredit && entitlement.view?.play_state === "exhausted" && (
+            <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+          )}
           <button
             onClick={() => setView({ step: "entry" })}
             className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"

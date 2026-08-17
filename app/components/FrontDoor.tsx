@@ -1,8 +1,6 @@
-"use client";
-
 import Link from "next/link";
 import { copy } from "@/lib/ui/copy";
-import SiteHeader from "./SiteHeader";
+import PlayerAwareSiteHeader from "./PlayerAwareSiteHeader";
 import SiteFooter from "./SiteFooter";
 
 // ---------------------------------------------------------------------------
@@ -27,7 +25,7 @@ const STEP_MARKS = ["1", "2", "3", "4"];
 export default function FrontDoor({ version }: { version?: string }) {
   return (
     <div className="flex min-h-screen w-full flex-col text-neutral-900">
-      <SiteHeader />
+      <PlayerAwareSiteHeader />
 
       <main className="w-full flex-1 px-4 sm:px-6">
         <div className="mx-auto w-full max-w-5xl">
