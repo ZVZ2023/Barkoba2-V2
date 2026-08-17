@@ -207,10 +207,22 @@ test("the contract carries no money, no pricing, and no identity", () => {
   assert.doesNotMatch(code, /body\.player_id|player_id\?\?/);
 });
 
-test("credits must be a positive integer supplied by the adapter", () => {
-  assert.match(GRANT_ROUTE, /Number\.isInteger\(credits\)/);
-  assert.match(GRANT_ROUTE, /credits <= 0/);
-  assert.match(GRANT_ROUTE, /invalid_credits/);
+test("V2.6: the adapter names a PACKAGE and cannot supply an amount", () => {
+  // REVERSES THE V2.4 ASSERTION THIS REPLACES, deliberately. V2.4 required
+  // `credits` to be a positive integer supplied by the adapter, on the reasoning
+  // that price-to-credits was the adapter's decision. That was defensible while
+  // no adapter existed; with a real storefront and a real payment provider on
+  // the other end it means a compromised or misconfigured stand can mint any
+  // quantity and have Barkóba record it as a legitimate purchase.
+  //
+  // The split moved: the stand still owns the cash price, Barkóba now owns what
+  // a package is WORTH.
+  assert.match(GRANT_ROUTE, /creditsForPackage\(packageId\)/);
+  assert.match(GRANT_ROUTE, /unknown_package/);
+  // Rejected, not ignored — a caller still sending it holds a wrong model of
+  // who prices a sale, and this is the cheapest place to correct that.
+  assert.match(GRANT_ROUTE, /credits_not_accepted/);
+  assert.doesNotMatch(GRANT_ROUTE, /const credits = body\.credits/);
 });
 
 // --- 9. nothing frozen or previously proven was disturbed ----------------

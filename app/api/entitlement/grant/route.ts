@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
 import { grantPurchase } from "@/lib/entitlements";
 import { consumePurchaseRef, resolvePurchaseRef } from "@/lib/purchaseRef";
+import { creditsForPackage, knownPackageIds } from "@/lib/playCreditPackages";
 
 // ---------------------------------------------------------------------------
 // V2.4 — the grant endpoint. Step three of the adapter contract, and the ONLY
@@ -16,7 +17,7 @@ import { consumePurchaseRef, resolvePurchaseRef } from "@/lib/purchaseRef";
 //
 //   purchase_ref       who   — opaque, short-lived, minted by Barkóba
 //   external_order_id  which — the adapter's order, and the idempotency key
-//   credits            how many
+//   package_id         what  — WHICH package was sold, not how much it is worth
 //   the shared secret  proof the caller is the adapter
 //
 // Barkóba learns nothing about money. The adapter learns nothing about identity
@@ -24,8 +25,19 @@ import { consumePurchaseRef, resolvePurchaseRef } from "@/lib/purchaseRef";
 // a different adapter at these same three fields — which is what keeps Digital
 // Ice Cream replaceable rather than load-bearing.
 //
-// PRICE -> CREDITS IS THE ADAPTER'S DECISION. `credits` arrives as an integer
-// and is not second-guessed here; Barkóba holds no pricing logic in this pass.
+// V2.6 REVERSED ONE HALF OF THAT SEPARATION, DELIBERATELY.
+//
+// Until V2.6 `credits` arrived as an integer and was not second-guessed —
+// price-to-credits was the adapter's decision. That was defensible while no
+// adapter existed. With a real storefront and a real payment provider on the
+// other end it means a compromised, buggy or misconfigured stand can mint any
+// quantity it likes, and Barkóba would record the result as a legitimate
+// purchase.
+//
+// So the split moved: THE STAND STILL OWNS THE CASH PRICE, and Barkóba now
+// owns what a package is WORTH. The caller names a package; lib/playCreditPackages.ts
+// decides the amount. Barkóba still holds no pricing logic and still learns
+// nothing about money — it holds a catalogue, which is a different thing.
 //
 // ---------------------------------------------------------------------------
 // RETRY IS A FIRST-CLASS CASE, NOT AN ERROR
@@ -56,7 +68,16 @@ export const dynamic = "force-dynamic";
 interface GrantBody {
   purchase_ref?: string;
   external_order_id?: string;
-  credits?: number;
+  /**
+   * V2.6 — the package the stand sold. Barkóba decides what it is worth.
+   *
+   * `credits` is deliberately absent from this type. See the rejection below:
+   * it is refused, not ignored, because a caller still sending it is a caller
+   * still believing it can price its own sale.
+   */
+  package_id?: string;
+  /** Legacy. Present only so it can be explicitly refused. */
+  credits?: unknown;
 }
 
 /** Length-independent comparison, matching lib/playerIdentity.ts. */
@@ -112,7 +133,7 @@ export async function POST(req: NextRequest) {
 
   const purchaseRef = (body.purchase_ref || "").trim();
   const externalOrderId = (body.external_order_id || "").trim();
-  const credits = body.credits;
+  const packageId = (body.package_id || "").trim();
 
   if (!purchaseRef || !externalOrderId) {
     return NextResponse.json(
@@ -120,9 +141,48 @@ export async function POST(req: NextRequest) {
       { status: 400 }
     );
   }
-  if (typeof credits !== "number" || !Number.isInteger(credits) || credits <= 0) {
+
+  // -------------------------------------------------------------------------
+  // V2.6 — `credits` IS REJECTED, NOT IGNORED.
+  //
+  // Accepting-and-ignoring would let a stand keep sending a quantity, keep
+  // believing it was honoured, and discover otherwise only by reconciling
+  // balances. A caller still sending this field holds a wrong model of who
+  // prices a sale, and the cheapest place to correct that is here, loudly, on
+  // the first call — not months later in an accounting discrepancy.
+  //
+  // Checked BEFORE package resolution so the diagnosis names the actual
+  // mistake rather than reporting a missing package_id.
+  // -------------------------------------------------------------------------
+  if (body.credits !== undefined) {
     return NextResponse.json(
-      { error: "invalid_credits", message: "credits must be a positive integer." },
+      {
+        error: "credits_not_accepted",
+        message:
+          "credits is no longer accepted. Send package_id; Barkóba decides the amount.",
+      },
+      { status: 400 }
+    );
+  }
+
+  if (!packageId) {
+    return NextResponse.json(
+      { error: "missing_fields", message: "package_id is required." },
+      { status: 400 }
+    );
+  }
+
+  const credits = creditsForPackage(packageId);
+  if (credits === null) {
+    // The id is NOT echoed back. An unknown package is either a
+    // misconfiguration or a probe, and reflecting caller input into an error
+    // body is a habit worth not having on an endpoint that moves value.
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[barkoba] grant refused: unknown package_id (known: ${knownPackageIds().join(", ")})`
+    );
+    return NextResponse.json(
+      { error: "unknown_package", message: "Unknown package." },
       { status: 400 }
     );
   }
@@ -156,7 +216,12 @@ export async function POST(req: NextRequest) {
     // guarantee survives any application-level mistake.
     result = await grantPurchase(playerId, credits, {
       grantKey: externalOrderId,
-      note: "digital ice cream purchase",
+      // The PACKAGE, not the stand. "digital ice cream purchase" hardcoded the
+      // commercial mechanism's name into permanent evidence, which would have
+      // made a second stand indistinguishable in provenance and DIC harder to
+      // replace than the architecture claims it is. What is durably true about
+      // this row is which package was sold.
+      note: `package:${packageId}`,
     });
   } catch (err) {
     // eslint-disable-next-line no-console

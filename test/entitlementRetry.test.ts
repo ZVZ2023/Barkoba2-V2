@@ -133,7 +133,7 @@ test("1. a fresh valid reference grants exactly once", async () => {
   const res = await callGrant({
     purchase_ref: ref,
     external_order_id: "order_1",
-    credits: 4,
+    package_id: "test_scoop_5",
   });
 
   assert.equal(res.status, 200);
@@ -141,7 +141,7 @@ test("1. a fresh valid reference grants exactly once", async () => {
   assert.equal(res.body.duplicate, false);
   assert.equal(res.body.external_order_id, "order_1");
   assert.equal(purchaseRows().length, 1);
-  assert.equal(purchaseRows()[0]?.amount, 4);
+  assert.equal(purchaseRows()[0]?.amount, 5, "the catalogue decides, not the caller");
 });
 
 // --- 2. the identical retry is harmless AND deterministic -------------------
@@ -149,7 +149,7 @@ test("1. a fresh valid reference grants exactly once", async () => {
 test("2. an identical retry returns duplicate, grants nothing, and never 404s", async () => {
   const player = await claimedPlayer("b".repeat(32));
   const ref = await createPurchaseRef(player);
-  const call = { purchase_ref: ref, external_order_id: "order_2", credits: 3 };
+  const call = { purchase_ref: ref, external_order_id: "order_2", package_id: "test_scoop_5" };
 
   const first = await callGrant(call);
   assert.equal(first.status, 200);
@@ -170,7 +170,7 @@ test("2. an identical retry returns duplicate, grants nothing, and never 404s", 
   assert.equal(shapes.size, 1, "the retry answer must not vary");
 
   assert.equal(purchaseRows().length, 1, "one purchase row, four deliveries");
-  assert.equal(purchaseRows()[0]?.amount, 3, "zero additional credits");
+  assert.equal(purchaseRows()[0]?.amount, 5, "zero additional credits");
 });
 
 test("2b. the retry answer does NOT depend on the reference having been marked", async () => {
@@ -180,7 +180,7 @@ test("2b. the retry answer does NOT depend on the reference having been marked",
   // it now comes from the ledger's grant_key rather than from Redis.
   const player = await claimedPlayer("c".repeat(32));
   const ref = await createPurchaseRef(player);
-  const call = { purchase_ref: ref, external_order_id: "order_2b", credits: 2 };
+  const call = { purchase_ref: ref, external_order_id: "order_2b", package_id: "test_scoop_5" };
 
   await callGrant(call);
 
@@ -200,7 +200,7 @@ test("2c. DEFECT CLASS: deleting the reference is what made the retry a 404", as
   const { getKV } = await import("../lib/kv");
   const player = await claimedPlayer("p".repeat(32));
   const ref = await createPurchaseRef(player);
-  const call = { purchase_ref: ref, external_order_id: "order_2c", credits: 1 };
+  const call = { purchase_ref: ref, external_order_id: "order_2c", package_id: "test_scoop_5" };
 
   const first = await callGrant(call);
   assert.equal(first.body.granted, true);
@@ -225,13 +225,13 @@ test("3. a spent reference presented with a DIFFERENT order is refused", async (
   const player = await claimedPlayer("d".repeat(32));
   const ref = await createPurchaseRef(player);
 
-  await callGrant({ purchase_ref: ref, external_order_id: "order_3a", credits: 5 });
+  await callGrant({ purchase_ref: ref, external_order_id: "order_3a", package_id: "test_scoop_5" });
   assert.equal(purchaseRows().length, 1);
 
   const stolen = await callGrant({
     purchase_ref: ref,
     external_order_id: "order_3b",
-    credits: 500,
+    package_id: "test_scoop_5",
   });
 
   assert.equal(stolen.status, 404);
@@ -247,12 +247,12 @@ test("4. unknown, malformed and expired references are refused", async () => {
   const unknown = await callGrant({
     purchase_ref: "ZZZZZZZZZZZZZZZZ",
     external_order_id: "order_4a",
-    credits: 1,
+    package_id: "test_scoop_5",
   });
   const malformed = await callGrant({
     purchase_ref: "TOOSHORT",
     external_order_id: "order_4b",
-    credits: 1,
+    package_id: "test_scoop_5",
   });
 
   assert.equal(unknown.status, 404);
@@ -273,7 +273,7 @@ test("4b. expiry is a real TTL, and an expired reference stops resolving", async
   const expired = await callGrant({
     purchase_ref: ref,
     external_order_id: "order_4c",
-    credits: 1,
+    package_id: "test_scoop_5",
   });
   assert.equal(expired.status, 404);
   assert.equal(ledger.length, 0);
@@ -284,17 +284,17 @@ test("4b. expiry is a real TTL, and an expired reference stops resolving", async
 test("the two refusals are indistinguishable — no live-reference oracle", async () => {
   const player = await claimedPlayer("g".repeat(32));
   const spent = await createPurchaseRef(player);
-  await callGrant({ purchase_ref: spent, external_order_id: "order_sym", credits: 1 });
+  await callGrant({ purchase_ref: spent, external_order_id: "order_sym", package_id: "test_scoop_5" });
 
   const consumedByAnother = await callGrant({
     purchase_ref: spent,
     external_order_id: "a_different_order",
-    credits: 1,
+    package_id: "test_scoop_5",
   });
   const neverExisted = await callGrant({
     purchase_ref: "ABCDEFGHJKMNPQRS",
     external_order_id: "a_different_order",
-    credits: 1,
+    package_id: "test_scoop_5",
   });
 
   assert.equal(consumedByAnother.status, neverExisted.status);
@@ -318,25 +318,28 @@ test("5. across every retry pattern, exactly one purchase row exists", async () 
   const order = "order_5";
 
   // Interleave the identical retry, a hostile reuse, and a nonsense reference.
+  // V2.6: these used to vary `credits` to prove the amount could not be
+  // inflated on a second delivery. That variation is no longer expressible —
+  // the caller cannot state an amount at all — which is strictly stronger.
   const calls = [
-    { purchase_ref: ref, external_order_id: order, credits: 6 },
-    { purchase_ref: ref, external_order_id: order, credits: 6 },
-    { purchase_ref: ref, external_order_id: "other_order", credits: 6 },
-    { purchase_ref: ref, external_order_id: order, credits: 999 },
-    { purchase_ref: "ZZZZZZZZZZZZZZZZ", external_order_id: order, credits: 6 },
-    { purchase_ref: ref, external_order_id: order, credits: 6 },
+    { purchase_ref: ref, external_order_id: order, package_id: "test_scoop_5" },
+    { purchase_ref: ref, external_order_id: order, package_id: "test_scoop_5" },
+    { purchase_ref: ref, external_order_id: "other_order", package_id: "test_scoop_5" },
+    { purchase_ref: ref, external_order_id: order, package_id: "test_scoop_5" },
+    { purchase_ref: "ZZZZZZZZZZZZZZZZ", external_order_id: order, package_id: "test_scoop_5" },
+    { purchase_ref: ref, external_order_id: order, package_id: "test_scoop_5" },
   ];
   for (const c of calls) await callGrant(c);
 
   assert.equal(purchaseRows().length, 1, "one row after six deliveries");
-  assert.equal(purchaseRows()[0]?.amount, 6, "and the credits the FIRST call named");
+  assert.equal(purchaseRows()[0]?.amount, 5, "the amount the CATALOGUE named");
   assert.equal(purchaseRows()[0]?.grant_key, order);
 });
 
 test("5b. concurrent duplicate deliveries still leave one purchase row", async () => {
   const player = await claimedPlayer("j".repeat(32));
   const ref = await createPurchaseRef(player);
-  const call = { purchase_ref: ref, external_order_id: "order_5b", credits: 2 };
+  const call = { purchase_ref: ref, external_order_id: "order_5b", package_id: "test_scoop_5" };
 
   const results = await Promise.all([
     callGrant(call),
@@ -390,11 +393,11 @@ test("the retry fix did not open the endpoint to a browser", async () => {
   const ref = await createPurchaseRef(player);
 
   const noSecret = await callGrant(
-    { purchase_ref: ref, external_order_id: "order_auth", credits: 1 },
+    { purchase_ref: ref, external_order_id: "order_auth", package_id: "test_scoop_5" },
     { "content-type": "application/json" }
   );
   const wrongSecret = await callGrant(
-    { purchase_ref: ref, external_order_id: "order_auth", credits: 1 },
+    { purchase_ref: ref, external_order_id: "order_auth", package_id: "test_scoop_5" },
     { authorization: "Bearer not_the_secret", "content-type": "application/json" }
   );
 

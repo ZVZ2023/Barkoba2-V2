@@ -1,4 +1,5 @@
 import RecoverPrompt from "../components/RecoverPrompt";
+import { PurchaseReturnSlot } from "../components/PurchaseReturn";
 import type { Metadata } from "next";
 import Link from "next/link";
 import Stage from "../components/Stage";
@@ -24,6 +25,15 @@ export default function PlayPage() {
               <h1 className="text-2xl font-semibold tracking-tight">{copy.modes.title}</h1>
               <p className="mt-1 text-sm text-neutral-700">{copy.modes.subtitle}</p>
             </div>
+
+            {/*
+              V2.6 — the purchase return leg. Renders nothing unless the player
+              arrived with ?purchase=return, so this costs an ordinary visitor
+              a mounted component and no network call. Placed above the mode
+              cards because a player coming back from checkout is looking for
+              confirmation, not for a menu.
+            */}
+            <PurchaseReturnSlot />
 
             <Link
               href="/compose"
