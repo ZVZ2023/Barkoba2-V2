@@ -3852,3 +3852,138 @@ shell. Replace that human with software and the bridge is complete. Nothing in
 Barkóba's crediting path needs to change to accept a real stand.
 
 D1 — *which* concrete stand/provider — remains OPEN and parked.
+
+---
+
+## 41. DICS stays unchanged — provenance, and a refined money boundary
+
+**RATIFIED, DESIGN ONLY. Nothing here is implemented.** This supersedes the
+`test_scoop_5` product design proposed before it, and amends what shipped at
+`2.6.5.0`.
+
+### 41.1 The product decision that forced the redesign
+
+**Everything available to an ordinary Digital Ice Cream Stand customer is
+equally available to a customer arriving from Barkóba.** Same stand, same
+offers, same prices, same Stripe products, same experience. DICS does not care
+where the customer came from, and **does not sell Play Credits**.
+
+A customer buys Digital Ice Cream. Play Credits are an **internal Barkóba
+entitlement resulting from a reconciled purchase** — a consequence, not a
+product.
+
+So `purchase_ref` is **provenance, not a product selector**, and the proposed
+"Barkóba Play Credits" Stripe product is cancelled. No existing Stripe product,
+price, quantity, flavour or commercial meaning changes.
+
+### 41.2 What survives, and what does not
+
+**Cancelled:** `test_scoop_5` as a customer-facing product; any Barkóba-specific
+Stripe product or Payment Link.
+
+**Survives, and matters more than before:** *the caller never states the
+amount.* The caller is now a payment webhook rather than a stand, which makes
+the rule more important, not less.
+
+**Frozen decision 10 holds exactly as written** — the Worker maps Stripe price
+ID → `package_id`, Barkóba independently maps `package_id` → credits. Only what
+`package_id` *names* changed: not a Barkóba product, but a neutral alias for an
+**ordinary DICS item**.
+
+```
+Stripe price_id → (Worker) → package_id → (Barkóba) → credits × quantity
+```
+
+Two mappings, neither knowing the other's vocabulary. Swap the processor and
+only the Worker's table changes. **A price ID is a name, not an amount** —
+routing on it rather than on `amount_total` is what keeps pricing out of the
+entitlement path.
+
+**Ownership, stated once:** the Worker owns *Stripe purchase → package
+classification*. Barkóba owns *package → credit calculation*. Neither reaches
+into the other.
+
+### 41.3 Provenance is captured, and never read
+
+Flavour is not an entitlement input and must not be discarded. Three layers,
+deliberately separated:
+
+| Layer | Contents | Read by |
+|---|---|---|
+| **Entitlement inputs** | `package_id`, `quantity` | the grant calculation, and nothing else |
+| **Identity / idempotency** | `purchase_ref`, Stripe session id | reconciliation |
+| **Attested provenance** | `purchase_facts` | **nothing today** |
+
+**Migration `0008` may add a nullable, immutable `purchase_facts jsonb`** to
+purchase ledger rows — written at insert, never updated. The append-only trigger
+already refuses UPDATE and DELETE, so immutability needs no new mechanism.
+
+Contents: flavour/product, Stripe price ID, quantity, currency, `amount_total`,
+`purchased_at`, `livemode`, plus `provider: "stripe"`, `source: "dics"` and
+`purchase_facts_schema_version: "dic-purchase/1"`.
+
+**No customer PII and no payment credentials.** No email, no name, no card data,
+no address. That is also why this is a column rather than a sibling table: with
+no PII there is no separate access profile to protect, so the
+`corpus.game_targets` precedent does not apply.
+
+**VALIDATED versus ATTESTED — the distinction must not blur.** `package_id` and
+`quantity` are checked against Barkóba's catalogue and refused if unrecognised.
+`purchase_facts` **cannot be verified by Barkóba** — it stores what the Worker
+asserts. The chain still holds (the Worker read them from a signature-verified
+Stripe payload), but it is one link weaker, and a future analyst must not
+mistake attested facts for verified ones. Shape validated, size capped, stored
+verbatim, never interpreted.
+
+**Structural tests are required, not optional:** no code path in the
+entitlement or grant calculation may read `purchase_facts`. Without that
+enforcement the third layer becomes an input the first time someone finds it
+convenient.
+
+### 41.4 The money boundary, deliberately refined
+
+**Old:** *Barkóba learns nothing about money.*
+
+**Refined:** **Barkóba stores attested transaction provenance, but does not
+price, does not verify, and does not derive entitlement from money fields.**
+
+This is the first money ever stored in Barkóba's database. It is a conscious
+crossing rather than a side effect, made in the weakest available form —
+recorded as fact, never read as input — which is exactly how
+`corpus.game_resolutions.adjudicator_confidence` is stored raw and never
+interpreted.
+
+The alternative, omitting amount and currency and depending on Stripe forever,
+was considered and rejected: it would leave the purchase history unjoinable in
+SQL, subject to a vendor's retention policy, and split in half the day the
+processor changes.
+
+### 41.5 `purchase_ref` TTL: 30 minutes → 24 hours
+
+The 30-minute TTL was sized for the old flow, where a player clicked one package
+and paid immediately. Under §41.1 they arrive, watch, browse eight flavours and
+choose — a **shopping session, not a checkout**. A reference expiring mid-browse
+would produce a completed purchase the Worker cannot attribute: real money, no
+credits, manual repair.
+
+**Single-use semantics are unchanged.** The marked-on-use design stands: a spent
+reference is marked rather than deleted, so a redelivered webhook stays
+decidable. Only the *fresh* window widens.
+
+Two consequences, recorded rather than discovered later: a reference may now be
+resolvable up to ~48h after minting in the worst case (24h fresh, then 24h
+consumed measured from use); and unspent references accumulate for a day rather
+than half an hour. Neither is a security concern — **a reference authorises
+nothing on its own**, since the grant additionally requires the server-to-server
+secret.
+
+### 41.6 What remains OPEN
+
+- **Exact credit conversion values.** All genuine paid DICS offers may
+  eventually qualify. **These numbers must not be invented** — not as a
+  placeholder, and not to make a test pass.
+- Which offers qualify at all: Custom Flavor (€25, different currency,
+  human-fulfilled over 24–72h); For Your AI Companion and AI Chooses are gifts
+  *for someone else*.
+- Unattributable paid purchases — expired or absent reference. Manual repair for
+  now; automated reconciliation stays deferred.
