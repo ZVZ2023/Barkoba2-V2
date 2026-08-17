@@ -3,6 +3,7 @@ import { env } from "@/lib/env";
 import { grantPurchase } from "@/lib/entitlements";
 import { consumePurchaseRef, resolvePurchaseRef } from "@/lib/purchaseRef";
 import { creditsForPackage, knownPackageIds } from "@/lib/playCreditPackages";
+import { validatePurchaseFacts } from "@/lib/purchaseFacts";
 
 // ---------------------------------------------------------------------------
 // V2.4 — the grant endpoint. Step three of the adapter contract, and the ONLY
@@ -20,10 +21,10 @@ import { creditsForPackage, knownPackageIds } from "@/lib/playCreditPackages";
 //   package_id         what  — WHICH package was sold, not how much it is worth
 //   the shared secret  proof the caller is the adapter
 //
-// Barkóba learns nothing about money. The adapter learns nothing about identity
-// beyond a token that expires. Swapping the commercial provider means pointing
-// a different adapter at these same three fields — which is what keeps Digital
-// Ice Cream replaceable rather than load-bearing.
+// Barkóba stores optional attested payment provenance, but never prices or
+// verifies from it. The adapter learns nothing about identity beyond a token
+// that expires. Swapping the commercial provider means pointing a different
+// adapter at this contract, keeping Digital Ice Cream replaceable.
 //
 // V2.6 REVERSED ONE HALF OF THAT SEPARATION, DELIBERATELY.
 //
@@ -36,8 +37,8 @@ import { creditsForPackage, knownPackageIds } from "@/lib/playCreditPackages";
 //
 // So the split moved: THE STAND STILL OWNS THE CASH PRICE, and Barkóba now
 // owns what a package is WORTH. The caller names a package; lib/playCreditPackages.ts
-// decides the amount. Barkóba still holds no pricing logic and still learns
-// nothing about money — it holds a catalogue, which is a different thing.
+// decides the amount. Barkóba still holds no pricing logic. Monetary fields may
+// be recorded as provenance, but they never participate in this calculation.
 //
 // ---------------------------------------------------------------------------
 // RETRY IS A FIRST-CLASS CASE, NOT AN ERROR
@@ -76,6 +77,8 @@ interface GrantBody {
    * still believing it can price its own sale.
    */
   package_id?: string;
+  /** Optional attested payment provenance. It never influences the grant amount. */
+  purchase_facts?: unknown;
   /** Legacy. Present only so it can be explicitly refused. */
   credits?: unknown;
 }
@@ -187,6 +190,15 @@ export async function POST(req: NextRequest) {
     );
   }
 
+  const purchaseFacts =
+    body.purchase_facts === undefined ? null : validatePurchaseFacts(body.purchase_facts);
+  if (body.purchase_facts !== undefined && purchaseFacts === null) {
+    return NextResponse.json(
+      { error: "invalid_purchase_facts", message: "Invalid purchase provenance." },
+      { status: 400 }
+    );
+  }
+
   const ref = await resolvePurchaseRef(purchaseRef);
   if (!ref) return invalidPurchaseRef();
 
@@ -222,6 +234,7 @@ export async function POST(req: NextRequest) {
       // replace than the architecture claims it is. What is durably true about
       // this row is which package was sold.
       note: `package:${packageId}`,
+      purchaseFacts,
     });
   } catch (err) {
     // eslint-disable-next-line no-console
@@ -252,7 +265,7 @@ export async function POST(req: NextRequest) {
   // Non-fatal on failure, and deliberately so: the grant already happened, and
   // reporting an error for work that succeeded is the exact failure this pass
   // exists to remove. A failed mark leaves the reference fresh until its own
-  // 30-minute TTL expires — a retry of THIS order still answers duplicate via
+  // 24-hour fresh TTL expires — a retry of THIS order still answers duplicate via
   // grant_key, so the contract holds; only the narrower "cannot be turned on a
   // different order" property degrades, which is why it is logged loudly.
   try {

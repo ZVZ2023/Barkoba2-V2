@@ -116,13 +116,13 @@ test("4. the reference reuses the joinCode pattern, not a new mechanism", () => 
   assert.doesNotMatch(ref, /accounts\.|entitlement_ledger|CREATE TABLE/);
 });
 
-test("4b. references are opaque, long, and short-lived", () => {
+test("4b. references are opaque, long, and valid for a DICS shopping day", () => {
   const a = generatePurchaseRef();
   const b = generatePurchaseRef();
   assert.equal(a.length, 16);
   assert.notEqual(a, b);
   assert.match(a, /^[0-9A-HJKMNP-TV-Z]+$/, "Crockford Base32: no I, L, O or U");
-  assert.equal(PURCHASE_REF_TTL_SECONDS, 30 * 60);
+  assert.equal(PURCHASE_REF_TTL_SECONDS, 24 * 60 * 60);
   assert.equal(normalizePurchaseRef(" abc-def "), "ABCDEF");
 });
 
@@ -194,15 +194,16 @@ test("8. a silent claim during purchase is reported as a sequencing defect", () 
   assert.match(INTENT_ROUTE, /claim_required/);
 });
 
-// --- adapter boundary: exactly four things cross -------------------------
+// --- adapter boundary -----------------------------------------------------
 
-test("the contract carries no money, no pricing, and no identity", () => {
+test("the contract carries no pricing decision and no identity", () => {
   const code = codeOnly(GRANT_ROUTE);
   assert.match(code, /purchase_ref/);
   assert.match(code, /external_order_id/);
   assert.match(code, /credits/);
-  // Barkóba holds no pricing logic and learns nothing about money.
-  assert.doesNotMatch(code, /price|currency|amount_cents|stripe|invoice/i);
+  assert.match(code, /purchase_facts/);
+  // Attested money may be stored, but never used to derive the grant.
+  assert.doesNotMatch(code, /credits\s*=.*purchase_facts|creditsForPackage\([^)]*purchase_facts/i);
   // player_id never crosses the boundary — only the opaque reference does.
   assert.doesNotMatch(code, /body\.player_id|player_id\?\?/);
 });
@@ -227,7 +228,7 @@ test("V2.6: the adapter names a PACKAGE and cannot supply an amount", () => {
 
 // --- 9. nothing frozen or previously proven was disturbed ----------------
 
-test("9. no frozen surface, no migration, no enforcement change", () => {
+test("9. no frozen gameplay surface or isolation change", () => {
   // The entitlement allowlist and quarantine are unchanged.
   const iso = readFileSync("scripts/check-isolation.mjs", "utf8");
   const permitted = iso.slice(
@@ -241,7 +242,7 @@ test("9. no frozen surface, no migration, no enforcement change", () => {
   assert.match(budget, /20: 1,\s*\n\s*35: 2,\s*\n\s*50: 3,\s*\n\s*100: 5,/);
   assert.match(readFileSync("lib/env.ts", "utf8"), /ENTITLEMENT_COMPLIMENTARY_GRANT", 10/);
 
-  // Only migration 0004 exists for accounts; this pass added none.
+  // Purchase-reference storage remains Redis-only; provenance is ledger-owned.
   assert.doesNotMatch(readFileSync("lib/purchaseRef.ts", "utf8"), /migration|ALTER TABLE/);
 });
 

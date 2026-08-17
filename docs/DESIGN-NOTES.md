@@ -3824,16 +3824,10 @@ reference for a claimed player; the grant endpoint authenticates, resolves the
 reference, and credits the right identity; `getStatus()` and the badge reflect
 it. All of that had been asserted only by unit tests until now.
 
-**NOT proven, and it is the property that matters most for a real provider:
-REPLAY.** The identical callback was never re-sent, so
-`entitlement_grant_key_once` has not fired in production. A payment provider
-*will* redeliver — that is normal operation, not misuse, and the whole
-marked-on-use design in `lib/purchaseRef.ts` exists for it. Until a duplicate
-call has been observed returning `granted=false, duplicate=true` with the
-balance unchanged, the idempotency guarantee remains a unit-test claim.
-
-This is cheap to close: re-send the same call with the same
-`external_order_id`. Recorded here rather than assumed.
+**REPLAY is also field-proven.** The identical callback was re-sent with the
+same `external_order_id`; production returned `granted=false, duplicate=true`
+and the player's balance remained unchanged. `entitlement_grant_key_once` has
+therefore been exercised in production, not merely asserted by unit tests.
 
 **Also unexercised:** the *"same reference, different order"* refusal, which is
 the guard against a reference being turned on a second order.
@@ -3857,9 +3851,9 @@ D1 — *which* concrete stand/provider — remains OPEN and parked.
 
 ## 41. DICS stays unchanged — provenance, and a refined money boundary
 
-**RATIFIED, DESIGN ONLY. Nothing here is implemented.** This supersedes the
-`test_scoop_5` product design proposed before it, and amends what shipped at
-`2.6.5.0`.
+**RATIFIED. Foundation implemented after `2.6.5.0`; commercial classification
+and conversion remain open.** This supersedes the `test_scoop_5` product design
+proposed before it, and amends what shipped at `2.6.5.0`.
 
 ### 41.1 The product decision that forced the redesign
 
@@ -3885,23 +3879,23 @@ Stripe product or Payment Link.
 amount.* The caller is now a payment webhook rather than a stand, which makes
 the rule more important, not less.
 
-**Frozen decision 10 holds exactly as written** — the Worker maps Stripe price
-ID → `package_id`, Barkóba independently maps `package_id` → credits. Only what
-`package_id` *names* changed: not a Barkóba product, but a neutral alias for an
-**ordinary DICS item**.
+**Frozen decision 10 holds exactly as written** — the payment-side Vercel
+adapter maps Stripe price ID → `package_id`, Barkóba independently maps
+`package_id` → credits. Only what `package_id` *names* changed: not a Barkóba
+product, but a neutral alias for an **ordinary DICS item**.
 
 ```
-Stripe price_id → (Worker) → package_id → (Barkóba) → credits × quantity
+Stripe price_id → (payment-side Vercel adapter) → package_id → (Barkóba) → credits × quantity
 ```
 
 Two mappings, neither knowing the other's vocabulary. Swap the processor and
-only the Worker's table changes. **A price ID is a name, not an amount** —
+only the payment-side adapter's table changes. **A price ID is a name, not an amount** —
 routing on it rather than on `amount_total` is what keeps pricing out of the
 entitlement path.
 
-**Ownership, stated once:** the Worker owns *Stripe purchase → package
-classification*. Barkóba owns *package → credit calculation*. Neither reaches
-into the other.
+**Ownership, stated once:** the payment-side Vercel adapter owns *Stripe
+purchase → package classification*. Barkóba owns *package → credit
+calculation*. Neither reaches into the other.
 
 ### 41.3 Provenance is captured, and never read
 
@@ -3914,7 +3908,7 @@ deliberately separated:
 | **Identity / idempotency** | `purchase_ref`, Stripe session id | reconciliation |
 | **Attested provenance** | `purchase_facts` | **nothing today** |
 
-**Migration `0008` may add a nullable, immutable `purchase_facts jsonb`** to
+**Migration `0008` adds a nullable, immutable `purchase_facts jsonb`** to
 purchase ledger rows — written at insert, never updated. The append-only trigger
 already refuses UPDATE and DELETE, so immutability needs no new mechanism.
 
@@ -3929,9 +3923,9 @@ no PII there is no separate access profile to protect, so the
 
 **VALIDATED versus ATTESTED — the distinction must not blur.** `package_id` and
 `quantity` are checked against Barkóba's catalogue and refused if unrecognised.
-`purchase_facts` **cannot be verified by Barkóba** — it stores what the Worker
-asserts. The chain still holds (the Worker read them from a signature-verified
-Stripe payload), but it is one link weaker, and a future analyst must not
+`purchase_facts` **cannot be verified by Barkóba** — it stores what the
+payment-side Vercel adapter asserts. The chain still holds (the adapter read
+them from a signature-verified Stripe payload), but it is one link weaker, and a future analyst must not
 mistake attested facts for verified ones. Shape validated, size capped, stored
 verbatim, never interpreted.
 
@@ -3963,7 +3957,7 @@ processor changes.
 The 30-minute TTL was sized for the old flow, where a player clicked one package
 and paid immediately. Under §41.1 they arrive, watch, browse eight flavours and
 choose — a **shopping session, not a checkout**. A reference expiring mid-browse
-would produce a completed purchase the Worker cannot attribute: real money, no
+would produce a completed purchase the adapter cannot attribute: real money, no
 credits, manual repair.
 
 **Single-use semantics are unchanged.** The marked-on-use design stands: a spent

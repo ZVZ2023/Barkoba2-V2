@@ -244,6 +244,11 @@ export interface GrantOptions {
   note?: string | null;
 }
 
+export interface PurchaseGrantOptions extends GrantOptions {
+  /** Attested provider facts. Stored on the purchase row; never interpreted here. */
+  purchaseFacts?: object | null;
+}
+
 /**
  * Complimentary play credit. May be granted to an ANONYMOUS, unclaimed player:
  * complimentary value carries no obligation, so it needs no recoverable
@@ -305,7 +310,7 @@ export interface PurchaseGrantResult {
 export async function grantPurchase(
   playerId: string,
   amount: number,
-  options: GrantOptions = {}
+  options: PurchaseGrantOptions = {}
 ): Promise<PurchaseGrantResult> {
   if (amount <= 0) return { granted: false };
 
@@ -331,10 +336,11 @@ export async function grantPurchase(
   const sql = requireSql();
   const rows = await sql`
     INSERT INTO accounts.entitlement_ledger
-      (player_id, kind, amount, grant_key, expires_at, note)
+      (player_id, kind, amount, grant_key, expires_at, note, purchase_facts)
     VALUES
       (${playerId}, 'purchase', ${amount},
-       ${options.grantKey ?? null}, ${options.expiresAt ?? null}, ${options.note ?? null})
+       ${options.grantKey ?? null}, ${options.expiresAt ?? null}, ${options.note ?? null},
+       ${options.purchaseFacts ? JSON.stringify(options.purchaseFacts) : null}::jsonb)
     ON CONFLICT DO NOTHING
     RETURNING entry_id
   `;

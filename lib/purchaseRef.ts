@@ -12,11 +12,11 @@ import { getKV } from "./kv";
 // mapping a random Crockford-Base32 token to an id, minted by Barkóba, consumed
 // on use. No new token mechanism was invented for this.
 //
-//   purchase_ref:<REF>  ->  { player_id }                    TTL 30 minutes
+//   purchase_ref:<REF>  ->  { player_id }                    TTL 24 hours
 //   purchase_ref:<REF>  ->  { player_id, consumed_by }       TTL 24 hours
 //
 // 16 characters is 80 bits: far beyond guessing for a key that lives half an
-// hour and is spent on first use. Longer than a join code because this one is
+// day and is spent on first use. Longer than a join code because this one is
 // not meant to be read aloud — it is passed machine to machine.
 //
 // WHAT THIS IS NOT: a credential. It authorises nothing on its own. The grant
@@ -50,8 +50,8 @@ import { getKV } from "./kv";
 const ALPHABET = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
 const REF_LENGTH = 16;
 
-/** Thirty minutes: long enough to complete a checkout, short enough to expire. */
-export const PURCHASE_REF_TTL_SECONDS = 30 * 60;
+/** Twenty-four hours: a DICS shopping session, not merely one checkout. */
+export const PURCHASE_REF_TTL_SECONDS = 24 * 60 * 60;
 
 /**
  * How long a SPENT reference is remembered, measured from the moment it was
@@ -59,9 +59,8 @@ export const PURCHASE_REF_TTL_SECONDS = 30 * 60;
  *
  * It has to be measured from consumption, and it has to be longer than the
  * checkout window, or the defect this exists to fix simply moves later: a grant
- * landing at minute 29 of a 30-minute reference would leave roughly sixty
- * seconds of deterministic retry before the record aged out and the retry
- * started reporting "unknown reference" again. Resetting the clock on use gives
+ * landing near the end of a fresh reference would leave almost no deterministic
+ * retry window before the record aged out. Resetting the clock on use gives
  * every grant the same full retry window regardless of when in the checkout it
  * landed.
  *

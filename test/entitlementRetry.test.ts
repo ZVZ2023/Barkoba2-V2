@@ -32,6 +32,7 @@ interface Row {
   kind: string;
   amount: number;
   grant_key: string | null;
+  purchase_facts: Record<string, unknown> | null;
 }
 
 let ledger: Row[] = [];
@@ -69,7 +70,16 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     if (grantKey && ledger.some((r) => r.player_id === player && r.grant_key === grantKey)) {
       return Promise.resolve([]); // ON CONFLICT DO NOTHING
     }
-    ledger.push({ player_id: player, kind: "purchase", amount, grant_key: grantKey });
+    const serializedFacts = (v[5] as string | null) ?? null;
+    ledger.push({
+      player_id: player,
+      kind: "purchase",
+      amount,
+      grant_key: grantKey,
+      purchase_facts: serializedFacts
+        ? (JSON.parse(serializedFacts) as Record<string, unknown>)
+        : null,
+    });
     return Promise.resolve([{ entry_id: ledger.length }]);
   }
 
@@ -124,6 +134,20 @@ async function claimedPlayer(id: string): Promise<string> {
 
 const purchaseRows = () => ledger.filter((r) => r.kind === "purchase");
 
+const purchaseFacts = () => ({
+  provider: "stripe",
+  source: "dics",
+  purchase_facts_schema_version: "dic-purchase/1",
+  product: "Digital Ice Cream",
+  flavour: "Vanilla",
+  stripe_price_id: "price_123",
+  quantity: 1,
+  currency: "eur",
+  amount_total: 500,
+  purchased_at: "2026-08-17T12:00:00.000Z",
+  livemode: false,
+});
+
 // --- 1. a fresh reference grants -------------------------------------------
 
 test("1. a fresh valid reference grants exactly once", async () => {
@@ -142,6 +166,42 @@ test("1. a fresh valid reference grants exactly once", async () => {
   assert.equal(res.body.external_order_id, "order_1");
   assert.equal(purchaseRows().length, 1);
   assert.equal(purchaseRows()[0]?.amount, 5, "the catalogue decides, not the caller");
+});
+
+test("1b. valid purchase facts are stored without affecting credits", async () => {
+  const player = await claimedPlayer("n".repeat(32));
+  const ref = await createPurchaseRef(player);
+  const facts = purchaseFacts();
+
+  const res = await callGrant({
+    purchase_ref: ref,
+    external_order_id: "order_1b",
+    package_id: "test_scoop_5",
+    purchase_facts: facts,
+  });
+
+  assert.equal(res.status, 200);
+  assert.equal(purchaseRows()[0]?.amount, 5, "provenance cannot alter catalogue credits");
+  assert.deepEqual(purchaseRows()[0]?.purchase_facts, facts);
+});
+
+test("1c. malformed or oversized purchase facts are refused before insertion", async () => {
+  for (const [suffix, facts] of [
+    ["shape", { ...purchaseFacts(), email: "pii@example.test" }],
+    ["size", { ...purchaseFacts(), product: "x".repeat(5000) }],
+  ] as const) {
+    const player = await claimedPlayer((suffix === "shape" ? "o" : "q").repeat(32));
+    const ref = await createPurchaseRef(player);
+    const res = await callGrant({
+      purchase_ref: ref,
+      external_order_id: `order_1c_${suffix}`,
+      package_id: "test_scoop_5",
+      purchase_facts: facts,
+    });
+    assert.equal(res.status, 400);
+    assert.equal(res.body.error, "invalid_purchase_facts");
+  }
+  assert.equal(purchaseRows().length, 0);
 });
 
 // --- 2. the identical retry is harmless AND deterministic -------------------
@@ -266,7 +326,7 @@ test("4b. expiry is a real TTL, and an expired reference stops resolving", async
   const ref = await createPurchaseRef(player);
 
   assert.notEqual(await resolvePurchaseRef(ref), null);
-  // Write it back already past its lifetime rather than waiting 30 minutes.
+  // Write it back already past its lifetime rather than waiting 24 hours.
   await getKV().set(`purchase_ref:${ref}`, { player_id: player }, -1);
   assert.equal(await resolvePurchaseRef(ref), null);
 
@@ -355,14 +415,11 @@ test("5b. concurrent duplicate deliveries still leave one purchase row", async (
 
 // --- retention ---------------------------------------------------------------
 
-test("a spent reference is retained longer than the checkout window, from spend", async () => {
-  // If the consumed record expired on the ORIGINAL 30-minute clock, a grant that
-  // landed at minute 29 would have about a minute of deterministic retry before
-  // reverting to the defect. The clock has to restart on use.
-  assert.ok(
-    PURCHASE_REF_CONSUMED_TTL_SECONDS > PURCHASE_REF_TTL_SECONDS,
-    "retry state must outlive the checkout window"
-  );
+test("a spent reference gets a fresh 24-hour retention clock from spend", async () => {
+  // Fresh and consumed windows are each 24 hours, but the consumed clock starts
+  // at use. A purchase near the end of its shopping day therefore remains
+  // deterministically retryable for another full day.
+  assert.equal(PURCHASE_REF_TTL_SECONDS, 24 * 60 * 60);
   assert.equal(PURCHASE_REF_CONSUMED_TTL_SECONDS, 24 * 60 * 60);
 
   const player = await claimedPlayer("k".repeat(32));

@@ -196,7 +196,7 @@ test("the shared-secret gate is untouched", () => {
 const RETURN_SRC = readFileSync("app/components/PurchaseReturn.tsx", "utf8");
 
 test("the return leg grants nothing — it is display only", () => {
-  // Credit moves on the Stripe → Worker → grant path and nowhere else. A
+  // Credit moves on the Stripe → payment-side adapter → grant path and nowhere else. A
   // browser redirect must never be able to authorise value.
   assert.equal(/entitlement\/grant/.test(RETURN_SRC), false);
   assert.equal(/method:\s*["']POST["']/i.test(RETURN_SRC), false);
