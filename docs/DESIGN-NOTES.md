@@ -3781,3 +3781,74 @@ established-identity check.
 **Not authorised here:** making Login functional, moving the introductory grant,
 any schema or migration work, the package allowlist, the storefront, the return
 leg, and pricing. Each is separately scoped.
+
+---
+
+## 40. Block 1 — the commercial credit bridge is FIELD-PROVEN
+
+**Manual production proof completed on `2.6.4.0`.** The Barkóba-side purchase
+bridge works end to end against a real zero-credit player. No code was written
+to achieve this — the V2.4 contract was already complete and had simply never
+been exercised.
+
+### 40.1 What was proven
+
+A human acted as the Ice Cream Stand. The full chain:
+
+```
+0 credits
+  → CreditGateway
+  → claim player
+  → POST /api/entitlement/intent  → purchase_ref
+  → POST /api/entitlement/grant   (bearer, server-to-server)
+  → grantPurchase → accounts.entitlement_ledger
+  → player balance
+```
+
+| Field | Value |
+|---|---|
+| package concept | `test_scoop_5` |
+| credits | 5 |
+| `external_order_id` | `test_scoop_5_manual_001` |
+| grant response | `granted=true`, `duplicate=false` |
+| player UI after refresh | `Játékkereted 5` |
+
+A balance moving from 0 to exactly 5 also demonstrates that **one** ledger row
+was written; a duplicate would have shown 10.
+
+### 40.2 What this retires, and what it does not
+
+**Retired:** every doubt about the Barkóba half. `ENTITLEMENT_GRANT_SECRET` is
+live and correct in the deployed runtime; the intent route mints a real
+reference for a claimed player; the grant endpoint authenticates, resolves the
+reference, and credits the right identity; `getStatus()` and the badge reflect
+it. All of that had been asserted only by unit tests until now.
+
+**NOT proven, and it is the property that matters most for a real provider:
+REPLAY.** The identical callback was never re-sent, so
+`entitlement_grant_key_once` has not fired in production. A payment provider
+*will* redeliver — that is normal operation, not misuse, and the whole
+marked-on-use design in `lib/purchaseRef.ts` exists for it. Until a duplicate
+call has been observed returning `granted=false, duplicate=true` with the
+balance unchanged, the idempotency guarantee remains a unit-test claim.
+
+This is cheap to close: re-send the same call with the same
+`external_order_id`. Recorded here rather than assumed.
+
+**Also unexercised:** the *"same reference, different order"* refusal, which is
+the guard against a reference being turned on a second order.
+
+### 40.3 The UX finding has direct field confirmation
+
+The player **had to configure a game and attempt to start it** before the
+acquisition CTA appeared. §39.1's earlier-visibility requirement is therefore no
+longer a design intuition — it was observed in the one real purchase journey
+this product has ever had.
+
+### 40.4 The remaining gap is a storefront, not a mechanism
+
+What stood between a zero-credit player and Play Credits was a human with a
+shell. Replace that human with software and the bridge is complete. Nothing in
+Barkóba's crediting path needs to change to accept a real stand.
+
+D1 — *which* concrete stand/provider — remains OPEN and parked.
