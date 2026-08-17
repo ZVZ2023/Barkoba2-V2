@@ -507,6 +507,135 @@ test("Field Test #4 — pattern 1 and pattern 2 now share one discriminator", ()
   }
 });
 
+// ---------------------------------------------------------------------------
+// V2.6 — the bare proper-noun candidate.
+//
+// Field-observed in production at 2.6.3.0 / racer/2.6.0. A Grok Racer spent
+// four consecutive question slots naming candidate LLMs; every one scored 2
+// (proper_noun alone) against a threshold of 3, none flagged, the single guess
+// entitlement was never consumed, and the final YES confirmed the target as a
+// free question.
+//
+// Third occurrence of "the vocabulary was one word short" — §31 (Hungarian
+// `cél`), §32 (English indefinite article), and now this. The asymmetry that
+// makes it visible:
+//
+//     Is the answer Grok?   5, flagged   (`is the answer` is an explicit frame)
+//     Is the target Grok?   2, missed    (`target` has none)
+// ---------------------------------------------------------------------------
+
+const FIELD_LLM_SPECIMENS = [
+  "Is the target GPT-4?",
+  "Is the target Claude?",
+  "Is the target Llama?",
+  "Is the target Grok?",
+] as const;
+
+for (const q of FIELD_LLM_SPECIMENS) {
+  test(`V2.6 — bare candidate identity is flagged: ${q}`, () => {
+    const r = detectGuess(q);
+    // Assert the RULE, not only the flag. These already scored 2 from
+    // proper_noun; a future weight change could lift them over the threshold
+    // without candidate_identification ever firing, and the suite would pass
+    // while the real defect returned. That is exactly the trap §31 fell into.
+    assert.ok(
+      r.matched.includes("candidate_identification"),
+      `${q} scored ${r.score} via ${r.matched.join(", ") || "nothing"}`
+    );
+    assert.equal(r.flagged, true);
+  });
+}
+
+test("V2.6 — the frame covers the deictic forms too, not just 'the target'", () => {
+  for (const q of ["Is it Grok?", "Is that Claude?", "Is this Tesla?", "Was the answer Linux?"]) {
+    assert.ok(
+      detectGuess(q).matched.includes("candidate_identification"),
+      `expected candidate_identification: ${q}`
+    );
+  }
+});
+
+test("V2.6 — a digit settles it, ahead of any stopword list", () => {
+  // No nationality, language or religion contains a digit, so a versioned
+  // model name is a name with certainty and can never be suppressed by a list
+  // entry added later.
+  for (const q of ["Is the target GPT-4?", "Is the target GPT-3.5?", "Is the target Llama-2?"]) {
+    assert.equal(detectGuess(q).flagged, true, q);
+  }
+});
+
+test("V2.6 — capitalised PREDICATES are not candidates and must not flag", () => {
+  // The false-positive class the rule is narrowed against. Each of these is a
+  // legitimate discovery question that happens to capitalise its predicate.
+  for (const q of [
+    "Is the target American?",
+    "Is the target Hungarian?",
+    "Is the target Japanese?",
+    "Is the target Chinese?",
+    "Is the target Christian?",
+    "Is the target Jewish?",
+    "Is the target European?",
+    "Is the target African?",
+    "Is it Western?",
+    "Is the target Nordic?",
+  ]) {
+    const r = detectGuess(q);
+    assert.equal(
+      r.matched.includes("candidate_identification"),
+      false,
+      `${q} must not read as naming a candidate — scored ${r.score}`
+    );
+    assert.equal(r.flagged, false, `${q} scored ${r.score}`);
+  }
+});
+
+test("V2.6 — the field-test control questions stay clear", () => {
+  // The discovery questions the correction was required to preserve, verbatim.
+  for (const q of [
+    "Is the target alive?",
+    "Is the target a language model?",
+    "Is it developed by xAI?",
+    "Is the target open source?",
+  ]) {
+    assert.equal(detectGuess(q).flagged, false, `${q} must remain a free question`);
+  }
+});
+
+test("V2.6 — lowercase after the frame is a predicate, and capitalisation is the whole signal", () => {
+  // The discriminator, stated as a test so it cannot be lost to a
+  // well-meaning case-insensitive "tidy-up" of the pattern later.
+  assert.equal(detectGuess("Is the target Grok?").flagged, true, "names one");
+  assert.equal(detectGuess("Is the target grok?").flagged, false, "reads as a predicate");
+});
+
+test("V2.6 — the gap was exactly one token wide, and multi-word names already flagged", () => {
+  // Why the rule is restricted to a single token: a two-word name already
+  // scored 3 on proper_noun + proper_noun_multiple before this change. A
+  // broader rule would have added false-positive surface for nothing.
+  for (const q of ["Is the target Wolfram Alpha?", "Is the target Eiffel Tower?"]) {
+    const r = detectGuess(q);
+    assert.ok(r.matched.includes("proper_noun_multiple"), q);
+    assert.equal(r.flagged, true, q);
+  }
+});
+
+test("V2.6 — category vocabulary still disqualifies the shape", () => {
+  // The new rule sits inside the same namesACategory guard as its siblings
+  // rather than carrying its own exception.
+  const r = detectGuess("Is it the kind of Grok?");
+  assert.equal(r.matched.includes("candidate_identification"), false, r.matched.join(","));
+});
+
+test("V2.6 — the Hungarian rules are untouched by the English correction", () => {
+  // The Hungarian sibling already caught this class ("A cél a Grok?" scores 5)
+  // because Hungarian uses a definite article with proper nouns. Nothing here
+  // should have moved it in either direction.
+  assert.equal(detectGuess("A cél a Grok?").flagged, true);
+  assert.equal(detectGuess("A cél a Microsoft?").flagged, true);
+  assert.equal(detectGuess("A cél élőlény?").flagged, false);
+  assert.equal(detectGuess("A cél egy jármű?").flagged, false);
+});
+
 test("flagging a candidate question does not by itself decide anything", () => {
   // The detector reports; resolveGuessIntent decides. This pins that the rule
   // added here changed detection only.

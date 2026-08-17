@@ -206,6 +206,118 @@ export const CANDIDATE_IDENTIFICATION_EN: RegExp[] = [
   ),
 ];
 
+// --- V2.6: the bare proper-noun candidate ----------------------------------
+//
+// FIELD-OBSERVED IN PRODUCTION at 2.6.3.0 / racer/2.6.0. A Grok Racer spent
+// four consecutive question slots on:
+//
+//     Is the target GPT-4?   NO
+//     Is the target Claude?  NO
+//     Is the target Llama?   NO
+//     Is the target Grok?    YES
+//
+// Every one scored 2 — `proper_noun` alone — against a threshold of 3. None
+// flagged. The single guess entitlement was never consumed, and the final YES
+// confirmed the target as a free question.
+//
+// THIS IS THE ENGLISH RECURRENCE OF §31's HUNGARIAN DEFECT, and the third time
+// this module's vocabulary has been one word short:
+//
+//     Is the answer Grok?   -> 5, FLAGGED   (`is the answer` is an explicit frame)
+//     Is the target Grok?   -> 2, missed    (`target` has no frame)
+//     A cél a Grok?         -> 5, FLAGGED   (Hungarian catches it)
+//
+// WHY THE EXISTING ENGLISH RULES CANNOT REACH IT. Both CANDIDATE_IDENTIFICATION_EN
+// patterns require a DETERMINER before the noun phrase, because definiteness is
+// this module's discriminator. An English proper noun takes no article, so a
+// bare name falls through. Hungarian's sibling rule requires a second article
+// too — and catches these — only because Hungarian does use a definite article
+// with proper nouns ("a Grok"). The rule was never wrong; English simply has no
+// article to test.
+//
+// THE GAP IS EXACTLY ONE TOKEN WIDE, which is what makes a safe fix possible.
+// A MULTI-word name already flags today on proper_noun + proper_noun_multiple
+// (2 + 1 = 3): "Is the target Wolfram Alpha?" was already caught. Only a
+// SINGLE capitalised token escapes. So this rule is deliberately restricted to
+// that case rather than generalised over noun phrases — a narrower rule has a
+// smaller false-positive surface, and there is nothing else to catch.
+//
+// THE DISCRIMINATOR IS CAPITALISATION, MINUS A CLOSED CLASS.
+//
+// There is NO purely syntactic signal separating "Is the target Grok?" from
+// "Is the target American?" — both are `is the target <Capitalised>?`. That was
+// investigated and rejected rather than approximated. What separates them is
+// lexical: the second is a predicate adjective from a bounded, enumerable class
+// (nationality, language, religion, region). So the class is listed, exactly as
+// PROPER_NOUN_STOPWORDS already lists capitalised tokens that are not evidence.
+//
+// THE LIST IS INCOMPLETE AND ALWAYS WILL BE, and that is safe in the direction
+// it fails: an unlisted predicate adjective FLAGS, costing one internal
+// re-prompt, which is the module's stated BIAS. Do not grow this list
+// speculatively — every addition is a name this rule stops catching.
+
+/**
+ * Capitalised tokens that are predicates, not names.
+ *
+ * Nationality, language, religion and region adjectives — the only class that
+ * appears capitalised in this grammatical position without naming a candidate.
+ * Kept to high-frequency members on purpose: see the note above on which
+ * direction incompleteness fails in.
+ */
+export const CAPITALIZED_PREDICATE_STOPWORDS = new Set([
+  // Nationality / origin
+  "American", "British", "English", "Irish", "Scottish", "Welsh", "French",
+  "German", "Italian", "Spanish", "Portuguese", "Dutch", "Belgian", "Swiss",
+  "Austrian", "Hungarian", "Polish", "Czech", "Slovak", "Romanian", "Serbian",
+  "Croatian", "Greek", "Turkish", "Russian", "Ukrainian", "Swedish",
+  "Norwegian", "Danish", "Finnish", "Chinese", "Japanese", "Korean", "Indian",
+  "Pakistani", "Iranian", "Iraqi", "Israeli", "Egyptian", "Nigerian",
+  "Ethiopian", "Australian", "Canadian", "Mexican", "Brazilian", "Argentine",
+  "Argentinian", "Cuban", "Vietnamese", "Thai", "Indonesian", "Filipino",
+  // Region / continent
+  "European", "Asian", "African", "Scandinavian", "Mediterranean", "Nordic",
+  "Baltic", "Balkan", "Western", "Eastern", "Northern", "Southern",
+  // Religion / culture
+  "Christian", "Catholic", "Protestant", "Orthodox", "Jewish", "Muslim",
+  "Islamic", "Hindu", "Buddhist", "Celtic", "Slavic", "Germanic",
+]);
+
+/**
+ * `is/was` + a candidate frame + ONE capitalised token, ending the question.
+ *
+ * Case-SENSITIVE, so it carries no `i` flag: capitalisation is the whole
+ * signal, and an `i` flag would destroy it.
+ */
+const BARE_CANDIDATE_EN =
+  /\b(?:[Ii]s|[Ww]as)\s+(?:it|that|this|the\s+(?:target|answer|thing|object|word))\s+([A-Za-z][\w.-]*)\s*\??\s*$/;
+
+/**
+ * Does this question name a single bare candidate?
+ *
+ * A function rather than another entry in a RegExp list because the decision is
+ * a regex match AND a lexical test, and splitting those across two places is
+ * how the two drift apart.
+ */
+export function namesABareCandidate(text: string): boolean {
+  const match = BARE_CANDIDATE_EN.exec(text);
+  const token = match?.[1];
+  if (!token) return false;
+
+  // Must be capitalised. A lowercase token here is an ordinary predicate —
+  // "Is the target alive?", "Is the target open source?" — and is why the
+  // controls stay clear.
+  if (token[0] !== token[0]?.toUpperCase() || token[0] === token[0]?.toLowerCase()) {
+    return false;
+  }
+
+  // A DIGIT SETTLES IT, ahead of the stopword test. No nationality, language or
+  // religion contains one, so "GPT-4", "GPT-3.5" and "Llama-2" are names with
+  // certainty and can never be suppressed by a list entry added later.
+  if (/\d/.test(token)) return true;
+
+  return !CAPITALIZED_PREDICATE_STOPWORDS.has(token);
+}
+
 export const CANDIDATE_IDENTIFICATION_HU: RegExp[] = [
   // "A fül az?"  ·  "A bal füled az?"   (adjectives and possessive suffixes
   // both ride along here, which closes the "A bal füled az?" weakness without
@@ -403,6 +515,11 @@ export function detectGuess(questionText: string): GuessDetectionResult {
   const hasCandidateId =
     !namesACategory &&
     (CANDIDATE_IDENTIFICATION_EN.some((re) => re.test(text)) ||
+      // V2.6 — the bare proper-noun candidate. Sits inside the same
+      // `namesACategory` guard as its siblings, so "Is it the kind of Grok?"
+      // is still disqualified by category vocabulary rather than needing its
+      // own exception.
+      namesABareCandidate(text) ||
       CANDIDATE_IDENTIFICATION_HU.some((re) => re.test(text)));
   if (hasCandidateId) {
     score += WEIGHTS.candidateIdentification;

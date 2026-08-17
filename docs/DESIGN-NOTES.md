@@ -3533,3 +3533,109 @@ provenance field and no schema change were required.
   reaches the model on both paths, reaches both providers identically, and never
   touches stored answers or the visible transcript. Whether the Racer plays
   better is a field question.
+
+---
+
+## 38. `2.6.4.0` — the bare proper-noun candidate
+
+**A detector defect, not a strategy question.** Recorded separately from §37 for
+that reason: guidance and enforcement are different layers and must not be
+read as one change.
+
+### 38.1 What was observed
+
+Production `2.6.3.0` / `racer/2.6.0`, Grok Racer, 50-question game, target
+**Grok**. Four consecutive question slots, late game:
+
+```
+Q24  Is the target GPT-4?    NO
+Q25  Is the target Claude?   NO
+Q26  Is the target Llama?    NO
+Q27  Is the target Grok?     YES
+```
+
+Every one scored **2** — `proper_noun` alone — against a threshold of 3. None
+flagged. **The single guess entitlement was never consumed**, and the final YES
+confirmed the target as an ordinary free question. That is precisely the harm
+`lib/guessDetector.ts`'s own header says the module exists to prevent.
+
+### 38.2 The defect, and the third occurrence of one pattern
+
+The asymmetry that makes it legible:
+
+| Question | Score | Flagged |
+|---|---|---|
+| `Is the answer Grok?` | 5 | yes — `is the answer` is an explicit frame |
+| `Is the target Grok?` | **2** | **no** — `target` has no frame |
+| `A cél a Grok?` | 5 | yes — Hungarian catches it |
+
+Both `CANDIDATE_IDENTIFICATION_EN` patterns require a **determiner** before the
+noun phrase, because definiteness is this module's discriminator. An English
+proper noun takes no article, so a bare name falls straight through. The
+Hungarian sibling requires a second article too, and catches these anyway, only
+because Hungarian *does* use a definite article with proper nouns.
+
+**The rule was never wrong. English simply has no article to test.**
+
+This is the third time the same shape has appeared: §31 (Hungarian knew
+`célpont`, not `cél`), §32 (English pattern 2 admitted the indefinite article),
+and now this. Each time the surrounding rule was correct and its coverage was
+one case short.
+
+### 38.3 Why a purely syntactic discriminator is not available
+
+Investigated and rejected rather than approximated. There is **no** syntactic
+signal separating `Is the target Grok?` from `Is the target American?` — both
+are `is the target <Capitalised>?`. What separates them is lexical: the second
+is a predicate adjective from a bounded, enumerable class.
+
+So the class is listed, in the same spirit as the existing
+`PROPER_NOUN_STOPWORDS`. **The list is incomplete and always will be**, and it
+fails in the safe direction: an unlisted predicate adjective flags, costing one
+internal re-prompt, which is the module's stated BIAS. Do not grow it
+speculatively — every addition is a name this rule stops catching.
+
+### 38.4 The gap was exactly one token wide
+
+The finding that made a narrow fix possible. A **multi-word** name already
+flagged before this change, on `proper_noun` + `proper_noun_multiple` (2 + 1):
+`Is the target Wolfram Alpha?` was already caught. Only a **single** capitalised
+token escaped.
+
+The rule is therefore restricted to that case rather than generalised over noun
+phrases. A broader pattern would have added false-positive surface for nothing.
+
+Two further narrowings: the match is **case-sensitive** (capitalisation is the
+whole signal, so the pattern carries no `i` flag), and **a digit settles it
+ahead of the stopword test** — no nationality, language or religion contains
+one, so `GPT-4`, `GPT-3.5` and `Llama-2` are names with certainty and cannot be
+suppressed by a list entry added later.
+
+The new rule sits inside the same `namesACategory` guard as its siblings, so
+`Is it the kind of Grok?` is still disqualified by category vocabulary rather
+than needing its own exception.
+
+### 38.5 What this does NOT change
+
+- **`racer/2.6.0` is unchanged.** This is enforcement, not guidance. The Racer
+  prompt is untouched.
+- **Explore → Narrow → Confirm → Guess is recorded and NOT implemented.** The
+  principle — once a hypothesis is strong, discriminate with an independent
+  property, provenance or relationship test (`Is it developed by xAI?`) rather
+  than enumerating named candidates, before a formal final guess — is a
+  strategy change and remains governed by §18. Bundling it with this defect fix
+  would make neither effect readable in field play.
+- **The Hungarian rules are untouched**, in either direction, and a test pins
+  that.
+
+### 38.6 What the field observation means for §37.6
+
+§37.6 predicted that if candidate enumeration persisted, the honest reading
+would be *"the model was already told and is not complying"* rather than *"the
+block was absent"*. The first field result confirms the prediction: `racer/2.6.0`
+was present on all four turns via the guarded `runRacerTurn()` path, no revision
+path was involved, and Rule 5 was not followed.
+
+**But it is worse than non-compliance**, because the detector was supposed to be
+the backstop and it failed silently. Guidance asks; the detector enforces. Only
+the second was defective, and only the second is fixed here.
