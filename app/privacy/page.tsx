@@ -199,9 +199,9 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="Játékkeret">
+      <Section heading="RACES-egyenleg">
         <p>
-          A játékindításhoz játékkeret tartozik. Amikor kapsz vagy felhasználsz
+          A futamindításhoz RACES-egyenleg tartozik. Amikor kapsz vagy felhasználsz
           belőle, arról tartós bejegyzés készül: mennyi, mikor, milyen jogcímen
           (ajándék vagy vásárolt), és melyik játékhoz lett felhasználva. Ez a
           játékosazonosítódhoz kötődik, nem a nevedhez.
@@ -209,14 +209,21 @@ export default function PrivacyPage() {
         <p>
           A bejegyzések utólag nem módosulnak és nem törlődnek — egy tévedést új
           bejegyzés javít, hogy a javítás is nyomon követhető maradjon. Ez teszi
-          ellenőrizhetővé, mennyi keretet kaptál és mennyit használtál el.
+          ellenőrizhetővé, mennyi RACES-t kaptál és mennyit használtál el.
         </p>
         <p>
-          Ha valaha fizetett keretet kapsz, ahhoz helyreállítható játékos kell,
-          hogy a böngésződ törlése ne vigye el a kifizetett értéket. Ezért ilyen
-          esetben — ha még nincs — automatikusan létrejön a helyreállító kódod.
-          Az ajándékkeret ilyet nem igényel: ha ajándékkerettel játszol és
+          Fizetett vásárlás előtt el kell mentened a játékosodat, és kapsz egy
+          helyreállító kódot. Így a böngésződ törlése nem viszi el a megszerzett
+          RACES-t. A kezdő RACES ilyet nem igényel: ha csak azzal játszol és
           elveszted a sütidet, a fel nem használt rész elvész.
+        </p>
+        <p>
+          Digital Ice Cream-vásárlásnál a tartós bejegyzéshez a Stripe által
+          igazolt vásárlás korlátozott adatai is hozzákapcsolódhatnak: termék és
+          íz, Price ID, mennyiség, pénznem, végösszeg, időpont és teszt/éles mód.
+          Név, e-mail, cím és kártyaadat nem kerül ebbe a bejegyzésbe. Ezek az
+          adatok a vásárlás eredetét őrzik; a RACES mennyiségét nem ezekből
+          számítjuk.
         </p>
       </Section>
 

@@ -80,7 +80,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "unlimited") {
     return (
       <div className="flex items-baseline gap-2 text-sm">
-        <span className="text-neutral-600">Játékkereted</span>
+        <span className="text-neutral-600">RACES</span>
         <span className="font-semibold text-[#1e3a24]">korlátlan</span>
         <span className="text-neutral-500">— fejlesztői hozzáférés</span>
       </div>
@@ -90,7 +90,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "introductory_available") {
     return (
       <div className="text-sm font-medium text-[#1e3a24]">
-        Kezdő játékkeret vár rád
+        Az első RACE-ed vár rád
       </div>
     );
   }
@@ -98,7 +98,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "has_balance" && view.balance !== null) {
     return (
       <div className="flex items-baseline gap-2 text-sm">
-        <span className="text-neutral-600">Játékkereted</span>
+        <span className="text-neutral-600">RACES</span>
         <span className="font-semibold text-[#1e3a24]">{view.balance}</span>
       </div>
     );
@@ -108,7 +108,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
 
   return (
     <div className="flex items-baseline gap-2 text-sm">
-      <span className="text-neutral-600">Játékkereted</span>
+      <span className="text-neutral-600">RACES</span>
       <span className="font-semibold text-[#1e3a24]">0</span>
       <span className="text-[#8b2f2f]">— elfogyott</span>
     </div>
@@ -129,9 +129,8 @@ type Step = "closed" | "checking" | "need_claim" | "ready" | "intent" | "error";
  * refuses to mint a reference for an unclaimed player. This screen is the
  * courteous path to it, not the guarantee.
  */
-export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveChanged?: () => void }) {
+export function CreditGateway() {
   const [step, setStep] = useState<Step>("closed");
-  const [ref, setRef] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
   const checkClaimed = useCallback(async () => {
@@ -156,14 +155,18 @@ export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveCha
         setMessage(data?.message ?? "Most nem sikerült elindítani a vásárlást.");
         return;
       }
-      setRef(data.purchase_ref);
+      if (typeof data.purchase_url !== "string" || !data.purchase_url.startsWith("https://")) {
+        setStep("error");
+        setMessage("A vásárlási oldal most nem érhető el.");
+        return;
+      }
       setStep("intent");
-      onBalanceMayHaveChanged?.();
+      window.location.assign(data.purchase_url);
     } catch {
       setStep("error");
       setMessage("Hálózati hiba — próbáld újra.");
     }
-  }, [onBalanceMayHaveChanged]);
+  }, []);
 
   if (step === "closed") {
     return (
@@ -171,7 +174,7 @@ export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveCha
         onClick={() => void checkClaimed()}
         className="min-h-11 self-start rounded-md bg-[#1e3a24] px-4 py-2 text-sm font-medium text-[#f6ece0]"
       >
-        Kérek még játékkeretet
+        További RACES
       </button>
     );
   }
@@ -184,7 +187,7 @@ export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveCha
         <>
           <p className="text-sm font-medium">Előbb mentsd el a játékosodat</p>
           <p className="text-sm text-neutral-700">
-            Így a keret, amit szerzel, akkor is a tiéd marad, ha böngészőt vagy
+            Így a RACES-egyenleged akkor is a tiéd marad, ha böngészőt vagy
             eszközt váltasz. Kapsz egy helyreállító kódot — tedd el jól.
           </p>
           <ClaimPrompt />
@@ -201,7 +204,7 @@ export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveCha
         <>
           <p className="text-sm font-medium">A játékosod mentve van.</p>
           <p className="text-sm text-neutral-700">
-            Most már biztonságosan szerezhetsz további játékkeretet.
+            Most már biztonságosan szerezhetsz további RACES-t.
           </p>
           <button
             onClick={() => void createIntent()}
@@ -214,12 +217,8 @@ export function CreditGateway({ onBalanceMayHaveChanged }: { onBalanceMayHaveCha
 
       {step === "intent" && (
         <>
-          <p className="text-sm font-medium">Vásárlási azonosító</p>
-          <code className="break-all rounded bg-white px-2 py-1 font-mono text-xs">{ref}</code>
-          <p className="text-sm text-neutral-700">
-            A vásárlási lépés még nem élesedett. Amint elérhető, ezzel az
-            azonosítóval kerül a keret a te játékosodhoz.
-          </p>
+          <p className="text-sm font-medium">Tovább a Digital Ice Cream Standhoz…</p>
+          <p className="text-sm text-neutral-700">A vásárlási azonosítód biztonságosan elkészült.</p>
         </>
       )}
 

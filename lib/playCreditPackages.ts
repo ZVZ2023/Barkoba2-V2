@@ -31,12 +31,14 @@
  * The canonical catalogue. Adding an entry is a commercial decision and a code
  * review; there is no other way to introduce one.
  *
- * `test_scoop_5` is the first and, at V2.6, the only package. It exists to
- * prove the bridge end to end with a real payment provider. Its cash price is
- * a separate, still-open decision and is not represented here.
+ * These are ECONOMIC CLASSES, not storefront products. Every ordinary flavour
+ * maps to dics_scoop; flavour stays in the attested provenance envelope only.
+ * dics_custom receives an economic step count from the signature-verifying
+ * payment adapter. Cash amounts never cross into this calculation.
  */
-export const PLAY_CREDIT_PACKAGES: Readonly<Record<string, number>> = Object.freeze({
-  test_scoop_5: 5,
+export const PLAY_CREDIT_PACKAGES = Object.freeze({
+  dics_scoop: "scoop",
+  dics_custom: "custom",
 });
 
 export type PlayCreditPackageId = keyof typeof PLAY_CREDIT_PACKAGES;
@@ -51,17 +53,25 @@ export type PlayCreditPackageId = keyof typeof PLAY_CREDIT_PACKAGES;
  * guard is the correct one. Same reasoning as getAdapter() in
  * lib/providers/index.ts, which had the identical exposure.
  */
-export function creditsForPackage(packageId: unknown): number | null {
+export function creditsForPackage(packageId: unknown, quantity: unknown): number | null {
   if (typeof packageId !== "string" || packageId.length === 0) return null;
   if (!Object.prototype.hasOwnProperty.call(PLAY_CREDIT_PACKAGES, packageId)) return null;
-  const credits: number | undefined = PLAY_CREDIT_PACKAGES[packageId];
-  // A catalogue entry that is missing, or that is not a positive integer, is a
-  // defect in this file rather than in the request. Refuse rather than grant
-  // something unintended.
-  if (typeof credits !== "number" || !Number.isInteger(credits) || credits <= 0) {
+  if (!Number.isSafeInteger(quantity) || Number(quantity) <= 0) return null;
+
+  const q = Number(quantity);
+  let credits: number;
+  if (packageId === "dics_scoop") {
+    // DICS permits exactly 1–3 scoops. The reward is deliberately non-linear.
+    credits = ({ 1: 5, 2: 15, 3: 30 } as Record<number, number>)[q] ?? 0;
+  } else if (packageId === "dics_custom") {
+    // q=1 is the €25 base class. Each further economic step represents one
+    // completed additional €10, classified by the payment-side adapter.
+    credits = 100 + 50 * (q - 1);
+  } else {
     return null;
   }
-  return credits;
+
+  return Number.isSafeInteger(credits) && credits > 0 ? credits : null;
 }
 
 /** Every package id Barkóba will honour. Sorted, so diagnostics are stable. */

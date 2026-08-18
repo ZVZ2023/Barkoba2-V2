@@ -53,13 +53,14 @@ export function resolveQuestionBudget(difficulty: Difficulty, requested: unknown
 // ---------------------------------------------------------------------------
 // V2.4.1 — Play Credit cost, keyed on the question budget and nothing else.
 //
-// THIS CURVE IS ARBITRARY AND MONOTONIC. It is NOT a calibrated cost proxy and
-// does NOT attempt to track the real model-call-volume ratios between tiers — a
-// 100-question game costs far more than five times a 20-question one in actual
-// API spend. The curve exists to create field-testable price differentiation
-// and nothing more. Do not "rebalance" it to look proportional; it will be
-// replaced once token-level telemetry (a separate workstream) gives real
-// numbers to calibrate against.
+// Task 5 normalises the player-facing entitlement to RACES: one RACE authorises
+// one game creation, whichever of the four frozen question budgets the Composer
+// selects. Play Credit remains the internal ledger unit, so the safe mapping is
+// deliberately one-to-one rather than a second balance that could drift.
+//
+// This is NOT a claim that all budgets have equal provider cost. They do not.
+// Aggregate model spend remains bounded by callBudget.ts; the purchased unit is
+// a playable race, not a token or model-call proxy.
 //
 // SINGLE VARIABLE ON PURPOSE. Composer/Racer kind, difficulty and clue mode are
 // all resolved and in scope at the charge, and are all deliberately unused
@@ -68,9 +69,9 @@ export function resolveQuestionBudget(difficulty: Difficulty, requested: unknown
 
 const PLAY_CREDIT_COST: Record<QuestionBudget, number> = {
   20: 1,
-  35: 2,
-  50: 3,
-  100: 5,
+  35: 1,
+  50: 1,
+  100: 1,
 };
 
 /**
@@ -80,12 +81,10 @@ const PLAY_CREDIT_COST: Record<QuestionBudget, number> = {
  * caller — and therefore no request — can state what a game should cost.
  *
  * MAX_QUESTIONS is a deployment knob and can be set to a value that is not one
- * of the four offered tiers. Such a budget is charged at the tier at or above
- * it, so a non-standard budget can never be cheaper than the offered tier it
- * exceeds. Beyond the top tier, the top price applies.
+ * of the four offered tiers. It still authorises one race and therefore costs
+ * one internal Play Credit.
  */
 export function playCreditCostForBudget(budget: number): number {
   if (isQuestionBudget(budget)) return PLAY_CREDIT_COST[budget];
-  const tier = QUESTION_BUDGETS.find((b) => budget <= b);
-  return tier ? PLAY_CREDIT_COST[tier] : PLAY_CREDIT_COST[100];
+  return 1;
 }

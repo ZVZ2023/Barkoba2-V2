@@ -56,7 +56,7 @@ export default function SiteHeader({
           <div className="flex max-w-sm flex-col items-end gap-2 text-right">
             <BalanceBadge view={entitlement.view} />
             {entitlement.view?.play_state === "exhausted" && (
-              <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+              <CreditGateway />
             )}
           </div>
         )}

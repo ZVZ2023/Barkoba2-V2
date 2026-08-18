@@ -129,7 +129,7 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
 
       {error && <p className="text-sm text-[#8b2f2f]">{error}</p>}
       {noCredit && entitlement.view?.play_state === "exhausted" && (
-        <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+        <CreditGateway />
       )}
 
       <button

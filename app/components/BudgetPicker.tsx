@@ -117,7 +117,7 @@ export default function BudgetPicker({
                 type="button"
                 onClick={() => onBudgetChange(b)}
                 disabled={disabled}
-                title={unaffordable ? "Ehhez nincs elég játékkereted" : undefined}
+                title={unaffordable ? "Ehhez nincs elég RACE-ed" : undefined}
                 className={`min-h-11 flex-1 rounded-md px-4 py-2 text-sm ${
                   budget === b
                     ? "bg-[#1e3a24] font-medium text-[#f6ece0]"
@@ -127,7 +127,7 @@ export default function BudgetPicker({
                 <span className="block">{b}</span>
                 {typeof cost === "number" && (
                   <span className="block text-xs opacity-80">
-                    {cost} keret{unaffordable ? " ⚠" : ""}
+                    {cost} RACE{unaffordable ? " ⚠" : ""}
                   </span>
                 )}
               </button>

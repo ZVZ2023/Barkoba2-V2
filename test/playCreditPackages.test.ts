@@ -15,29 +15,45 @@ import {
 // on the other end, that means a compromised or misconfigured stand can mint
 // any quantity it likes and have Barkóba record it as a legitimate purchase.
 //
-// The tests below are mostly NEGATIVES, deliberately. "A valid package grants
-// 5" is the easy half; the half that matters is that nothing else grants
-// anything.
+// The tests below pin both the frozen DICS reward table and its negative
+// boundary. The payment adapter classifies a paid purchase; Barkóba alone
+// decides what that economic class is worth.
 // ---------------------------------------------------------------------------
 
-test("the canonical package is test_scoop_5 → 5", () => {
-  assert.equal(creditsForPackage("test_scoop_5"), 5);
-  assert.deepEqual(knownPackageIds(), ["test_scoop_5"]);
+test("the frozen DICS scoop table maps 1/2/3 scoops to 5/15/30 RACES", () => {
+  assert.equal(creditsForPackage("dics_scoop", 1), 5);
+  assert.equal(creditsForPackage("dics_scoop", 2), 15);
+  assert.equal(creditsForPackage("dics_scoop", 3), 30);
+  assert.deepEqual(knownPackageIds(), ["dics_custom", "dics_scoop"]);
+});
+
+test("custom base and completed €10 economic steps map to 100 + 50 each", () => {
+  assert.equal(creditsForPackage("dics_custom", 1), 100);
+  assert.equal(creditsForPackage("dics_custom", 2), 150);
+  assert.equal(creditsForPackage("dics_custom", 5), 300);
 });
 
 test("an unknown package grants nothing", () => {
-  for (const id of ["scoop_5", "test_scoop_50", "TEST_SCOOP_5", "", "   "]) {
-    assert.equal(creditsForPackage(id), null, `must refuse: ${JSON.stringify(id)}`);
+  for (const id of ["test_scoop_5", "scoop", "DICS_SCOOP", "", "   "]) {
+    assert.equal(creditsForPackage(id, 1), null, `must refuse: ${JSON.stringify(id)}`);
   }
+});
+
+test("quantity is required, integral and bounded by each economic class", () => {
+  for (const quantity of [undefined, null, 0, -1, 1.5, Number.MAX_SAFE_INTEGER + 1]) {
+    assert.equal(creditsForPackage("dics_scoop", quantity), null);
+    assert.equal(creditsForPackage("dics_custom", quantity), null);
+  }
+  assert.equal(creditsForPackage("dics_scoop", 4), null, "DICS scoop purchases stop at three");
 });
 
 test("package ids are case- and whitespace-exact", () => {
   // No normalisation on purpose. A near-miss is a misconfiguration on the
   // stand's side and should fail loudly at the first call, not be silently
   // corrected into a grant nobody intended.
-  assert.equal(creditsForPackage("Test_Scoop_5"), null);
-  assert.equal(creditsForPackage(" test_scoop_5"), null);
-  assert.equal(creditsForPackage("test_scoop_5 "), null);
+  assert.equal(creditsForPackage("Dics_Scoop", 1), null);
+  assert.equal(creditsForPackage(" dics_scoop", 1), null);
+  assert.equal(creditsForPackage("dics_scoop ", 1), null);
 });
 
 test("PROTOTYPE POLLUTION: inherited properties are not packages", () => {
@@ -46,13 +62,13 @@ test("PROTOTYPE POLLUTION: inherited properties are not packages", () => {
   // therefore treated as a package by a truthiness check. This id arrives from
   // an HTTP body across a trust boundary. Same exposure getAdapter() had.
   for (const id of ["constructor", "toString", "__proto__", "hasOwnProperty", "valueOf"]) {
-    assert.equal(creditsForPackage(id), null, `must refuse inherited: ${id}`);
+    assert.equal(creditsForPackage(id, 1), null, `must refuse inherited: ${id}`);
   }
 });
 
 test("a non-string package id grants nothing", () => {
-  for (const bad of [null, undefined, 5, {}, [], true, { test_scoop_5: 5 }]) {
-    assert.equal(creditsForPackage(bad), null, `must refuse: ${JSON.stringify(bad)}`);
+  for (const bad of [null, undefined, 5, {}, [], true, { dics_scoop: "scoop" }]) {
+    assert.equal(creditsForPackage(bad, 1), null, `must refuse: ${JSON.stringify(bad)}`);
   }
 });
 
@@ -61,17 +77,15 @@ test("the catalogue is frozen — it cannot be extended at runtime", () => {
   assert.throws(
     () => {
       "use strict";
-      (PLAY_CREDIT_PACKAGES as Record<string, number>).free_1000 = 1000;
+      (PLAY_CREDIT_PACKAGES as Record<string, string>).free_1000 = "custom";
     },
     /read only|not extensible|Cannot add/i
   );
-  assert.equal(creditsForPackage("free_1000"), null);
+  assert.equal(creditsForPackage("free_1000", 1), null);
 });
 
-test("every catalogue entry is a positive integer", () => {
-  for (const [id, credits] of Object.entries(PLAY_CREDIT_PACKAGES)) {
-    assert.ok(Number.isInteger(credits) && credits > 0, `${id} = ${credits}`);
-  }
+test("every catalogue entry names only a supported economic class", () => {
+  assert.deepEqual(new Set(Object.values(PLAY_CREDIT_PACKAGES)), new Set(["scoop", "custom"]));
 });
 
 // ---------------------------------------------------------------------------
@@ -126,8 +140,8 @@ test("the catalogue carries no cash price", () => {
 
 const GRANT_SRC = readFileSync("app/api/entitlement/grant/route.ts", "utf8");
 
-test("the route resolves credits from the package, never from the caller", () => {
-  assert.match(GRANT_SRC, /creditsForPackage\(packageId\)/);
+test("the route resolves credits from package plus validated economic quantity", () => {
+  assert.match(GRANT_SRC, /creditsForPackage\(packageId, quantity\)/);
   // The only `credits` binding must be the resolved one. If a caller-supplied
   // value is ever read into it again, this fails.
   assert.equal(
@@ -142,6 +156,14 @@ test("legacy `credits` is REJECTED, not accepted-and-ignored", () => {
   // honoured, and discover otherwise only by reconciling balances.
   assert.match(GRANT_SRC, /body\.credits !== undefined/);
   assert.match(GRANT_SRC, /credits_not_accepted/);
+});
+
+test("grant-level quantity is required and validated before catalogue resolution", () => {
+  assert.match(GRANT_SRC, /invalid_quantity/);
+  assert.match(GRANT_SRC, /Number\.isSafeInteger\(body\.quantity\)/);
+  const validation = GRANT_SRC.indexOf("invalid_quantity");
+  const resolution = GRANT_SRC.indexOf("creditsForPackage(packageId, quantity)");
+  assert.ok(validation > 0 && resolution > validation);
 });
 
 test("an unknown package is refused before any grant is attempted", () => {
@@ -169,11 +191,11 @@ test("idempotency is unchanged — external_order_id is still the grant key", ()
   assert.match(GRANT_SRC, /grantKey:\s*externalOrderId/);
 });
 
-test("the ledger note names the PACKAGE, not the stand", () => {
+test("the ledger note names the package and economic quantity, not the stand", () => {
   // "digital ice cream purchase" hardcoded the commercial mechanism's name
   // into permanent evidence, which would make a second stand
   // indistinguishable in provenance.
-  assert.match(GRANT_SRC, /note:\s*`package:\$\{packageId\}`/);
+  assert.match(GRANT_SRC, /note:\s*`package:\$\{packageId\};quantity:\$\{quantity\}`/);
   assert.equal(
     /digital ice cream purchase/i.test(code("app/api/entitlement/grant/route.ts")),
     false,

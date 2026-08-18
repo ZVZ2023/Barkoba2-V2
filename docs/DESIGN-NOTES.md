@@ -3844,21 +3844,21 @@ acquisition CTA appeared. §39.1's earlier-visibility requirement is therefore n
 longer a design intuition — it was observed in the one real purchase journey
 this product has ever had.
 
-### 40.4 The remaining gap is a storefront, not a mechanism
+### 40.4 Historical finding; superseded by §41 and the Task 5 bridge
 
-What stood between a zero-credit player and Play Credits was a human with a
-shell. Replace that human with software and the bridge is complete. Nothing in
-Barkóba's crediting path needs to change to accept a real stand.
-
-D1 — *which* concrete stand/provider — remains OPEN and parked.
+At the time of this proof, what stood between a zero-credit player and Play
+Credits was a human with a shell. §41 subsequently selected ordinary DICS
+purchases and the separate payment-side Vercel adapter; Task 5 implements that
+software path. The `test_scoop_5` values above remain historical evidence only,
+not an active catalogue or commercial rule.
 
 ---
 
 ## 41. DICS stays unchanged — provenance, and a refined money boundary
 
-**RATIFIED. Foundation implemented after `2.6.5.0`; commercial classification
-and conversion remain open.** This supersedes the `test_scoop_5` product design
-proposed before it, and amends what shipped at `2.6.5.0`.
+**RATIFIED. Foundation implemented after `2.6.5.0`; classification and reward
+conversion frozen for the Task 5 bridge.** This supersedes the `test_scoop_5`
+product design proposed before it, and amends what shipped at `2.6.5.0`.
 
 ### 41.1 The product decision that forced the redesign
 
@@ -3886,17 +3886,21 @@ the rule more important, not less.
 
 **Frozen decision 10 holds exactly as written** — the payment-side Vercel
 adapter maps Stripe price ID → `package_id`, Barkóba independently maps
-`package_id` → credits. Only what `package_id` *names* changed: not a Barkóba
-product, but a neutral alias for an **ordinary DICS item**.
+`package_id` plus validated economic `quantity` → internal Play Credits. Only
+what `package_id` *names* changed: not a Barkóba product, but a neutral DICS
+**economic class**.
 
 ```
-Stripe price_id → (payment-side Vercel adapter) → package_id → (Barkóba) → credits × quantity
+Stripe paid purchase → (payment-side Vercel adapter) → economic class + quantity
+  → (Barkóba) → internal Play Credits → player-facing RACES
 ```
 
 Two mappings, neither knowing the other's vocabulary. Swap the processor and
-only the payment-side adapter's table changes. **A price ID is a name, not an amount** —
-routing on it rather than on `amount_total` is what keeps pricing out of the
-entitlement path.
+only the payment-side adapter's table changes. For scoop offers, **a price ID is
+a name, not an amount**. Custom is the deliberate exception at the payment
+boundary: the adapter classifies completed €10 steps from Stripe's verified
+paid total, then sends only an economic step count. Barkóba never reads money
+to calculate entitlement.
 
 **Ownership, stated once:** the payment-side Vercel adapter owns *Stripe
 purchase → package classification*. Barkóba owns *package → credit
@@ -3976,13 +3980,45 @@ than half an hour. Neither is a security concern — **a reference authorises
 nothing on its own**, since the grant additionally requires the server-to-server
 secret.
 
-### 41.6 What remains OPEN
+### 41.6 Frozen DICS reward mapping and RACE normalization
 
-- **Exact credit conversion values.** All genuine paid DICS offers may
-  eventually qualify. **These numbers must not be invented** — not as a
-  placeholder, and not to make a test pass.
-- Which offers qualify at all: Custom Flavor (€25, different currency,
-  human-fulfilled over 24–72h); For Your AI Companion and AI Chooses are gifts
-  *for someone else*.
-- Unattributable paid purchases — expired or absent reference. Manual repair for
-  now; automated reconciliation stays deferred.
+The player-facing unit is **RACE / RACES**. Play Credits remain the internal
+append-only accounting unit. Every future playable run costs exactly one Play
+Credit at all four frozen question budgets (20 / 35 / 50 / 100), so one RACE
+means one run without a lossy display conversion.
+
+All legitimate DICS purchases qualify. Flavour, design and product semantics
+remain provenance only and never decide the reward.
+
+| Paid DICS economic class | Barkóba grant input | RACES / Play Credits |
+|---|---|---:|
+| 1 scoop | `dics_scoop`, quantity `1` | 5 |
+| 2 scoops | `dics_scoop`, quantity `2` | 15 |
+| 3 scoops | `dics_scoop`, quantity `3` | 30 |
+| Custom €25 base | `dics_custom`, quantity `1` | 100 |
+| each completed additional €10 | increment `dics_custom` quantity by `1` | +50 |
+
+The caller cannot send a credit or RACE amount. Barkóba validates the economic
+class and quantity, then resolves this table in code. `purchase_facts` remains
+structurally excluded from that calculation.
+
+### 41.7 Task 5 bridge boundary and remaining operations
+
+The Barkóba implementation creates a 24-hour `purchase_ref` and hands the
+player to DICS. DICS forwards it invisibly as Stripe
+`client_reference_id` without changing any offer, and carries the same opaque
+reference through Stripe's supported UTM redirect propagation. A neutral DICS
+completion page returns only Barkóba-originated buyers to Barkóba; ordinary DICS
+buyers remain in DICS. A separate Vercel adapter verifies Stripe's raw-body
+signature, requires a paid session in the configured mode, safely ignores
+ordinary sessions with no Barkóba reference, classifies the allowlisted Stripe
+Price, and calls Barkóba's authenticated idempotent grant route.
+`/play?purchase=return` remains display-only and re-reads the server-resolved
+balance.
+
+Deployment remains operationally separate: deploy the DICS provenance patch;
+configure every legitimate Stripe Price ID in the adapter; deploy the adapter
+with its Stripe and Barkóba secrets; register its Stripe events; set the
+existing Payment Links' post-payment redirect; apply migration `0008`; and
+deploy Barkóba. Unattributable paid purchases (expired or absent reference)
+remain manual repair; automated reconciliation stays deferred.

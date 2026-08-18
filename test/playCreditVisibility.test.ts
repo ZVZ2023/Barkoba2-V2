@@ -116,7 +116,7 @@ test("§39 introductory copy is welcoming and Login remains painted", () => {
     UI.indexOf('view.play_state === "introductory_available"'),
     UI.indexOf('view.play_state === "has_balance"')
   );
-  assert.match(introductory, /Kezdő játékkeret vár rád/);
+  assert.match(introductory, /Az első RACE-ed vár rád/);
   assert.doesNotMatch(introductory, /\b0\b|elfogyott|CreditGateway|vásárl/i);
 
   assert.match(HEADER, /comingSoon\(copy\.header\.login\)/);

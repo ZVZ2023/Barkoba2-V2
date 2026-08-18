@@ -86,6 +86,16 @@ test("3. intent REFUSES an unclaimed player — the rule is server-side", () => 
   assert.ok(check > 0 && mint > check, "claim must be verified before minting");
 });
 
+test("3d. a claimed player's intent hands the browser to DICS with the opaque reference", () => {
+  assert.match(INTENT_ROUTE, /dicsStorefrontUrl\(\)/);
+  assert.match(INTENT_ROUTE, /url\.searchParams\.set\("purchase_ref", purchaseRef\)/);
+  assert.match(INTENT_ROUTE, /purchase_url:\s*purchaseUrl/);
+
+  const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
+  assert.match(ui, /window\.location\.assign\(data\.purchase_url\)/);
+  assert.doesNotMatch(ui, /<code>\{ref\}<\/code>/, "the journey must not stop at a displayed ref");
+});
+
 test("3b. the gateway routes to the EXISTING claim flow, unmodified", () => {
   const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
   assert.match(ui, /import ClaimPrompt from "\.\/ClaimPrompt"/);
@@ -196,11 +206,11 @@ test("8. a silent claim during purchase is reported as a sequencing defect", () 
 
 // --- adapter boundary -----------------------------------------------------
 
-test("the contract carries no pricing decision and no identity", () => {
+test("the contract carries no cash pricing decision and no identity", () => {
   const code = codeOnly(GRANT_ROUTE);
   assert.match(code, /purchase_ref/);
   assert.match(code, /external_order_id/);
-  assert.match(code, /credits/);
+  assert.match(code, /quantity/);
   assert.match(code, /purchase_facts/);
   // Attested money may be stored, but never used to derive the grant.
   assert.doesNotMatch(code, /credits\s*=.*purchase_facts|creditsForPackage\([^)]*purchase_facts/i);
@@ -208,7 +218,7 @@ test("the contract carries no pricing decision and no identity", () => {
   assert.doesNotMatch(code, /body\.player_id|player_id\?\?/);
 });
 
-test("V2.6: the adapter names a PACKAGE and cannot supply an amount", () => {
+test("the adapter names an economic package and quantity, never a credit amount", () => {
   // REVERSES THE V2.4 ASSERTION THIS REPLACES, deliberately. V2.4 required
   // `credits` to be a positive integer supplied by the adapter, on the reasoning
   // that price-to-credits was the adapter's decision. That was defensible while
@@ -218,7 +228,8 @@ test("V2.6: the adapter names a PACKAGE and cannot supply an amount", () => {
   //
   // The split moved: the stand still owns the cash price, Barkóba now owns what
   // a package is WORTH.
-  assert.match(GRANT_ROUTE, /creditsForPackage\(packageId\)/);
+  assert.match(GRANT_ROUTE, /creditsForPackage\(packageId, quantity\)/);
+  assert.match(GRANT_ROUTE, /invalid_quantity/);
   assert.match(GRANT_ROUTE, /unknown_package/);
   // Rejected, not ignored — a caller still sending it holds a wrong model of
   // who prices a sale, and this is the cheapest place to correct that.
@@ -228,7 +239,7 @@ test("V2.6: the adapter names a PACKAGE and cannot supply an amount", () => {
 
 // --- 9. nothing frozen or previously proven was disturbed ----------------
 
-test("9. no frozen gameplay surface or isolation change", () => {
+test("9. RACE normalization changes only entitlement cost, not isolation or the complimentary grant", () => {
   // The entitlement allowlist and quarantine are unchanged.
   const iso = readFileSync("scripts/check-isolation.mjs", "utf8");
   const permitted = iso.slice(
@@ -237,9 +248,10 @@ test("9. no frozen gameplay surface or isolation change", () => {
   );
   assert.doesNotMatch(permitted, /entitlement|purchaseRef/);
 
-  // The cost curve and complimentary grant are untouched.
+  // Every future playable run consumes one internal Play Credit, regardless
+  // of the selected question budget. The complimentary grant is untouched.
   const budget = readFileSync("lib/questionBudget.ts", "utf8");
-  assert.match(budget, /20: 1,\s*\n\s*35: 2,\s*\n\s*50: 3,\s*\n\s*100: 5,/);
+  assert.match(budget, /20: 1,\s*\n\s*35: 1,\s*\n\s*50: 1,\s*\n\s*100: 1,/);
   assert.match(readFileSync("lib/env.ts", "utf8"), /ENTITLEMENT_COMPLIMENTARY_GRANT", 10/);
 
   // Purchase-reference storage remains Redis-only; provenance is ledger-owned.

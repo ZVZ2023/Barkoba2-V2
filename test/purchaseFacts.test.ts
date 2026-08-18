@@ -78,8 +78,9 @@ test("STRUCTURAL: provenance is never read by catalogue or credit calculation", 
   const entitlements = readFileSync("lib/entitlements.ts", "utf8");
 
   assert.doesNotMatch(catalogue, /purchaseFacts|purchase_facts/);
-  assert.match(grantRoute, /const credits = creditsForPackage\(packageId\)/);
+  assert.match(grantRoute, /const credits = creditsForPackage\(packageId, quantity\)/);
   assert.doesNotMatch(grantRoute, /creditsForPackage\([^)]*(purchaseFacts|purchase_facts)/);
+  assert.doesNotMatch(catalogue, /amount_total|currency|stripe_price_id/);
 
   const beforeInsert = entitlements.slice(
     entitlements.indexOf("export async function grantPurchase"),

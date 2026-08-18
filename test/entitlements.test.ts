@@ -280,14 +280,14 @@ test("7c. an entitlement-store outage denies CREATION only", async () => {
   // — proven by the route scan in test 7.
 });
 
-// --- V2.4.1: variable cost by question budget -------------------------------
+// --- RACE normalization: one run costs one internal Play Credit -------------
 
-test("V2.4.1-1. each budget tier charges its own Play Credit cost", async () => {
+test("one RACE costs one Play Credit at every question budget", async () => {
   const tiers: Array<[number, number]> = [
     [20, 1],
-    [35, 2],
-    [50, 3],
-    [100, 5],
+    [35, 1],
+    [50, 1],
+    [100, 1],
   ];
 
   for (const [budget, expected] of tiers) {
@@ -303,19 +303,10 @@ test("V2.4.1-1. each budget tier charges its own Play Credit cost", async () => 
   }
 });
 
-test("V2.4.1-1b. the curve is monotonic, and a non-tier budget is never cheaper", () => {
-  // The curve is arbitrary, not a calibrated cost proxy — but it must never
-  // reward a larger budget with a smaller charge.
-  assert.ok(
-    playCreditCostForBudget(20) < playCreditCostForBudget(35) &&
-      playCreditCostForBudget(35) < playCreditCostForBudget(50) &&
-      playCreditCostForBudget(50) < playCreditCostForBudget(100)
-  );
-
-  // MAX_QUESTIONS is a deployment knob and need not be one of the four tiers.
-  assert.equal(playCreditCostForBudget(25), 2, "25 charges at the 35 tier");
+test("a non-tier budget is still exactly one RACE", () => {
   assert.equal(playCreditCostForBudget(1), 1);
-  assert.equal(playCreditCostForBudget(500), 5, "beyond the top tier, top price");
+  assert.equal(playCreditCostForBudget(25), 1);
+  assert.equal(playCreditCostForBudget(500), 1);
 });
 
 test("V2.4.1-2. the charge cannot be priced by the client", async () => {
@@ -340,30 +331,16 @@ test("V2.4.1-2. the charge cannot be priced by the client", async () => {
   // asserted above. Here we prove the mapping itself is fixed.
   await grantComplimentary(P, 10);
   await consumeForGame(P, randomUUID(), 100);
-  assert.equal(await getBalance(P), 5, "budget-100 costs exactly 5, never a client's number");
+  assert.equal(await getBalance(P), 9, "budget-100 costs exactly one, never a client's number");
 });
 
-test("V2.4.1-3. insufficient balance for the RESOLVED tier is refused", async () => {
-  await grantComplimentary(P, 3);
+test("a zero balance is refused regardless of selected budget", async () => {
+  await grantComplimentary(P, 1);
+  await consumeForGame(P, randomUUID(), 20);
 
-  // 3 credits, budget-100 game costs 5 -> refused.
   const denied = await consumeForGame(P, randomUUID(), 100);
   assert.deepEqual(denied, { ok: false, reason: "insufficient_balance" });
-  assert.equal(await getBalance(P), 3, "a refused charge takes nothing");
-
-  // Same 3 credits, budget-35 game costs 2 -> succeeds.
-  const allowed = await consumeForGame(P, randomUUID(), 35);
-  assert.deepEqual(allowed, { ok: true, reason: "consumed" });
-  assert.equal(await getBalance(P), 1);
-});
-
-test("V2.4.1-3b. the dimension-blind pre-check passes, the charge still refuses", async () => {
-  // The pre-check runs before the body is parsed, so it cannot know the tier.
-  // A player with SOME balance passes it and is correctly refused later.
-  await grantComplimentary(P, 1);
-  assert.equal((await canStartGame(P)).ok, true, "pre-check sees a positive balance");
-  assert.equal((await consumeForGame(P, randomUUID(), 100)).ok, false, "charge knows the tier");
-  assert.equal(await getBalance(P), 1);
+  assert.equal(await getBalance(P), 0, "a refused charge takes nothing");
 });
 
 test("V2.4.1-5/6. a new player gets exactly 10, once, spendable on any tier", async () => {
@@ -381,7 +358,7 @@ test("V2.4.1-5/6. a new player gets exactly 10, once, spendable on any tier", as
     ok: true,
     reason: "consumed",
   });
-  assert.equal(await getBalance(fresh), 5);
+  assert.equal(await getBalance(fresh), 9);
 
   // And the default really is 10.
   const envSrc = readFileSync("lib/env.ts", "utf8");
@@ -463,15 +440,14 @@ test("CONCURRENCY: without serialisation the last credit is double-spent", async
   assert.equal(balance, -1, "balance goes negative: this is the defect");
 });
 
-test("CONCURRENCY: the guard holds with VARIABLE cost, not only cost=1", async () => {
-  // V2.4.1 — the prior pass proved this for a single credit. Re-proved for a
-  // budget-100 game costing 5: 7 credits fund exactly one such game, and two
-  // concurrent attempts must not both take 5.
+test("CONCURRENCY: budget-100 RACES retain the same one-credit guard", async () => {
+  // Two concurrent RACES against one credit must not both succeed, regardless
+  // of the selected question budget.
   const pg: PgSim = { rows: [], locks: new Set() };
-  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 7, operational_game_id: null, grant_key: null });
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 1, operational_game_id: null, grant_key: null });
 
   const cost = playCreditCostForBudget(100);
-  assert.equal(cost, 5);
+  assert.equal(cost, 1);
 
   const [a, b] = await Promise.all([
     simulateCharge(pg, P, randomUUID(), cost, { useAdvisoryLock: true }),
@@ -480,15 +456,15 @@ test("CONCURRENCY: the guard holds with VARIABLE cost, not only cost=1", async (
 
   const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
   assert.equal([a, b].filter(Boolean).length, 1, "exactly one budget-100 game is funded");
-  assert.equal(balance, 2, "7 - 5, not 7 - 10");
+  assert.equal(balance, 0, "one RACE consumed, not two");
   assert.ok(balance >= 0, "balance must never go negative");
 });
 
-test("CONCURRENCY: mixed tiers cannot overspend a shared balance", async () => {
-  // 5 credits, three concurrent attempts at different tiers. Whatever wins, the
-  // balance must never go below zero.
+test("CONCURRENCY: mixed-budget RACES cannot overspend a shared balance", async () => {
+  // Two credits, three concurrent attempts at different budgets. Exactly two
+  // can succeed and the balance must never go below zero.
   const pg: PgSim = { rows: [], locks: new Set() };
-  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 5, operational_game_id: null, grant_key: null });
+  pg.rows.push({ player_id: P, kind: "complimentary_grant", amount: 2, operational_game_id: null, grant_key: null });
 
   await Promise.all(
     [100, 50, 35].map((budget) =>
@@ -499,8 +475,8 @@ test("CONCURRENCY: mixed tiers cannot overspend a shared balance", async () => {
   );
 
   const balance = pg.rows.reduce((n, r) => n + r.amount, 0);
-  assert.ok(balance >= 0, `balance went negative: ${balance}`);
-  assert.ok(balance <= 5);
+  assert.equal(balance, 0);
+  assert.equal(pg.rows.filter((r) => r.kind === "consumption").length, 2);
 });
 
 test("CONCURRENCY: with the advisory lock, exactly one succeeds and balance never goes negative", async () => {

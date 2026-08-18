@@ -306,7 +306,7 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
         <div className="flex flex-col gap-4 rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
           <p className="text-sm text-[var(--red)]">{view.message}</p>
           {noCredit && entitlement.view?.play_state === "exhausted" && (
-            <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+            <CreditGateway />
           )}
           <button
             onClick={() => setView({ step: "entry" })}

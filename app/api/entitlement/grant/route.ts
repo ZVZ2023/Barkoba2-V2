@@ -19,6 +19,7 @@ import { validatePurchaseFacts } from "@/lib/purchaseFacts";
 //   purchase_ref       who   — opaque, short-lived, minted by Barkóba
 //   external_order_id  which — the adapter's order, and the idempotency key
 //   package_id         what  — WHICH package was sold, not how much it is worth
+//   quantity           economic-class quantity, validated by Barkóba
 //   the shared secret  proof the caller is the adapter
 //
 // Barkóba stores optional attested payment provenance, but never prices or
@@ -77,6 +78,8 @@ interface GrantBody {
    * still believing it can price its own sale.
    */
   package_id?: string;
+  /** Scoop count (1–3), or Custom economic step count (1 + completed €10 steps). */
+  quantity?: unknown;
   /** Optional attested payment provenance. It never influences the grant amount. */
   purchase_facts?: unknown;
   /** Legacy. Present only so it can be explicitly refused. */
@@ -175,7 +178,14 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const credits = creditsForPackage(packageId);
+  if (!Number.isSafeInteger(body.quantity) || Number(body.quantity) <= 0) {
+    return NextResponse.json(
+      { error: "invalid_quantity", message: "A positive integer quantity is required." },
+      { status: 400 }
+    );
+  }
+  const quantity = Number(body.quantity);
+  const credits = creditsForPackage(packageId, quantity);
   if (credits === null) {
     // The id is NOT echoed back. An unknown package is either a
     // misconfiguration or a probe, and reflecting caller input into an error
@@ -233,7 +243,7 @@ export async function POST(req: NextRequest) {
       // made a second stand indistinguishable in provenance and DIC harder to
       // replace than the architecture claims it is. What is durably true about
       // this row is which package was sold.
-      note: `package:${packageId}`,
+      note: `package:${packageId};quantity:${quantity}`,
       purchaseFacts,
     });
   } catch (err) {

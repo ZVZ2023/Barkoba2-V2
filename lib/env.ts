@@ -42,6 +42,12 @@ function optionalInt(name: string, fallback: number): number {
 export const env = {
   anthropicApiKey: () => required("ANTHROPIC_API_KEY"),
 
+  // Ordinary DICS storefront. The purchase reference is appended by the
+  // intent route; DICS then forwards it invisibly as Stripe client_reference_id.
+  dicsStorefrontUrl: () =>
+    process.env.DICS_STOREFRONT_URL ||
+    "https://zvz2023.github.io/Lighthouse/digital-ice-cream/",
+
   // Fast/cheap model for the repeated per-turn Racer loop.
   modelRacer: () => process.env.ANTHROPIC_MODEL_RACER || "claude-haiku-4-5-20251001",
 

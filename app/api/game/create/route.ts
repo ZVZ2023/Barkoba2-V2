@@ -23,7 +23,7 @@ function entitlementRefusal(outcome: ConsumeOutcome): NextResponse | null {
     return NextResponse.json(
       {
         error: "no_play_credit",
-        message: "Elfogyott a játékkereted. Tölts fel, és jöhet a következő játék.",
+        message: "Elfogyott a RACES-egyenleged. Szerezz további RACES-t, és jöhet a következő futam.",
       },
       { status: 402 }
     );
@@ -31,7 +31,7 @@ function entitlementRefusal(outcome: ConsumeOutcome): NextResponse | null {
   return NextResponse.json(
     {
       error: "entitlement_unavailable",
-      message: "Most nem tudjuk ellenőrizni a játékkeretedet. Próbáld újra hamarosan.",
+      message: "Most nem tudjuk ellenőrizni a RACES-egyenlegedet. Próbáld újra hamarosan.",
     },
     { status: 503 }
   );

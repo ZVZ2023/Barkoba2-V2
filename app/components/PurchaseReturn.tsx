@@ -7,7 +7,8 @@ import { useEffect, useState } from "react";
 //
 // THE PROBLEM THIS EXISTS TO SOLVE, stated plainly: Stripe's success redirect
 // races its own webhook. The player's browser can arrive back here before the
-// payment provider has told the Worker anything, so a naive refresh shows the
+// payment provider has told the payment-side Vercel adapter anything, so a
+// naive refresh shows the
 // OLD balance to someone who has just paid. That is the single most likely way
 // a working bridge looks broken.
 //
@@ -27,7 +28,7 @@ import { useEffect, useState } from "react";
 // deliberately NEUTRAL: it says the credit has not appeared YET.
 //
 // CREDIT IS NEVER GRANTED HERE. This is display only. The browser's return
-// trip is cosmetic — value moves on the Stripe → Worker → grant path and
+// trip is cosmetic — value moves on the Stripe → payment adapter → grant path and
 // nowhere else. Nothing in this file can change a balance, and nothing in it
 // should ever be able to.
 // ---------------------------------------------------------------------------
@@ -150,11 +151,11 @@ export default function PurchaseReturn({ onResolved }: { onResolved?: () => void
   if (phase === "credited") {
     return (
       <div className="rounded-xl border border-[var(--green)]/30 bg-[var(--green)]/8 p-5 shadow-sm backdrop-blur-sm">
-        <p className="text-base font-semibold">Köszönjük! A játékkereted megérkezett.</p>
+        <p className="text-base font-semibold">Köszönjük! A RACES megérkezett.</p>
         <p className="mt-1 text-sm text-neutral-800">
           {typeof balance === "number"
-            ? `Jelenlegi játékkereted: ${balance}.`
-            : "A keretedet a fenti jelzés mutatja."}
+            ? `Jelenlegi RACES-egyenleged: ${balance}.`
+            : "A RACES-egyenlegedet a fenti jelzés mutatja."}
         </p>
       </div>
     );
@@ -166,11 +167,11 @@ export default function PurchaseReturn({ onResolved }: { onResolved?: () => void
     <div className="rounded-xl border border-white/60 bg-white/75 p-5 shadow-sm backdrop-blur-sm">
       <p className="text-base font-semibold">A vásárlás feldolgozás alatt van.</p>
       <p className="mt-1 text-sm text-neutral-800">
-        A játékkeret néha néhány másodperccel később érkezik meg. Frissítsd az
+        A RACES néha néhány másodperccel később érkezik meg. Frissítsd az
         oldalt egy pillanat múlva.
       </p>
       <p className="mt-2 text-sm text-neutral-600">
-        Ha a fizetés sikeres volt, a keret meg fog érkezni — nem kell újra
+        Ha a fizetés sikeres volt, a RACES meg fog érkezni — nem kell újra
         fizetned.
       </p>
     </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { playerIdFromHeaders } from "@/lib/playerIdentity";
 import { getDurablePlayer } from "@/lib/playerStore";
 import { createPurchaseRef, PURCHASE_REF_TTL_SECONDS } from "@/lib/purchaseRef";
+import { env } from "@/lib/env";
 
 // ---------------------------------------------------------------------------
 // V2.4 — purchase intent. Step one of the adapter contract.
@@ -38,16 +39,31 @@ export async function POST(req: NextRequest) {
       {
         error: "claim_required",
         message:
-          "Előbb mentsd el a játékosodat, hogy a vásárolt kereted később is a tiéd maradjon.",
+          "Előbb mentsd el a játékosodat, hogy a RACES-egyenleged később is a tiéd maradjon.",
       },
       { status: 409 }
     );
   }
 
   const purchaseRef = await createPurchaseRef(playerId);
+  let purchaseUrl: string;
+  try {
+    const url = new URL(env.dicsStorefrontUrl());
+    if (url.protocol !== "https:") throw new Error("DICS storefront must use HTTPS");
+    url.searchParams.set("purchase_ref", purchaseRef);
+    purchaseUrl = url.toString();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] invalid DICS_STOREFRONT_URL:", err);
+    return NextResponse.json(
+      { error: "purchase_unavailable", message: "A vásárlási oldal most nem érhető el." },
+      { status: 503 }
+    );
+  }
 
   return NextResponse.json({
     purchase_ref: purchaseRef,
+    purchase_url: purchaseUrl,
     // Where the adapter should send the player back to. Relative on purpose:
     // Barkóba does not know or care which host the adapter runs on.
     return_url: "/play?purchase=return",

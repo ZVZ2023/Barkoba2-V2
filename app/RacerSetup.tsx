@@ -166,13 +166,13 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
                 key={b}
                 onClick={() => setBudget(b)}
                 disabled={busy}
-                title={short ? "Ehhez nincs elég játékkereted" : undefined}
+                title={short ? "Ehhez nincs elég RACE-ed" : undefined}
                 className={`${pill(budget === b)} ${short && budget !== b ? "opacity-45" : ""}`}
               >
                 <span className="block">{b}</span>
                 {typeof cost === "number" && (
                   <span className="block text-xs opacity-80">
-                    {cost} keret{short ? " ⚠" : ""}
+                    {cost} RACE{short ? " ⚠" : ""}
                   </span>
                 )}
               </button>
@@ -200,7 +200,7 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
       )}
 
       {noCredit && entitlement.view?.play_state === "exhausted" && (
-        <CreditGateway onBalanceMayHaveChanged={entitlement.refresh} />
+        <CreditGateway />
       )}
       </>
       )}
