@@ -31,7 +31,7 @@ export default function SiteHeader({
         </span>
       </Link>
 
-      <div className="flex min-w-0 shrink-0 flex-col items-end gap-2">
+      <div className="flex min-w-0 shrink-0 flex-col items-end gap-3">
         <div className="flex items-center gap-2">
           <button
             onClick={() => comingSoon(copy.header.languageAria ?? "Nyelv")}
@@ -53,7 +53,7 @@ export default function SiteHeader({
         </div>
 
         {hasEstablishedPlayerIdentity && (
-          <div className="flex max-w-sm flex-col items-end gap-2 text-right">
+          <div className="flex max-w-sm flex-col items-end gap-2 whitespace-nowrap text-right">
             <BalanceBadge view={entitlement.view} />
             {entitlement.view?.play_state === "exhausted" && (
               <CreditGateway />
