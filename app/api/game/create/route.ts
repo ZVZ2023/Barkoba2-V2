@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
@@ -191,7 +191,7 @@ const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 export async function POST(req: NextRequest) {
   // V2.1.1 — who is acting. Null whenever identity is unconfigured; the game is
   // fully playable either way, which is why nothing below branches on it.
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
 
   // V2.5 — resolved once, applied to whichever branch creates the game below.
   const benchmark = resolveBenchmark(req);

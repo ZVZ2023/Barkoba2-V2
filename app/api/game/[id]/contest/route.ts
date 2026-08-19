@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import {
   createContest,
   listOwnContestsForGame,
@@ -64,7 +64,7 @@ function fail(error: string) {
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
 
   // An unauthenticated caller is rejected before any database work. Identity
   // may be unconfigured in a deployment, in which case nobody can contest —
@@ -115,7 +115,7 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
  * exists, not whether any contest was filed, and never anything about one.
  */
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
   if (!playerId) return fail("not_a_participant");
 
   const loaded = await listOwnContestsForGame(params.id, playerId);

@@ -4,25 +4,26 @@ import {
   PLAYER_NAME_COOKIE,
   issuePlayerNameCookie,
   playerCookieOptions,
-  playerIdFromHeaders,
   sanitizePlayerName,
 } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { setAccountDisplayName } from "@/lib/playerAccounts";
 
 export const dynamic = "force-dynamic";
 
 /**
  * "What should we call you?" - V2.1.2.0.
  *
- * Sets the display-name cookie for the acting anonymous Player. An empty or
+ * Sets the display-name cookie for the acting guest or account. An empty or
  * omitted name records a SKIP: the cookie is still written, because its
  * presence is what stops us asking again. That is the whole reason skipping is
  * a first-class answer rather than a dismissal.
  *
- * This is not registration. There is no account, no credential, no durable
- * record, and nothing here can be recovered on another device.
+ * This route does not register. For an authenticated account it also updates
+ * the existing account row, so a later device receives the same name.
  */
 export async function POST(req: Request) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
 
   if (!playerId) {
     // Identity is unconfigured or unavailable. Nothing to attach a name to, and
@@ -42,6 +43,7 @@ export async function POST(req: Request) {
   }
 
   const name = sanitizePlayerName(body.name ?? "");
+  await setAccountDisplayName(playerId, name || null).catch(() => undefined);
   const res = NextResponse.json({ name: name || null, max: MAX_PLAYER_NAME_LENGTH });
   res.cookies.set(
     PLAYER_NAME_COOKIE,

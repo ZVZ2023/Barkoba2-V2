@@ -1,9 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import RecoverPrompt from "./RecoverPrompt";
 
 /**
- * "Protect this player" — offered after a completed game, never before.
+ * Register the current guest in place, preserving its player_id and ownership.
  *
  * A newcomer has nothing worth keeping and no reason to trust us with anything.
  * A player who has just finished a game does. That ordering is the reason there
@@ -12,9 +13,9 @@ import { useCallback, useEffect, useState } from "react";
 type State =
   | { step: "loading" }
   | { step: "offer" }
+  | { step: "existing" }
   | { step: "code"; code: string }
-  | { step: "protected" }
-  | { step: "confirm_delete" };
+  | { step: "protected" };
 
 export default function ClaimPrompt() {
   const [state, setState] = useState<State>({ step: "loading" });
@@ -25,9 +26,13 @@ export default function ClaimPrompt() {
     let live = true;
     void (async () => {
       try {
-        const res = await fetch("/api/player/claim");
+        const res = await fetch("/api/account/register");
         const data = await res.json();
-        if (live) setState({ step: data.protected ? "protected" : "offer" });
+        if (live) {
+          setState({
+            step: data.authenticated ? "protected" : data.registered ? "existing" : "offer",
+          });
+        }
       } catch {
         // Identity unavailable or offline. Offering something that cannot work
         // is worse than offering nothing.
@@ -39,28 +44,18 @@ export default function ClaimPrompt() {
     };
   }, []);
 
-  const claim = useCallback(async () => {
+  const register = useCallback(async () => {
     setBusy(true);
     try {
-      const res = await fetch("/api/player/claim", { method: "POST" });
+      const res = await fetch("/api/account/register", { method: "POST" });
       const data = await res.json();
-      setState(data.recovery_code ? { step: "code", code: data.recovery_code } : { step: "protected" });
+      if (data.recovery_code) setState({ step: "code", code: data.recovery_code });
+      else if (data.authenticated) window.location.reload();
+      else setState({ step: "offer" });
     } catch {
       setState({ step: "offer" });
     } finally {
       setBusy(false);
-    }
-  }, []);
-
-  const remove = useCallback(async () => {
-    setBusy(true);
-    try {
-      await fetch("/api/player/claim", { method: "DELETE" });
-    } catch {
-      // fall through — the reload below reflects whatever actually happened
-    } finally {
-      setBusy(false);
-      window.location.reload();
     }
   }, []);
 
@@ -91,7 +86,7 @@ export default function ClaimPrompt() {
             {copied ? "Másolva" : "Másolom"}
           </button>
           <button
-            onClick={() => setState({ step: "protected" })}
+            onClick={() => window.location.reload()}
             className="min-h-11 flex-1 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)]"
           >
             Elmentettem
@@ -101,60 +96,42 @@ export default function ClaimPrompt() {
     );
   }
 
-  if (state.step === "confirm_delete") {
+  if (state.step === "protected") {
     return (
-      <div className={`${box} border-[var(--red)]/40 bg-[var(--red)]/6`}>
-        <p className="text-sm text-[var(--ink)]">
-          Ezzel véglegesen töröljük ezt a játékost: a nevét és a helyreállító kódját is.
-          A kódod ezután nem működik többé, és ez nem vonható vissza.
-        </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => void remove()}
-            disabled={busy}
-            className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
-          >
-            Törlöm
-          </button>
-          <button
-            onClick={() => setState({ step: "protected" })}
-            disabled={busy}
-            className="min-h-11 flex-1 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)]"
-          >
-            Mégsem
-          </button>
-        </div>
+      <div className="rounded-md border border-[var(--green)]/25 bg-white/50 px-3 py-2">
+        <p className="text-sm text-[var(--green)]">Be vagy jelentkezve.</p>
       </div>
     );
   }
 
-  if (state.step === "protected") {
+  if (state.step === "existing") {
     return (
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-[var(--ink)]/15 bg-white/50 px-3 py-2">
-        <p className="text-xs text-[var(--ink-soft)]">Ez a játékos védve van.</p>
-        <button
-          onClick={() => setState({ step: "confirm_delete" })}
-          className="min-h-11 text-xs text-[var(--red)] underline underline-offset-2"
-        >
-          Játékos törlése
-        </button>
+      <div className={`${box} border-[var(--ink)]/15 bg-white/50`}>
+        <p className="text-sm font-medium text-[var(--ink)]">Ez a játékos már regisztrált.</p>
+        <p className="text-xs text-[var(--ink-soft)]">
+          A régi eszközazonosító nem léptet be a fiókba. Használd a meglévő
+          helyreállító kódodat.
+        </p>
+        <RecoverPrompt initiallyOpen />
       </div>
     );
   }
 
   return (
     <div className={`${box} border-[var(--ink)]/15 bg-white/50`}>
-      <p className="text-sm font-medium text-[var(--ink)]">Megvédjem ezt a játékost?</p>
+      <p className="text-sm font-medium text-[var(--ink)]">
+        Regisztrálsz játékosfiókot?
+      </p>
       <p className="text-xs text-[var(--ink-soft)]">
-        Kapsz egy helyreállító kódot, amivel másik eszközön is ugyanez a játékos leszel.
-        Nem kell regisztrálni, nem kérünk e-mail címet és jelszót sem.
+        Ugyanez a játékos és RACES-egyenleg marad meg. A belépési kóddal másik
+        eszközön is bejelentkezhetsz; e-mail cím és jelszó nem kell.
       </p>
       <button
-        onClick={() => void claim()}
+        onClick={() => void register()}
         disabled={busy}
         className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
       >
-        Megvédem
+        Regisztráció
       </button>
     </div>
   );

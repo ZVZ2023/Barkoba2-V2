@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { env } from "@/lib/env";
-import { grantPurchase } from "@/lib/entitlements";
+import { grantPurchase, PurchaseAccountRequiredError } from "@/lib/entitlements";
 import { consumePurchaseRef, resolvePurchaseRef } from "@/lib/purchaseRef";
 import { creditsForPackage, knownPackageIds } from "@/lib/playCreditPackages";
 import { validatePurchaseFacts } from "@/lib/purchaseFacts";
@@ -245,26 +245,20 @@ export async function POST(req: NextRequest) {
       // this row is which package was sold.
       note: `package:${packageId};quantity:${quantity}`,
       purchaseFacts,
+      allowLegacyUnregistered: !ref.accountRequired,
     });
   } catch (err) {
+    if (err instanceof PurchaseAccountRequiredError) {
+      return NextResponse.json(
+        { error: "account_required", message: "Purchase owner is not registered." },
+        { status: 409 }
+      );
+    }
     // eslint-disable-next-line no-console
     console.error(`[barkoba] purchase grant failed for order ${externalOrderId}:`, err);
     return NextResponse.json(
       { error: "grant_failed", message: "Could not record the grant. Safe to retry." },
       { status: 503 }
-    );
-  }
-
-  // Under Option C the player was already claimed before the reference existed,
-  // so this branch should be unreachable on this path. If it fires, the
-  // sequencing guarantee has been broken somewhere and that is worth a loud
-  // line rather than a silent success.
-  if (result.recoveryCode) {
-    // eslint-disable-next-line no-console
-    console.error(
-      "[barkoba] SEQUENCING DEFECT: purchase grant silently claimed a player. " +
-        "Under claim-before-purchase this should be impossible — a purchase_ref " +
-        "was minted for an unclaimed player."
     );
   }
 

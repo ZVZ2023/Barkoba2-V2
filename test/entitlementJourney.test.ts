@@ -8,7 +8,7 @@ import {
 } from "../lib/purchaseRef";
 
 // ---------------------------------------------------------------------------
-// V2.4 — the commercial journey: visibility, claim-before-purchase, and the
+// V2.4+ — the commercial journey: visibility, account-before-purchase, and the
 // adapter contract.
 //
 // The ledger behaviours themselves are proven in test/entitlements.test.ts and
@@ -41,7 +41,7 @@ function codeOnly(src: string): string {
 test("1. the balance route is session-scoped and cannot name another player", () => {
   // The id comes only from the trusted header middleware sets after stripping
   // any client copy. There is no parameter to ask about someone else.
-  assert.match(BALANCE_ROUTE, /playerIdFromHeaders\(req\.headers\)/);
+  assert.match(BALANCE_ROUTE, /resolveActingPlayerId\(req\.headers\)/);
   assert.doesNotMatch(BALANCE_ROUTE, /searchParams|params\.|body\./);
   // Reuses the existing computation rather than adding a second one.
   assert.match(BALANCE_ROUTE, /getStatus\(playerId\)/);
@@ -74,19 +74,20 @@ test("2c. no balance or price is computed on the client", () => {
   assert.doesNotMatch(ui, /playCreditCostForBudget|entitlement_ledger|SUM\(/);
 });
 
-// --- 3. claim before purchase, enforced by the server ----------------------
+// --- 3. account before purchase, enforced by the server --------------------
 
-test("3. intent REFUSES an unclaimed player — the rule is server-side", () => {
-  assert.match(INTENT_ROUTE, /getDurablePlayer\(playerId\)/);
-  assert.match(INTENT_ROUTE, /claim_required/);
+test("3. intent REFUSES every caller without an authenticated account session", () => {
+  assert.match(INTENT_ROUTE, /resolveActingPlayer\(req\.headers\)/);
+  assert.match(INTENT_ROUTE, /context\.kind !== "account"/);
+  assert.match(INTENT_ROUTE, /account_required/);
   assert.match(INTENT_ROUTE, /status: 409/);
-  // The reference is minted only after the durable check.
-  const check = INTENT_ROUTE.indexOf("getDurablePlayer");
-  const mint = INTENT_ROUTE.indexOf("createPurchaseRef");
-  assert.ok(check > 0 && mint > check, "claim must be verified before minting");
+  // The reference is minted only after the account check.
+  const check = INTENT_ROUTE.indexOf('context.kind !== "account"');
+  const mint = INTENT_ROUTE.lastIndexOf("createPurchaseRef(");
+  assert.ok(check > 0 && mint > check, "account session must be verified before minting");
 });
 
-test("3d. a claimed player's intent hands the browser to DICS with the opaque reference", () => {
+test("3d. an account intent hands the browser to DICS with the opaque reference", () => {
   assert.match(INTENT_ROUTE, /dicsStorefrontUrl\(\)/);
   assert.match(INTENT_ROUTE, /url\.searchParams\.set\("purchase_ref", purchaseRef\)/);
   assert.match(INTENT_ROUTE, /purchase_url:\s*purchaseUrl/);
@@ -96,11 +97,11 @@ test("3d. a claimed player's intent hands the browser to DICS with the opaque re
   assert.doesNotMatch(ui, /<code>\{ref\}<\/code>/, "the journey must not stop at a displayed ref");
 });
 
-test("3b. the gateway routes to the EXISTING claim flow, unmodified", () => {
+test("3b. the gateway exposes both registration and login", () => {
   const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
   assert.match(ui, /import ClaimPrompt from "\.\/ClaimPrompt"/);
-  assert.match(ui, /\/api\/player\/claim/);
-  // No purpose-built claim variant.
+  assert.match(ui, /import RecoverPrompt from "\.\/RecoverPrompt"/);
+  assert.match(ui, /\/api\/account\/session/);
   assert.doesNotMatch(ui, /claimPlayer|generateRecoveryCode|recovery_key/);
 });
 
@@ -136,8 +137,8 @@ test("4b. references are opaque, long, and valid for a DICS shopping day", () =>
   assert.equal(normalizePurchaseRef(" abc-def "), "ABCDEF");
 });
 
-test("4c. the reference is scoped to the calling session and consumed on use", () => {
-  assert.match(INTENT_ROUTE, /createPurchaseRef\(playerId\)/);
+test("4c. the reference is scoped to the authenticated account and consumed on use", () => {
+  assert.match(INTENT_ROUTE, /createPurchaseRef\(context\.playerId\)/);
   assert.match(GRANT_ROUTE, /resolvePurchaseRef\(purchaseRef\)/);
   // Marked spent BY A NAMED ORDER rather than deleted, so a redelivered
   // callback is recognisable instead of merely surviving. Behaviour is proven
@@ -194,14 +195,17 @@ test("6b. grantPurchase is called, not reimplemented", () => {
   assert.doesNotMatch(GRANT_ROUTE, /INSERT INTO|claimPlayer|getDurablePlayer/);
 });
 
-// --- 8. the silent-claim branch must not fire on this path ----------------
+// --- 8. account ownership is enforced at intent and ledger insertion -------
 
-test("8. a silent claim during purchase is reported as a sequencing defect", () => {
-  assert.match(GRANT_ROUTE, /result\.recoveryCode/);
-  assert.match(GRANT_ROUTE, /SEQUENCING DEFECT/);
-  // Structurally it cannot fire: intent refuses unclaimed players, so no
-  // purchase_ref can exist for one.
-  assert.match(INTENT_ROUTE, /claim_required/);
+test("8. new references and grants require account ownership", () => {
+  const ref = readFileSync("lib/purchaseRef.ts", "utf8");
+  const entitlements = readFileSync("lib/entitlements.ts", "utf8");
+  const migration = readFileSync("migrations/0009_player_accounts.sql", "utf8");
+  assert.match(INTENT_ROUTE, /context\.kind !== "account"/);
+  assert.match(ref, /account_required: true/);
+  assert.match(GRANT_ROUTE, /allowLegacyUnregistered: !ref\.accountRequired/);
+  assert.match(entitlements, /PurchaseAccountRequiredError/);
+  assert.match(migration, /entitlement_purchase_requires_account/);
 });
 
 // --- adapter boundary -----------------------------------------------------
@@ -261,4 +265,5 @@ test("9. RACE normalization changes only entitlement cost, not isolation or the 
 test("9b. middleware strips the trusted header across the new namespace", () => {
   const mw = readFileSync("middleware.ts", "utf8");
   assert.match(mw, /"\/api\/entitlement\/:path\*"/);
+  assert.match(mw, /"\/api\/account\/:path\*"/);
 });

@@ -102,7 +102,7 @@ test("re-claiming is refused rather than rotating the code", async () => {
   assert.equal((await recoverPlayer(first))?.player_id, id);
 });
 
-test("deletion removes both records, directly and with no scan", async () => {
+test("legacy Upstash deletion still removes both records directly", async () => {
   const id = mintPlayerId();
   const code = generateRecoveryCode();
   const record = await claimPlayer(id, "Zsolt", code);
@@ -138,7 +138,7 @@ test("durable identity lives behind one module", () => {
 
 test("recovery is rate limited, and the raw code is never stored", () => {
   assert.match(
-    readFileSync("app/api/player/recover/route.ts", "utf8"),
+    readFileSync("app/api/account/login/route.ts", "utf8"),
     /checkRecoveryRateLimit/,
   );
   const store = readFileSync("lib/playerStore.ts", "utf8");
@@ -159,8 +159,8 @@ test("recovery validity does not depend on PLAYER_ID_SECRET", () => {
   assert.match(code, /crypto\.subtle\.digest\("SHA-256"/);
 });
 
-test("the privacy page discloses durable identity and deletion", () => {
+test("the privacy page discloses the credential and unavailable account deletion", () => {
   const src = readFileSync("app/privacy/page.tsx", "utf8");
   assert.match(src, /helyreállító kód/);
-  assert.match(src, /törl/, "deletion must be disclosed");
+  assert.match(src, /Regisztrált fiók törlését[^<]*nem kínálja fel/);
 });

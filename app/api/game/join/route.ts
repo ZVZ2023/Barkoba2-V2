@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGame, saveGame } from "@/lib/gameStore";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { consumeJoinCode, resolveJoinCode } from "@/lib/joinCode";
 import { isHumanVsHuman } from "@/lib/seats";
 
@@ -14,7 +14,7 @@ import { isHumanVsHuman } from "@/lib/seats";
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
   if (!playerId) {
     return NextResponse.json(
       { error: "identity_unavailable", message: "Most nem érhető el a játékosazonosító." },

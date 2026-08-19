@@ -1,9 +1,10 @@
 // ---------------------------------------------------------------------------
 // V2.1.1 — anonymous persistent Player identity.
 //
-// The Player is a signed opaque identifier held by the client. There is no
-// players table, no player record, and no durable identity store: the cookie
-// IS the identity, and the signature is what makes it trustworthy.
+// For an unregistered guest, the Player is a signed opaque identifier held by
+// the client. Registered players keep the same player_id but authority moves to
+// a revocable server-side account session (lib/actingPlayer.ts). This cookie is
+// therefore guest continuity only; it must never authorize an existing account.
 //
 // WHY SIGNED RATHER THAN A BARE RANDOM ID
 // A bare id in a cookie is client-asserted — anyone can set it to any value.
@@ -23,7 +24,7 @@
 
 export const PLAYER_COOKIE = "bk_player";
 
-/** ~13 months. Matches the cookie lifetime; there is nothing else to expire. */
+/** ~13 months for guest continuity. Account sessions have their own lifetime. */
 export const PLAYER_COOKIE_MAX_AGE = 400 * 24 * 60 * 60;
 
 const SECRET_ENV = "PLAYER_ID_SECRET";
@@ -156,8 +157,8 @@ export function playerIdFromHeaders(headers: Headers): string | null {
 //   present, empty name    asked, skipped   -> never ask again
 //   present, with a name   named            -> use it
 //
-// There is no players table and no durable record. The cookie is the whole
-// mechanism, exactly as with the identity itself.
+// For guests the cookie is the whole mechanism. A registered account also
+// stores its current display name in accounts.players.
 // ---------------------------------------------------------------------------
 
 export const PLAYER_NAME_COOKIE = "bk_player_name";

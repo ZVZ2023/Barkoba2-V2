@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { getContestById } from "@/lib/corpus/gameContests";
 
 // ---------------------------------------------------------------------------
@@ -40,7 +40,7 @@ function denied() {
 }
 
 export async function GET(req: NextRequest, { params }: { params: { id: string } }) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
   if (!playerId) return denied();
 
   const contest = await getContestById(params.id, playerId);

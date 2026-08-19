@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGame } from "@/lib/gameStore";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { resolveSeat } from "@/lib/seats";
 import { getSecretForComposer } from "@/lib/secretStore";
 import { buildComposerView, buildGameView } from "@/lib/gameView";
@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   // The header middleware sets, having stripped any client-supplied copy.
-  const playerId = playerIdFromHeaders(_req.headers);
+  const playerId = await resolveActingPlayerId(_req.headers);
 
   const game = await getGame(params.id);
   if (!game) {

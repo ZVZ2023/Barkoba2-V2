@@ -8,8 +8,8 @@ import { useState } from "react";
  * Collapsed by default. A returning player on a new device is the rare case;
  * putting an input box in front of everyone else would be its own kind of wall.
  */
-export default function RecoverPrompt() {
-  const [open, setOpen] = useState(false);
+export default function RecoverPrompt({ initiallyOpen = false }: { initiallyOpen?: boolean }) {
+  const [open, setOpen] = useState(initiallyOpen);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,14 +19,17 @@ export default function RecoverPrompt() {
     setBusy(true);
     setError(null);
     try {
-      const res = await fetch("/api/player/recover", {
+      const res = await fetch("/api/account/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code }),
       });
       const data = await res.json();
       if (!res.ok) setError(data.message || "Ez a kód nem érvényes.");
-      else setDone(data.display_name || "");
+      else {
+        setDone(data.display_name || "");
+        window.location.reload();
+      }
     } catch {
       setError("Hálózati hiba — próbáld újra.");
     } finally {
@@ -37,7 +40,7 @@ export default function RecoverPrompt() {
   if (done !== null) {
     return (
       <p className="rounded-md border border-[var(--green)]/30 bg-[var(--green)]/6 px-3 py-2 text-sm text-[var(--green)]">
-        {done ? `Szia, ${done}! Megvagy.` : "Megvagy — visszakaptad a játékosodat."}
+        {done ? `Szia, ${done}! Bejelentkeztél.` : "Bejelentkeztél."}
       </p>
     );
   }
@@ -48,14 +51,14 @@ export default function RecoverPrompt() {
         onClick={() => setOpen(true)}
         className="min-h-11 self-start text-sm text-[var(--ink-soft)] underline underline-offset-2"
       >
-        Már játszottam korábban
+        Bejelentkezés meglévő fiókba
       </button>
     );
   }
 
   return (
     <div className="flex flex-col gap-2 rounded-md border border-[var(--ink)]/15 bg-white/50 p-4">
-      <p className="text-sm text-[var(--ink)]">Írd be a helyreállító kódodat.</p>
+      <p className="text-sm text-[var(--ink)]">Írd be a belépési/helyreállító kódodat.</p>
       <input
         spellCheck={false}
         autoCapitalize="characters"
@@ -71,7 +74,7 @@ export default function RecoverPrompt() {
         disabled={busy || !code.trim()}
         className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
       >
-        Folytatom
+        Bejelentkezés
       </button>
       {error && <p className="text-sm text-[var(--red)]">{error}</p>}
     </div>

@@ -73,8 +73,11 @@ test("§39 keeps play_state server-resolved", () => {
 });
 
 test("§39 guards the global entitlement query behind a verified existing identity", () => {
-  assert.match(WRAPPER, /verifyPlayerCookie\(jar\.get\(PLAYER_COOKIE\)\?\.value\)/);
-  assert.match(WRAPPER, /hasEstablishedPlayerIdentity=\{playerId !== null\}/);
+  assert.match(WRAPPER, /resolveActingPlayer\(headers\(\)\)/);
+  assert.match(
+    WRAPPER,
+    /hasEstablishedPlayerIdentity=\{context\.kind === "account" \|\| context\.kind === "guest"\}/
+  );
 
   const guard = UI.indexOf("if (!enabled) return");
   const request = UI.indexOf('fetch("/api/player/entitlement"');
@@ -111,7 +114,7 @@ test("§39 exposes acquisition only for server-resolved exhausted state", () => 
   }
 });
 
-test("§39 introductory copy is welcoming and Login remains painted", () => {
+test("§39 introductory copy stays welcoming while the account control becomes real", () => {
   const introductory = UI.slice(
     UI.indexOf('view.play_state === "introductory_available"'),
     UI.indexOf('view.play_state === "has_balance"')
@@ -119,8 +122,11 @@ test("§39 introductory copy is welcoming and Login remains painted", () => {
   assert.match(introductory, /Az első RACE-ed vár rád/);
   assert.doesNotMatch(introductory, /\b0\b|elfogyott|CreditGateway|vásárl/i);
 
-  assert.match(HEADER, /comingSoon\(copy\.header\.login\)/);
-  assert.doesNotMatch(HEADER, /\/api\/[^"']*login|\blogout\(|\bsignIn\(|\bsignOut\(/i);
+  assert.match(HEADER, /<AccountControl authenticated=\{accountAuthenticated\} \/>/);
+  const account = readFileSync("app/components/AccountControl.tsx", "utf8");
+  assert.match(account, /\/api\/account\/logout/);
+  assert.match(account, /<ClaimPrompt \/>/);
+  assert.match(account, /<RecoverPrompt initiallyOpen \/>/);
 });
 
 test("§39 does not paint introductory or unlimited players as unable to afford play", () => {

@@ -4,16 +4,17 @@ import Link from "next/link";
 import { copy } from "@/lib/ui/copy";
 import { useComingSoon } from "./ComingSoon";
 import { BalanceBadge, CreditGateway, useEntitlement } from "./Entitlement";
+import AccountControl from "./AccountControl";
 
-// Real controls, not painted ones. The language selector and Login are visible
-// because the design promises them and because removing them would mean
-// redesigning this header the moment V2 lands — but both route to the honest
-// Coming Soon treatment rather than pretending to work.
+// The language selector remains painted/Coming Soon. AccountControl is the
+// minimal real registration/login/logout surface; the TASK 7 layout is kept.
 
 export default function SiteHeader({
   hasEstablishedPlayerIdentity,
+  accountAuthenticated,
 }: {
   hasEstablishedPlayerIdentity: boolean;
+  accountAuthenticated: boolean;
 }) {
   const comingSoon = useComingSoon();
   const entitlement = useEntitlement(hasEstablishedPlayerIdentity);
@@ -42,13 +43,7 @@ export default function SiteHeader({
           <span aria-hidden="true" className="text-xs opacity-60">▾</span>
         </button>
 
-        <button
-          onClick={() => comingSoon(copy.header.login)}
-          className="flex min-h-10 min-w-0 items-center gap-2 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
-        >
-          <span aria-hidden="true" className="shrink-0">👤</span>
-          <span className="truncate">{copy.header.login}</span>
-        </button>
+        <AccountControl authenticated={accountAuthenticated} />
       </div>
 
       {hasEstablishedPlayerIdentity && (

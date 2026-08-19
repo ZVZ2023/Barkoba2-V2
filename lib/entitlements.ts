@@ -1,7 +1,6 @@
 import { getSql, isCorpusConfigured, type SqlClient } from "./corpus/db";
 import { env } from "./env";
-import { getDurablePlayer, claimPlayer } from "./playerStore";
-import { generateRecoveryCode } from "./recoveryCode";
+import { getPlayerAccount } from "./playerAccounts";
 import { playCreditCostForBudget } from "./questionBudget";
 
 // ---------------------------------------------------------------------------
@@ -285,6 +284,8 @@ export interface GrantOptions {
 export interface PurchaseGrantOptions extends GrantOptions {
   /** Attested provider facts. Stored on the purchase row; never interpreted here. */
   purchaseFacts?: object | null;
+  /** One-time cutover for references minted before account-required intent. */
+  allowLegacyUnregistered?: boolean;
 }
 
 /**
@@ -318,32 +319,20 @@ export async function grantComplimentary(
 
 export interface PurchaseGrantResult {
   granted: boolean;
-  /**
-   * Set only when this grant triggered a silent claim. THE ONLY TIME THIS CODE
-   * IS EVER RETURNED — it is not stored anywhere in recoverable form, exactly
-   * like a normal claim. A caller that discards it leaves the player unable to
-   * recover the identity holding their purchased value.
-   */
-  recoveryCode?: string;
+}
+
+export class PurchaseAccountRequiredError extends Error {
+  constructor() {
+    super("purchase entitlement requires a registered account");
+    this.name = "PurchaseAccountRequiredError";
+  }
 }
 
 /**
- * Purchased play credit. REQUIRES A RECOVERABLE IDENTITY.
- *
- * Real-money value must never sit on an identity that exists only as a cookie:
- * clearing the browser would destroy something the player paid for. So this
- * function refuses to write the ledger row until the player has a recovery
- * credential, performing a SILENT CLAIM if they do not.
- *
- * Silent claim attaches a credential to the EXISTING player_id via
- * claimPlayer(), whose contract is explicit that it "never mints a new
- * identity". Nothing about the player's games, seats or history changes.
- *
- * The precondition lives HERE, in the grant function, rather than in a caller.
- * There is no purchase flow yet; when one arrives it cannot forget this.
- *
- * Surfacing the returned code to the player belongs to the future checkout
- * work and is deliberately not built here.
+ * Purchased play credit requires a registered account. The sole exception is
+ * a purchase_ref minted by the immediately preceding deployment and still
+ * inside its frozen 24-hour lifetime. That exception is explicit, temporary
+ * and carried into the database as a transaction-local flag.
  */
 export async function grantPurchase(
   playerId: string,
@@ -352,27 +341,13 @@ export async function grantPurchase(
 ): Promise<PurchaseGrantResult> {
   if (amount <= 0) return { granted: false };
 
-  let recoveryCode: string | undefined;
-
-  const existing = await getDurablePlayer(playerId);
-  if (!existing) {
-    // Silent claim: credential attached to the same id, no interruption, no
-    // replacement. Display name stays null — this is not a profile.
-    const code = generateRecoveryCode();
-    const claimed = await claimPlayer(playerId, null, code);
-    if (!claimed) {
-      // Lost a race with another claim. The player is now recoverable either
-      // way, which is the precondition we needed; continue without a code.
-      if (!(await getDurablePlayer(playerId))) {
-        return { granted: false };
-      }
-    } else {
-      recoveryCode = code;
-    }
+  const account = await getPlayerAccount(playerId);
+  if (!account && !options.allowLegacyUnregistered) {
+    throw new PurchaseAccountRequiredError();
   }
 
   const sql = requireSql();
-  const rows = await sql`
+  const insert = sql`
     INSERT INTO accounts.entitlement_ledger
       (player_id, kind, amount, grant_key, expires_at, note, purchase_facts)
     VALUES
@@ -382,8 +357,16 @@ export async function grantPurchase(
     ON CONFLICT DO NOTHING
     RETURNING entry_id
   `;
+  const rows = account
+    ? await insert
+    : (
+        await sql.transaction([
+          sql`SELECT set_config('barkoba.allow_legacy_purchase', 'on', true)`,
+          insert,
+        ])
+      )[1];
 
-  return { granted: rows.length > 0, ...(recoveryCode ? { recoveryCode } : {}) };
+  return { granted: (rows ?? []).length > 0 };
 }
 
 /**

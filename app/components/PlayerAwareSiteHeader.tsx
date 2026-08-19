@@ -1,18 +1,23 @@
-import { cookies } from "next/headers";
-import { PLAYER_COOKIE, verifyPlayerCookie } from "@/lib/playerIdentity";
+import { headers } from "next/headers";
+import { resolveActingPlayer } from "@/lib/actingPlayer";
 import SiteHeader from "./SiteHeader";
 
 /**
  * Server boundary for the global Play Credit status.
  *
- * A valid cookie must already be present on the incoming request. Middleware
- * may mint an identity during a first visit, but that response-side cookie is
- * deliberately not treated as established yet. This prevents the global
- * header from issuing a ledger aggregate for every first-time visitor or bot.
+ * A verified guest or authenticated account must already be present on the
+ * incoming request. Middleware may mint a guest during a first visit, but that
+ * response-side cookie is deliberately not treated as established yet. A
+ * registered player's old guest cookie is also excluded unless accompanied by
+ * a valid server-side account session.
  */
 export default async function PlayerAwareSiteHeader() {
-  const jar = cookies();
-  const playerId = await verifyPlayerCookie(jar.get(PLAYER_COOKIE)?.value);
+  const context = await resolveActingPlayer(headers());
 
-  return <SiteHeader hasEstablishedPlayerIdentity={playerId !== null} />;
+  return (
+    <SiteHeader
+      hasEstablishedPlayerIdentity={context.kind === "account" || context.kind === "guest"}
+      accountAuthenticated={context.kind === "account"}
+    />
+  );
 }

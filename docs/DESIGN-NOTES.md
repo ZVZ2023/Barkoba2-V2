@@ -3760,14 +3760,14 @@ Balance and status belong **globally** in the upper-right account area,
 beneath or associated with the player/profile control — not landing-only.
 `SiteHeader.tsx` is already a client component, so the existing
 `useEntitlement()` hook is reused with an enable guard. A small server wrapper
-verifies that the signed, httpOnly Player cookie was already present on the
-incoming request before enabling the hook. A first-contact request on which
-middleware is only now issuing the cookie therefore does not query the ledger;
-the next player-facing navigation can show the status.
+verifies an authorised guest or account on the incoming request before enabling
+the hook. A first-contact request on which middleware is only now issuing the
+guest cookie therefore does not query the ledger; the next player-facing
+navigation can show the status.
 
-**Login remains out of scope.** It stays a painted control routing to Coming
-Soon; authentication and profile expansion are separate scope, and this task
-must not quietly become that one.
+**Historical §39 scope note:** Login was out of scope for TASK 3 and remained a
+painted control in `2.6.7.0`. §42 later supersedes that UI boundary with the
+minimum real account control; the four-state entitlement model is unchanged.
 
 **Only query entitlement once Barkóba has an established player identity.**
 Global placement otherwise puts a Neon aggregate on every page view — landing,
@@ -4022,3 +4022,30 @@ with its Stripe and Barkóba secrets; register its Stripe events; set the
 existing Payment Links' post-payment redirect; apply migration `0008`; and
 deploy Barkóba. Unattributable paid purchases (expired or absent reference)
 remain manual repair; automated reconciliation stays deferred.
+
+## 42. Module 1 account ownership (TASK 6B)
+
+Purchased RACES belong to a registered player account, not to a browser. The
+account deliberately retains the existing `player_id`, so entitlement rows,
+games, seats, purchase provenance and the introductory-grant marker require no
+copy, transfer or rewrite.
+
+Guests still use the signed `bk_player` cookie for frictionless play. Registering
+converts that guest in place and uses the existing high-entropy recovery code as
+the login credential. A login creates a fresh opaque server-side session; only
+its SHA-256 hash is stored in `accounts.player_sessions`, and the browser holds
+the raw value in a Secure, HttpOnly, SameSite=Lax cookie. Logout revokes the
+server row. Once `player_id` exists in `accounts.players`, `bk_player` alone is
+never authority for it.
+
+There is no automatic merge. Logging into an account ignores an unrelated local
+guest and does not copy its ledger or game ownership. Existing Upstash protected
+players migrate idempotently when they register or log in. New purchase intent
+requires an authenticated account session. A database trigger also rejects new
+purchase ledger rows for unregistered players; only references minted before
+this cutover retain their original 24-hour grant authority through an explicit
+transaction-local exception.
+
+Registered-account deletion is not exposed in Module 1. Profiles, e-mail,
+passwords, magic links, passkeys, history dashboards and social surfaces remain
+out of scope.

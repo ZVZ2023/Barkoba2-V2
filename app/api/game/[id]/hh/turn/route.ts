@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getGame, saveGame } from "@/lib/gameStore";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { awaitingRacer, isHumanVsHuman, requireSeat } from "@/lib/seats";
 import { pendingQuestionIndex, revisionOf } from "@/lib/gameView";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
@@ -92,7 +92,7 @@ function newEntry(turnIndex: number): QuestionLogEntry {
 }
 
 export async function POST(req: NextRequest, { params }: { params: { id: string } }) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
 
   const game = await getGame(params.id);
   if (!game) {

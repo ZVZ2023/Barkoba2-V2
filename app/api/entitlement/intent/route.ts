@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
-import { getDurablePlayer } from "@/lib/playerStore";
+import { resolveActingPlayer } from "@/lib/actingPlayer";
 import { createPurchaseRef, PURCHASE_REF_TTL_SECONDS } from "@/lib/purchaseRef";
 import { env } from "@/lib/env";
 
@@ -10,42 +9,34 @@ import { env } from "@/lib/env";
 // Mints an opaque reference the player carries to the commercial adapter, so
 // the adapter can name a Barkóba player without ever holding a player_id.
 //
-// CLAIM BEFORE PURCHASE (design decision, Option C). This route REFUSES to mint
-// a reference for a player who has no recovery credential. That is what makes
-// the rule structural rather than a matter of UI sequencing: purchased value
-// can only ever attach to an identity the player can get back, and Barkóba
-// never has to store a raw credential to make that true.
-//
-// The consequence is deliberate — grantPurchase()'s silent-claim branch should
-// never fire on this path. If it ever does, a player reached purchase without
-// being claimed, and that is a sequencing bug worth surfacing rather than
-// absorbing.
+// ACCOUNT BEFORE PURCHASE. This route mints only for a live, revocable account
+// session. A signed guest cookie or legacy protected-player cookie is not
+// account authority, even though both may still name the same player_id.
 // ---------------------------------------------------------------------------
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
-  const playerId = playerIdFromHeaders(req.headers);
-  if (!playerId) {
+  const context = await resolveActingPlayer(req.headers);
+  if (context.kind === "none") {
     return NextResponse.json(
       { error: "identity_unavailable", message: "Most nem érhető el a játékosazonosító." },
       { status: 409 }
     );
   }
 
-  const durable = await getDurablePlayer(playerId);
-  if (!durable) {
+  if (context.kind !== "account") {
     return NextResponse.json(
       {
-        error: "claim_required",
+        error: "account_required",
         message:
-          "Előbb mentsd el a játékosodat, hogy a RACES-egyenleged később is a tiéd maradjon.",
+          "A vásárláshoz regisztrálj vagy jelentkezz be, hogy a RACES a fiókodhoz tartozzon.",
       },
       { status: 409 }
     );
   }
 
-  const purchaseRef = await createPurchaseRef(playerId);
+  const purchaseRef = await createPurchaseRef(context.playerId);
   let purchaseUrl: string;
   try {
     const url = new URL(env.dicsStorefrontUrl());

@@ -2,7 +2,8 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
-import { claimPlayer } from "../lib/playerStore";
+import { registerPlayerAccount } from "../lib/playerAccounts";
+import { getKV } from "../lib/kv";
 import {
   createPurchaseRef,
   consumePurchaseRef,
@@ -36,6 +37,7 @@ interface Row {
 }
 
 let ledger: Row[] = [];
+let accounts = new Set<string>();
 
 const SECRET = "test_grant_secret_value";
 const AUTH = { authorization: `Bearer ${SECRET}`, "content-type": "application/json" };
@@ -56,6 +58,30 @@ const SAVED = {
 function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   const sql = strings.join(" ");
   const v = values as unknown[];
+
+  if (/INSERT INTO accounts\.players/.test(sql)) {
+    const player = String(v[0]);
+    if (accounts.has(player)) return Promise.resolve([]);
+    accounts.add(player);
+    return Promise.resolve([{
+      player_id: player,
+      recovery_key: String(v[1]),
+      display_name: v[2] ?? null,
+      created_at: String(v[3]),
+      registered_at: new Date().toISOString(),
+    }]);
+  }
+
+  if (/FROM accounts\.players/.test(sql)) {
+    const player = String(v[0]);
+    return Promise.resolve(accounts.has(player) ? [{
+      player_id: player,
+      recovery_key: "f".repeat(64),
+      display_name: null,
+      created_at: new Date().toISOString(),
+      registered_at: new Date().toISOString(),
+    }] : []);
+  }
 
   if (/SELECT COALESCE\(SUM\(amount\), 0\) AS balance/.test(sql)) {
     const player = String(v[0]);
@@ -89,6 +115,7 @@ fakeSql.transaction = (q: Promise<Record<string, unknown>[]>[]) => Promise.all(q
 
 beforeEach(() => {
   ledger = [];
+  accounts = new Set();
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   process.env.ENTITLEMENTS_ENABLED = "true";
@@ -126,9 +153,13 @@ async function callGrant(body: unknown, headers: Record<string, string> = AUTH):
   return { status: res.status, body: (await res.json()) as Record<string, unknown> };
 }
 
-/** A claimed player, as Option C guarantees before any reference is minted. */
+/** A registered player, as account-required intent guarantees for new refs. */
 async function claimedPlayer(id: string): Promise<string> {
-  await claimPlayer(id, null, "TEST-RECOVERY-CODE");
+  await registerPlayerAccount({
+    playerId: id,
+    recoveryKey: "f".repeat(64),
+    displayName: null,
+  });
   return id;
 }
 
@@ -307,6 +338,42 @@ async function createPurchaseRefAs(ref: string, playerId: string): Promise<void>
   await getKV().set(`purchase_ref:${ref}`, { player_id: playerId }, PURCHASE_REF_TTL_SECONDS);
 }
 
+test("2d. new references cannot grant to an unregistered player", async () => {
+  const ref = "ACCOUNTR3QUIRED1";
+  await getKV().set(
+    `purchase_ref:${ref}`,
+    { player_id: "9".repeat(32), account_required: true },
+    PURCHASE_REF_TTL_SECONDS
+  );
+  const result = await callGrant({
+    purchase_ref: ref,
+    external_order_id: "order_account_required",
+    package_id: "dics_scoop",
+    quantity: 1,
+  });
+  assert.equal(result.status, 409);
+  assert.equal(result.body.error, "account_required");
+  assert.equal(purchaseRows().length, 0);
+});
+
+test("2e. a pre-cutover reference remains grantable for its frozen TTL", async () => {
+  const ref = "GRANDFATHERED123";
+  await getKV().set(
+    `purchase_ref:${ref}`,
+    { player_id: "8".repeat(32) },
+    PURCHASE_REF_TTL_SECONDS
+  );
+  const result = await callGrant({
+    purchase_ref: ref,
+    external_order_id: "order_grandfathered",
+    package_id: "dics_scoop",
+    quantity: 1,
+  });
+  assert.equal(result.status, 200);
+  assert.equal(result.body.granted, true);
+  assert.equal(purchaseRows().length, 1);
+});
+
 // --- 3. a spent reference cannot be turned on another order -----------------
 
 test("3. a spent reference presented with a DIFFERENT order is refused", async () => {
@@ -455,7 +522,7 @@ test("a spent reference gets a fresh 24-hour retention clock from spend", async 
   await consumePurchaseRef(ref, "order_ttl");
 
   const state = await resolvePurchaseRef(ref);
-  assert.deepEqual(state, { playerId: player, consumedBy: "order_ttl" });
+  assert.deepEqual(state, { playerId: player, consumedBy: "order_ttl", accountRequired: true });
 });
 
 test("marking is idempotent and cannot rewrite whose reference it is", async () => {
@@ -464,7 +531,11 @@ test("marking is idempotent and cannot rewrite whose reference it is", async () 
 
   await consumePurchaseRef(ref, "order_x");
   await consumePurchaseRef(ref, "order_x");
-  assert.deepEqual(await resolvePurchaseRef(ref), { playerId: player, consumedBy: "order_x" });
+  assert.deepEqual(await resolvePurchaseRef(ref), {
+    playerId: player,
+    consumedBy: "order_x",
+    accountRequired: true,
+  });
 
   // Marking something that does not exist must not create it.
   await consumePurchaseRef("ZZZZZZZZZZZZZZZZ", "order_y");
@@ -495,7 +566,7 @@ test("the retry fix did not open the endpoint to a browser", async () => {
   assert.deepEqual(wrongSecret.body, noSecret.body);
 });
 
-test("the reference still carries no money, no price and no player id", () => {
+test("the reference carries no money or price and exposes no player id", () => {
   // The file explains at length WHY it holds no money and what the ledger does
   // instead, so a bare substring search finds the rationale and reports it as
   // the very thing it forbids. Assert on code, not on prose.
@@ -509,6 +580,7 @@ test("the reference still carries no money, no price and no player id", () => {
   assert.doesNotMatch(code, /price|currency|amount_cents|credits/i);
   // Still Redis-only: the fix added no durable store.
   assert.doesNotMatch(code, /accounts\.|entitlement_ledger|CREATE TABLE/);
-  // And the stored record is still exactly two fields.
-  assert.match(code, /player_id: hit\.player_id, consumed_by: externalOrderId/);
+  // Account cutover adds only a boolean policy marker to the internal record.
+  assert.match(code, /player_id: hit\.player_id,[\s\S]*consumed_by: externalOrderId/);
+  assert.match(code, /account_required/);
 });

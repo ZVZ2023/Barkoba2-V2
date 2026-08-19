@@ -77,6 +77,8 @@ export const PURCHASE_REF_CONSUMED_TTL_SECONDS = 24 * 60 * 60;
 
 interface PurchaseRefRecord {
   player_id: string;
+  /** Present on every reference minted after account ownership became mandatory. */
+  account_required?: boolean;
   /** The order that spent this reference. Absent while it is still fresh. */
   consumed_by?: string;
 }
@@ -85,6 +87,8 @@ interface PurchaseRefRecord {
 export interface PurchaseRefState {
   playerId: string;
   consumedBy: string | null;
+  /** False only for a pre-account reference grandfathered through its 24-hour TTL. */
+  accountRequired: boolean;
 }
 
 function refKey(ref: string): string {
@@ -107,7 +111,7 @@ export async function createPurchaseRef(playerId: string): Promise<string> {
   const ref = generatePurchaseRef();
   await getKV().set<PurchaseRefRecord>(
     refKey(ref),
-    { player_id: playerId },
+    { player_id: playerId, account_required: true },
     PURCHASE_REF_TTL_SECONDS
   );
   return ref;
@@ -127,7 +131,11 @@ export async function resolvePurchaseRef(rawRef: string): Promise<PurchaseRefSta
   if (ref.length !== REF_LENGTH) return null;
   const hit = await getKV().get<PurchaseRefRecord>(refKey(ref));
   if (!hit?.player_id) return null;
-  return { playerId: hit.player_id, consumedBy: hit.consumed_by ?? null };
+  return {
+    playerId: hit.player_id,
+    consumedBy: hit.consumed_by ?? null,
+    accountRequired: hit.account_required === true,
+  };
 }
 
 /**
@@ -151,7 +159,11 @@ export async function consumePurchaseRef(
   if (!hit?.player_id) return;
   await getKV().set<PurchaseRefRecord>(
     refKey(ref),
-    { player_id: hit.player_id, consumed_by: externalOrderId },
+    {
+      player_id: hit.player_id,
+      consumed_by: externalOrderId,
+      ...(hit.account_required === true ? { account_required: true } : {}),
+    },
     PURCHASE_REF_CONSUMED_TTL_SECONDS
   );
 }

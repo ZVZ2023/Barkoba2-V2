@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getGame } from "@/lib/gameStore";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { isHumanVsHuman, resolveSeat } from "@/lib/seats";
 import { buildGameView } from "@/lib/gameView";
 import GameClient from "./GameClient";
@@ -40,7 +40,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
   // client to render. resolveSeat answers "who is asking" instead.
   // -------------------------------------------------------------------------
   if (isHumanVsHuman(game)) {
-    const playerId = playerIdFromHeaders(headers());
+    const playerId = await resolveActingPlayerId(headers());
     const seat = resolveSeat(game, playerId);
 
     // A stranger holding the URL is not shown the game. Not even the transcript:

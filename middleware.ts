@@ -33,6 +33,9 @@ export const config = {
     "/api/game/:path*",
     // 2.1.2.0: the name route needs the acting player on the request.
     "/api/player/:path*",
+    // Module 1 account registration/login/logout/session routes need the same
+    // stripped, server-issued guest header during registration and cutover.
+    "/api/account/:path*",
     // V2.4: /intent needs the acting player. /grant does not — it resolves the
     // player from an opaque reference — but it is matched too so the inbound
     // x-bk-player strip applies uniformly across the whole namespace, and a

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { PlayState } from "@/lib/entitlements";
 import ClaimPrompt from "./ClaimPrompt";
+import RecoverPrompt from "./RecoverPrompt";
 
 // ---------------------------------------------------------------------------
 // V2.4 — what the player can see about their own entitlement, and where they
@@ -45,7 +46,7 @@ export function useEntitlement(
   useEffect(() => {
     // Global headers render for anonymous traffic and crawlers too. Do not
     // turn those page views into ledger aggregates: the server wrapper enables
-    // this only after it verifies an existing signed Player cookie.
+    // this only after it verifies a guest or authenticated account.
     if (!enabled) return;
 
     let live = true;
@@ -115,30 +116,29 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   );
 }
 
-type Step = "closed" | "checking" | "need_claim" | "ready" | "intent" | "error";
+type Step = "closed" | "checking" | "need_account" | "ready" | "intent" | "error";
 
 /**
  * The gateway a refused player is offered.
  *
- * CLAIM BEFORE PURCHASE. If the player has no recovery credential they are sent
- * to the existing claim flow first, reusing ClaimPrompt unchanged. That
- * ordering is what lets purchased credits attach to an identity the player can
- * recover, without Barkóba ever holding a raw credential.
+ * ACCOUNT BEFORE PURCHASE. A guest can register in place, while a returning
+ * player can log in with the existing recovery credential. Only the resulting
+ * revocable server session may create purchase intent.
  *
  * The server enforces the same rule independently: /api/entitlement/intent
- * refuses to mint a reference for an unclaimed player. This screen is the
+ * refuses to mint a reference without an account session. This screen is the
  * courteous path to it, not the guarantee.
  */
 export function CreditGateway() {
   const [step, setStep] = useState<Step>("closed");
   const [message, setMessage] = useState<string | null>(null);
 
-  const checkClaimed = useCallback(async () => {
+  const checkAccount = useCallback(async () => {
     setStep("checking");
     try {
-      const res = await fetch("/api/player/claim", { cache: "no-store" });
+      const res = await fetch("/api/account/session", { cache: "no-store" });
       const data = await res.json();
-      setStep(data?.protected ? "ready" : "need_claim");
+      setStep(data?.authenticated ? "ready" : "need_account");
     } catch {
       setStep("error");
       setMessage("Most nem érjük el a játékosodat. Próbáld újra.");
@@ -150,8 +150,7 @@ export function CreditGateway() {
       const res = await fetch("/api/entitlement/intent", { method: "POST" });
       const data = await res.json();
       if (!res.ok) {
-        // Most likely claim_required — the server's own guard firing.
-        setStep(data?.error === "claim_required" ? "need_claim" : "error");
+        setStep(data?.error === "account_required" ? "need_account" : "error");
         setMessage(data?.message ?? "Most nem sikerült elindítani a vásárlást.");
         return;
       }
@@ -171,7 +170,7 @@ export function CreditGateway() {
   if (step === "closed") {
     return (
       <button
-        onClick={() => void checkClaimed()}
+        onClick={() => void checkAccount()}
         className="min-h-11 self-start rounded-md bg-[#1e3a24] px-4 py-2 text-sm font-medium text-[#f6ece0]"
       >
         További RACES
@@ -183,19 +182,19 @@ export function CreditGateway() {
     <div className="flex flex-col gap-3 rounded-md border border-neutral-900/15 bg-white/70 p-4">
       {step === "checking" && <p className="text-sm text-neutral-700">Egy pillanat…</p>}
 
-      {step === "need_claim" && (
+      {step === "need_account" && (
         <>
-          <p className="text-sm font-medium">Előbb mentsd el a játékosodat</p>
+          <p className="text-sm font-medium">Előbb regisztrálj vagy jelentkezz be</p>
           <p className="text-sm text-neutral-700">
-            Így a RACES-egyenleged akkor is a tiéd marad, ha böngészőt vagy
-            eszközt váltasz. Kapsz egy helyreállító kódot — tedd el jól.
+            A megvásárolt RACES a játékosfiókodhoz tartozik, nem ehhez az eszközhöz.
           </p>
           <ClaimPrompt />
+          <RecoverPrompt />
           <button
-            onClick={() => void checkClaimed()}
+            onClick={() => void checkAccount()}
             className="min-h-11 self-start rounded-md border border-neutral-900/25 px-4 py-2 text-sm"
           >
-            Kész, mentettem — tovább
+            Bejelentkeztem — tovább
           </button>
         </>
       )}

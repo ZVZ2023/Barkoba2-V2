@@ -16,7 +16,7 @@ import {
 // it here — after imports hoist, before any test runs — is enough.
 process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
 
-/** V2.1.1 — signed, client-held, server-verifiable, no durable record. */
+/** V2.1.1 guest identity; registered authority is tested separately. */
 
 test("a minted id is opaque and 128 bits", () => {
   const a = mintPlayerId();
@@ -109,7 +109,7 @@ test("middleware does not run over the statically rendered pages", () => {
   assert.ok(matcher.includes('"/api/game/:path*"'), "game APIs need the acting player");
 });
 
-test("identity never becomes a durable record", () => {
+test("the guest cookie module remains pure even after accounts are added", () => {
   const src = readFileSync("lib/playerIdentity.ts", "utf8");
   for (const forbidden of ["gameStore", "secretStore", "getKV", "./kv"]) {
     assert.ok(!src.includes(forbidden), `identity must not reach ${forbidden}`);
@@ -117,13 +117,13 @@ test("identity never becomes a durable record", () => {
   assert.equal(src.includes("PLAYER_COOKIE"), true);
 });
 
-test("the acting player is recorded in existing game state, not a new store", () => {
+test("the acting player is recorded in existing game state with the same player_id", () => {
   const types = readFileSync("lib/types.ts", "utf8");
   assert.match(types, /player_id: string \| null;/);
-  assert.ok(!types.includes("interface PlayerRecord"), "no player entity in V2.1.1");
+  assert.ok(!types.includes("interface PlayerRecord"), "game state must not embed an account");
 
   const create = readFileSync("app/api/game/create/route.ts", "utf8");
-  assert.match(create, /playerIdFromHeaders\(req\.headers\)/);
+  assert.match(create, /resolveActingPlayerId\(req\.headers\)/);
   // Word-boundary guarded: since V2.3 the route also sets composer_player_id,
   // which a bare substring count would wrongly include.
   assert.equal(

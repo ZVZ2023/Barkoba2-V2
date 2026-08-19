@@ -46,10 +46,12 @@ export default function PrivacyPage() {
       title="Adatvédelem"
       lead="Ez az oldal azt írja le, amit a Barkóba jelenleg telepített változatának kódjából egyértelműen meg lehet állapítani."
     >
-      <Section heading="Nincs regisztráció">
+      <Section heading="Játékosfiók">
         <p>
-          A Barkóba nem kér és nem kezel felhasználói fiókot, jelszót, e-mail-címet vagy
-          profilt. Nem kell bejelentkezni a játékhoz.
+          Regisztráció nélkül is játszhatsz vendégként. A vásárolt RACES
+          megőrzéséhez játékosfiók kell, de ehhez sem e-mail-címet, sem jelszót,
+          sem profilt nem kérünk. A fiók kulcsa az egyszer megjelenített
+          helyreállító kód.
         </p>
       </Section>
 
@@ -100,7 +102,7 @@ export default function PrivacyPage() {
 
       <Section heading="Sütik">
         <p>
-          A Barkóba két sütit használ, és mindkettő a játék működéséhez kell. Egyik sem
+          A Barkóba három funkcionális sütit használ. Egyik sem
           szolgál analitikára, hirdetésre vagy oldalak közötti követésre — ilyen szkript
           nincs a kódban.
         </p>
@@ -108,12 +110,14 @@ export default function PrivacyPage() {
           items={[
             "Egy azonosító süti, amely egy véletlenszerű, önmagában semmit el nem áruló számot tárol. Ez az, ami alapján ugyanaz a böngésző visszatéréskor ugyanaz a játékos marad. Nincs benne név, e-mail cím vagy bármi, ami rád mutatna.",
             "Egy név süti, de csak akkor, ha megadsz egy megszólítást — vagy ha a kérdést kihagyod. A kihagyást is el kell tárolnunk, különben minden alkalommal újra megkérdeznénk.",
+            "Bejelentkezéskor egy munkamenetsüti igazolja a fiókhoz való hozzáférést. A szerveren csak ennek matematikai lenyomata marad; kijelentkezéskor visszavonjuk, és 30 nap után magától lejár.",
           ]}
         />
         <p>
-          Nincs regisztráció, nincs jelszó, és nincs fiók. A sütik a böngésződben élnek:
-          ha törlöd őket, a hozzájuk tartozó játékos és a megadott név is elvész, és
-          újként indulsz. Másik eszközön nem lehet visszaszerezni őket.
+          Vendégként a sütik törlése után új játékosként indulsz. Regisztrált
+          fióknál a sütik törlése csak a bejelentkezést szünteti meg: a
+          helyreállító kóddal ugyanaz a játékos és RACES-egyenleg másik eszközön
+          is visszakapható.
         </p>
         <p>
           A megadott név szabadon választható, nem kell a valódi nevednek lennie, és
@@ -121,12 +125,12 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="Ha megvéded a játékosodat">
+      <Section heading="Ha regisztrálod a játékosodat">
         <p>
           Alapesetben a játékosazonosítód a böngésződben marad, és nem tárolunk
-          róla semmit a szervereinken. (A lejátszott játékok megőrzése ettől
-          független — arról a „Megőrzött játékok” rész szól.) Ha a játék végén úgy
-          döntesz, hogy megvéded a játékosodat, akkor ehhez tartósan eltárolunk három
+          róla fiókrekordot a szervereinken. (A lejátszott játékok megőrzése ettől
+          független — arról a „Megőrzött játékok” rész szól.) Ha regisztrálsz,
+          akkor ehhez tartósan eltárolunk három
           dolgot:
         </p>
         <Bullets
@@ -137,14 +141,13 @@ export default function PrivacyPage() {
           ]}
         />
         <p>
-          Ez nem regisztráció: nincs e-mail cím, nincs jelszó, és nincs fiók. A
-          helyreállító kód birtokosa férhet hozzá a játékoshoz, ezért érdemes ugyanúgy
-          vigyázni rá, mint egy kulcsra.
+          Ez minimális játékosfiók: nincs e-mail cím és nincs hagyományos jelszó.
+          A helyreállító kód birtokosa be tud lépni, ezért ugyanúgy vigyázz rá,
+          mint egy kulcsra.
         </p>
         <p>
-          Bármikor törölheted a védett játékosodat a játék végi képernyőn. A törlés
-          végleges: a tárolt azonosító, a név és a helyreállító kód ellenőrzője is
-          megszűnik, a kódod többé nem működik, és újként indulsz tovább.
+          Regisztrált fiók törlését a jelenlegi változat nem kínálja fel, nehogy
+          a vásárolt RACES és a hozzá tartozó tulajdon véletlenül megsemmisüljön.
         </p>
       </Section>
 
@@ -212,8 +215,8 @@ export default function PrivacyPage() {
           ellenőrizhetővé, mennyi RACES-t kaptál és mennyit használtál el.
         </p>
         <p>
-          Fizetett vásárlás előtt el kell mentened a játékosodat, és kapsz egy
-          helyreállító kódot. Így a böngésződ törlése nem viszi el a megszerzett
+          Fizetett vásárlás előtt regisztrálnod és bejelentkezned kell. Így a
+          böngésződ törlése nem viszi el a megszerzett
           RACES-t. A kezdő RACES ilyet nem igényel: ha csak azzal játszol és
           elveszted a sütidet, a fel nem használt rész elvész.
         </p>
@@ -227,14 +230,16 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="Ha törlöd a védett játékosodat">
+      <Section heading="Korábbi védett játékos törlése">
         <p>
-          A törlés leválasztja a megőrzött játékokat a játékosodról: a
+          A korábbi, fiók előtti védett játékosok törlése leválasztotta a
+          megőrzött játékokat a játékosról: a
           játékosazonosító eltűnik mellőlük, és nem lesz visszakereshető, hogy
           melyik játékot te játszottad.
         </p>
         <p>
-          Amit viszont őszintén el kell mondanunk: maguk a játékok megmaradnak. A
+          A regisztrált játékosfiókokhoz ez a törlési út már nem érhető el.
+          A korábbi törlésnél maguk a játékok megmaradtak. A
           bennük szereplő szöveg — a megfejtés, a kérdések, a tippek — a te
           szavaid, és tartalmazhat rád vonatkozó információt akkor is, ha az
           azonosító már nincs mellette. A leválasztás tehát nem teljes

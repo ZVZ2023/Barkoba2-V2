@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { playerIdFromHeaders } from "@/lib/playerIdentity";
+import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import {
   entitlementStatus,
   getStatus,
@@ -11,10 +11,10 @@ import { playCreditCostForBudget, QUESTION_BUDGETS } from "@/lib/questionBudget"
 // ---------------------------------------------------------------------------
 // V2.4 — the player's own entitlement, and what a game costs.
 //
-// SESSION-SCOPED, ALWAYS. The player id comes from the trusted header that
-// middleware sets after stripping any client-supplied copy. There is no
-// parameter to name a different player, so this endpoint is structurally
-// incapable of returning someone else's balance.
+// REQUEST-AUTHORITY-SCOPED, ALWAYS. A guest id comes from middleware's trusted
+// header; a registered player id comes only from the server-side session
+// resolver. There is no parameter to name a different player, so this endpoint
+// is structurally incapable of returning someone else's balance.
 //
 // No new computation lives here: getStatus() and playCreditCostForBudget()
 // already exist and are the sole authorities. This is exposure, not logic.
@@ -23,7 +23,7 @@ import { playCreditCostForBudget, QUESTION_BUDGETS } from "@/lib/questionBudget"
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
-  const playerId = playerIdFromHeaders(req.headers);
+  const playerId = await resolveActingPlayerId(req.headers);
   const runtime = entitlementStatus();
 
   // The prices are the same for everyone and are not secret — the player is
