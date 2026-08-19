@@ -19,7 +19,7 @@ export default function SiteHeader({
   const entitlement = useEntitlement(hasEstablishedPlayerIdentity);
 
   return (
-    <header className="flex w-full items-center justify-between gap-3 px-4 py-4 sm:px-6">
+    <header className="grid w-full grid-cols-1 items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto] md:py-4">
       <Link href="/" className="flex min-w-0 items-center gap-2">
         <span
           aria-hidden="true"
@@ -31,36 +31,34 @@ export default function SiteHeader({
         </span>
       </Link>
 
-      <div className="flex min-w-0 shrink-0 flex-col items-end gap-3">
-        <div className="flex items-center gap-2">
-          <button
-            onClick={() => comingSoon(copy.header.languageAria ?? "Nyelv")}
-            aria-label={copy.header.languageAria}
-            className="flex min-h-11 items-center gap-1.5 rounded-md border border-neutral-900/20 px-3 py-2 text-sm text-neutral-800"
-          >
-            <span aria-hidden="true">🌐</span>
-            <span className="font-medium">{copy.header.language}</span>
-            <span aria-hidden="true" className="text-xs opacity-60">▾</span>
-          </button>
+      <div className="flex min-w-0 items-center justify-end gap-2 md:col-start-3 md:row-start-1">
+        <button
+          onClick={() => comingSoon(copy.header.languageAria ?? "Nyelv")}
+          aria-label={copy.header.languageAria}
+          className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
+        >
+          <span aria-hidden="true">🌐</span>
+          <span className="font-medium">{copy.header.language}</span>
+          <span aria-hidden="true" className="text-xs opacity-60">▾</span>
+        </button>
 
-          <button
-            onClick={() => comingSoon(copy.header.login)}
-            className="flex min-h-11 items-center gap-2 rounded-md border border-neutral-900/20 px-3 py-2 text-sm text-neutral-800"
-          >
-            <span aria-hidden="true">👤</span>
-            <span className="hidden sm:inline">{copy.header.login}</span>
-          </button>
-        </div>
-
-        {hasEstablishedPlayerIdentity && (
-          <div className="flex max-w-sm flex-col items-end gap-2 whitespace-nowrap text-right">
-            <BalanceBadge view={entitlement.view} />
-            {entitlement.view?.play_state === "exhausted" && (
-              <CreditGateway />
-            )}
-          </div>
-        )}
+        <button
+          onClick={() => comingSoon(copy.header.login)}
+          className="flex min-h-10 min-w-0 items-center gap-2 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
+        >
+          <span aria-hidden="true" className="shrink-0">👤</span>
+          <span className="truncate">{copy.header.login}</span>
+        </button>
       </div>
+
+      {hasEstablishedPlayerIdentity && (
+        <div className="flex min-w-0 max-w-full flex-col items-end gap-2 text-right [&>div]:max-w-full [&>div]:flex-wrap [&>div]:justify-end md:col-start-2 md:row-start-1 md:max-w-sm">
+          <BalanceBadge view={entitlement.view} />
+          {entitlement.view?.play_state === "exhausted" && (
+            <CreditGateway />
+          )}
+        </div>
+      )}
     </header>
   );
 }
