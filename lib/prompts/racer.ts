@@ -26,7 +26,7 @@ import type {
  * produces confidently mislabelled evidence, which is worse than no label.
  * Treat bumping this as part of editing the prompt, not as follow-up.
  *
- * V2.6 — `racer/2.6.0` IS A LOAD-BEARING DATABASE CLAIM, NOT A LABEL.
+ * V2.7 — `racer/2.7.0` IS A LOAD-BEARING DATABASE CLAIM, NOT A LABEL.
  *
  * It asserts one specific thing about every turn it is stamped on: that the
  * canonical CORE_RACER_RULES block below was present, verbatim, in the message
@@ -45,51 +45,57 @@ import type {
  * original. Both assemble the block and both are guarded. Covering only the
  * first would make this version true of a draft and false of the record.
  */
-export const RACER_PROMPT_VERSION = "racer/2.6.0";
+export const RACER_PROMPT_VERSION = "racer/2.7.0";
 
 /**
- * V2.6 — THE CANONICAL TRAILING STRATEGY BLOCK.
+ * V2.7 — THE CANONICAL TRAILING STRUCTURED-DELIBERATION BLOCK.
  *
- * A deliberate §18 EXCEPTION, and the only one. §18's standing rule is to
- * record an observed intelligence weakness rather than patch the prompt against
- * it, and it was cited as recently as §32 to justify changing nothing. It is
- * NOT repealed. This single intervention is authorised because the same failure
- * class has now been observed across three consecutive field tests (§29, §31,
- * §32) and because Rule 2 below states a concrete, observable behaviour that a
- * field test can actually measure.
+ * This is the only experimental variable. The system prompt, transcript,
+ * provider routing, model selection and call topology remain unchanged. The
+ * block stays last before the instruction to act and is shared by both paths
+ * that can author the player-facing question.
  *
- * WHAT THE INTERVENTION ACTUALLY IS — stated precisely, because the obvious
- * reading is wrong. The Racer is STATELESS: every turn is a fresh single-shot
- * call and RACER_SYSTEM_PROMPT is re-sent in full each time. There is no
- * accumulating conversation in which earlier instructions lose salience, so
- * this is NOT repetition-into-a-long-context. The mechanism is:
- *
- *   POSITION    — the block is the LAST thing before the turn instruction, so
- *                 as the rendered transcript grows it does not push the
- *                 strategy further from the point of action.
- *   EXPLICITNESS — Rule 2, the two-NO pullback, is genuinely new. Nothing in
- *                 the system prompt has ever stated it.
- *
- * DELIBERATELY NOT COPIED INTO RACER_SYSTEM_PROMPT. One experimental variable,
- * not two simultaneous prompt edits.
- *
- * ON READING THE FIELD TEST: Rules 4 and 5 substantially restate guidance the
- * system prompt already carries ("A question that names one specific candidate
- * IS a guess", "FALSIFY BEFORE YOU COMMIT"). If candidate enumeration persists,
- * the honest reading is "the model was already told and is not complying", NOT
- * "the block was absent". Rule 2 is the one carrying new information.
- *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §37
- * against `racer/2.6.0`. Editing it without bumping the version breaks the
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §43
+ * against `racer/2.7.0`. Editing it without bumping the version breaks the
  * database claim above.
  */
-export const CORE_RACER_RULES = `CORE RACER RULES — APPLY EVERY TURN
+export const CORE_RACER_RULES = `RACER GUIDANCE V2 — STRUCTURED DELIBERATION — APPLY EVERY TURN
 
-1. Stay broad on attributes early. Prefer questions likely to produce informative YES answers.
-2. After two consecutive NO answers within the same hypothesis path, pull back and open a genuinely different axis. Do not keep drilling into sibling candidates.
-3. Narrow aggressively only inside a branch supported by affirmative evidence.
-4. Never lock onto one promising clue. Reopen higher-level hypotheses when follow-ups repeatedly produce NO or AMBIGUOUS.
-5. Naming a specific candidate is a final-guess action. Do not spend ordinary question slots enumerating candidate identities.`;
+Before producing each question, perform this process internally. Emit only one player-facing question after it.
+
+1. RECONSTRUCT
+Rebuild the current constraint state from the full transcript. Preserve all YES, NO and AMBIGUOUS evidence.
+
+2. INFER
+Derive implications that logically follow from established constraints. Do not treat only explicit answers as knowledge.
+
+3. HYPOTHESIZE
+Identify the major classes or candidate families still consistent with the evidence. Do not collapse prematurely onto one attractive candidate.
+
+4. MAP DIMENSIONS
+Identify the major independent dimensions capable of dividing the remaining hypothesis space. Possible dimensions include, when relevant: time / era; geography / geopolitical origin; purpose / function; physical form / type; scale / size; status / market position; production context; mechanism / technology; cultural / institutional context. These are examples only. Select dimensions appropriate to the current target class.
+
+5. GENERATE OPTIONS
+Internally generate several plausible next questions across useful dimensions.
+
+6. COMPARE
+Prefer the question expected to divide the surviving possibilities most efficiently.
+
+Avoid country-by-country enumeration, candidate-by-candidate enumeration, repeating established information, asking a child-level question when a parent-level discriminator is available, and persisting in a hypothesis path after accumulated evidence materially weakens its parent hypothesis.
+
+7. CONSISTENCY GATE
+Before emitting the question, internally check: Does this contradict established evidence? Has this already been answered directly or by implication? Am I redundantly re-testing a settled branch? Is another dimension likely to split the remaining space better?
+
+EVIDENCE-RESPONSE BEHAVIOR
+YES: Exploit it. Narrow intelligently within the supported branch.
+NO: Update the parent hypothesis, not merely the rejected child candidate. Repeated NO evidence within one branch increases pressure to abandon that branch.
+AMBIGUOUS: Preserve the ambiguity and reconsider interpretation or dimension. Never silently convert AMBIGUOUS into YES or NO.
+
+BEFORE ANY FINAL GUESS
+Internally execute: CANDIDATE → CONSTRAINT CHECK → ALTERNATIVES → DISCRIMINATOR → GUESS.
+Check: Does the candidate satisfy every established constraint? What other credible candidates still satisfy them? If more than one remains and questions remain, what question best separates them? Is the evidence strong enough to justify ending the search given the remaining question budget?
+
+Do not guess merely because one candidate feels plausible.`;
 
 /**
  * A Racer turn plus the provenance of the call that produced it.
@@ -305,13 +311,13 @@ export function buildRacerTurnMessage(
       ? `You may request a clue this turn: action "clue". You have ${state.clue_credits_available} clue request(s) available. It costs no question and no guess, and the Composer will answer it in words rather than yes/no.\n\nBeing allowed to ask is not a reason to ask. Spend one only when you judge that a clue would materially help — when the transcript has stopped narrowing, or you are choosing between hypotheses that your own questions cannot separate. If your next question would make good progress on its own, ask it instead. An unspent credit is not wasted; it keeps accumulating.`
       : "You cannot request a clue this turn.",
     "",
-    // V2.6 — THE TRAILING STRATEGY BLOCK. Position is the intervention: last
+    // V2.7 — THE TRAILING STRATEGY BLOCK. Position remains last
     // before the instruction to act, so a growing transcript never pushes the
     // strategy away from the point of decision.
     //
-    // Included on the final turn too. Rule 5 governs exactly that moment, and
+    // Included on the final turn too. The final-guess gate governs that moment,
     // an unconditional block keeps the guarantee below unconditional as well —
-    // a branch here would mean `racer/2.6.0` was true of some turns and not
+    // a branch here would mean `racer/2.7.0` was true of some turns and not
     // others, which is precisely the ambiguity the version is meant to remove.
     CORE_RACER_RULES,
     "",
@@ -353,7 +359,7 @@ export function buildGuessIntentMessage(
 }
 
 /**
- * THE GUARANTEE BEHIND `racer/2.6.0`.
+ * THE GUARANTEE BEHIND `racer/2.7.0`.
  *
  * `prompt_version` is written into corpus.game_turns and will be queried as
  * proof that a turn was played under the canonical guidance. A constant stamped
@@ -489,18 +495,18 @@ export async function resolveGuessIntent(
   // the game's provider, not a default. A flagged question must not be re-read
   // by a different model than the one that wrote it, or the resolution would
   // describe an intent its author never had.
-  // V2.6 — THE SAME CANONICAL BLOCK, AND THE SAME GUARD.
+  // V2.7 — THE SAME CANONICAL BLOCK, AND THE SAME GUARD.
   //
   // This path can AUTHOR the question the human actually sees:
   // `continue_questioning` returns a revised_question that replaces the
-  // original in question_text. Without this, `racer/2.6.0` would describe only
+  // original in question_text. Without this, `racer/2.7.0` would describe only
   // the first attempted question and not the one presented — a claim that is
   // true of a draft and false of the record. §32 measured 10 of ~20 turns
   // flagged in a single game, so the gap was material, not theoretical.
   //
   // The guidance is honestly applicable here rather than merely pasted in: a
-  // revision is question authoring, and Rule 5 is the very rule whose violation
-  // triggered the flag.
+  // revision is question authoring, and the candidate-enumeration prohibition
+  // directly applies to the question whose form triggered the flag.
   const content = buildGuessIntentMessage(state, flaggedQuestion);
   assertGuidanceApplied(content);
 

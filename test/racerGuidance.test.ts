@@ -13,17 +13,18 @@ import {
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import { xaiAdapter } from "../lib/providers/xai";
 import type { ToolCallRequest, ToolCallResult } from "../lib/providers/types";
+import { QUESTION_BUDGETS } from "../lib/questionBudget";
 import { toRacerPublicState } from "../lib/racerState";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "../lib/types";
 
 // ---------------------------------------------------------------------------
-// V2.6 — the canonical trailing CORE RACER RULES block.
+// RG V2 — the canonical trailing structured-deliberation block.
 //
 // WHAT THESE TESTS DO NOT ATTEMPT: to show that the Racer plays better. That is
 // a field-play question and no unit test can answer it. What is provable here
 // is everything the evidence record depends on — that the block reaches the
 // model, that it reaches both providers identically, that it never touches the
-// human's answer or the visible transcript, and that `racer/2.6.0` cannot be
+// human's answer or the visible transcript, and that `racer/2.7.0` cannot be
 // stamped on a turn that did not carry it.
 // ---------------------------------------------------------------------------
 
@@ -119,8 +120,8 @@ test("the block survives a long transcript — it does not get pushed up by hist
 });
 
 test("the block is present on the final turn too", () => {
-  // Rule 5 governs exactly this moment, and an unconditional block is what
-  // keeps racer/2.6.0 true of EVERY stamped turn rather than most of them.
+  // The final-guess gate governs this moment, and an unconditional block is what
+  // keeps racer/2.7.0 true of EVERY stamped turn rather than most of them.
   const content = buildRacerTurnMessage(answeredWith("YES"), {
     forceFinal: true,
     clueAvailable: false,
@@ -150,6 +151,104 @@ test("an AMBIGUOUS explanation is still carried, and is not displaced by the blo
   assert.ok(content.includes(CORE_RACER_RULES));
 });
 
+test("RG V2 contains the complete ordered deliberation contract", () => {
+  const stages = [
+    "1. RECONSTRUCT",
+    "2. INFER",
+    "3. HYPOTHESIZE",
+    "4. MAP DIMENSIONS",
+    "5. GENERATE OPTIONS",
+    "6. COMPARE",
+    "7. CONSISTENCY GATE",
+  ];
+  let previous = -1;
+  for (const stage of stages) {
+    const at = CORE_RACER_RULES.indexOf(stage);
+    assert.ok(at > previous, `${stage} must occur once and in order`);
+    previous = at;
+  }
+  assert.match(
+    CORE_RACER_RULES,
+    /CANDIDATE → CONSTRAINT CHECK → ALTERNATIVES → DISCRIMINATOR → GUESS/
+  );
+  assert.match(CORE_RACER_RULES, /Emit only one player-facing question/);
+});
+
+function promptFor(log: QuestionLogEntry[]): string {
+  return buildRacerTurnMessage(toRacerPublicState(game(log)), {
+    forceFinal: false,
+    clueAvailable: false,
+  });
+}
+
+test("a European automobile state carries a dimension-first alternative to country enumeration", () => {
+  const content = promptFor([
+    entry({ turn_index: 1, question_text: "Is it a physical object?", composer_response: "YES" }),
+    entry({ turn_index: 2, question_text: "Is it a vehicle?", composer_response: "YES" }),
+    entry({ turn_index: 3, question_text: "Is it an automobile?", composer_response: "YES" }),
+    entry({ turn_index: 4, question_text: "Is it European?", composer_response: "YES" }),
+  ]);
+  assert.match(content, /Q4: Is it European\?\nA4: YES/);
+  assert.match(content, /MAP DIMENSIONS/);
+  assert.match(content, /Avoid country-by-country enumeration/);
+  assert.match(content, /time \/ era; geography \/ geopolitical origin; purpose \/ function/);
+});
+
+test("strong positive evidence is paired with intelligent narrowing guidance", () => {
+  const content = promptFor([
+    entry({
+      turn_index: 1,
+      question_text: "Was it made for competitive motorsport?",
+      composer_response: "YES",
+    }),
+  ]);
+  assert.match(content, /A1: YES/);
+  assert.match(content, /YES: Exploit it\. Narrow intelligently within the supported branch\./);
+});
+
+test("repeated negative evidence is paired with parent-level reconsideration", () => {
+  const content = promptFor([
+    entry({ turn_index: 1, question_text: "Is it German?", composer_response: "NO" }),
+    entry({ turn_index: 2, question_text: "Is it French?", composer_response: "NO" }),
+  ]);
+  assert.match(content, /A1: NO/);
+  assert.match(content, /A2: NO/);
+  assert.match(content, /Update the parent hypothesis, not merely the rejected child candidate/);
+  assert.match(
+    content,
+    /Repeated NO evidence within one branch increases pressure to abandon that branch/
+  );
+});
+
+test("pre-1970 evidence is reconstructed with era available as a meaningful dimension", () => {
+  const content = promptFor([
+    entry({
+      turn_index: 1,
+      question_text: "Was it first produced before 1970?",
+      composer_response: "YES",
+    }),
+  ]);
+  assert.match(content, /Q1: Was it first produced before 1970\?\nA1: YES/);
+  assert.match(content, /time \/ era/);
+  assert.match(content, /Derive implications that logically follow from established constraints/);
+});
+
+test("a plausible candidate with alternatives remaining receives the pre-guess gate", () => {
+  const content = promptFor([
+    entry({
+      turn_index: 1,
+      question_text: "Is it an Italian sports car?",
+      composer_response: "YES",
+    }),
+  ]);
+  assert.match(content, /What other credible candidates still satisfy them\?/);
+  assert.match(
+    content,
+    /If more than one remains and questions remain, what question best separates them\?/
+  );
+  assert.match(content, /Do not guess merely because one candidate feels plausible/);
+});
+
 // ---------------------------------------------------------------------------
 // No contamination of the human's answer or the visible transcript.
 // ---------------------------------------------------------------------------
@@ -164,7 +263,7 @@ test("the stored human answer is untouched", () => {
   assert.equal(JSON.stringify(g.qa_log), before, "assembly must not mutate game state");
   assert.equal(g.qa_log[0]?.composer_response, "NO");
   assert.equal(
-    g.qa_log[0]?.question_text?.includes("CORE RACER RULES"),
+    g.qa_log[0]?.question_text?.includes("RACER GUIDANCE V2"),
     false,
     "the reminder must never be persisted as part of a turn"
   );
@@ -177,10 +276,10 @@ test("the visible transcript contains no trace of the block", () => {
   const racerState = toRacerPublicState(g);
 
   for (const turn of racerState.transcript) {
-    assert.equal(turn.question.includes("CORE RACER RULES"), false);
-    assert.equal((turn.ambiguous_explanation ?? "").includes("CORE RACER RULES"), false);
+    assert.equal(turn.question.includes("RACER GUIDANCE V2"), false);
+    assert.equal((turn.ambiguous_explanation ?? "").includes("RACER GUIDANCE V2"), false);
   }
-  assert.equal(JSON.stringify(g).includes("CORE RACER RULES"), false);
+  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V2"), false);
 });
 
 test("the reminder is not addressed as though the human said it", () => {
@@ -258,7 +357,7 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
   ]) {
     const src = readFileSync(file, "utf8");
     assert.equal(
-      /CORE RACER RULES|CORE_RACER_RULES/.test(src),
+      /RACER GUIDANCE V2|CORE_RACER_RULES/.test(src),
       false,
       `${file} must not contain strategy text`
     );
@@ -269,9 +368,9 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/2.6.0", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/2.6.0");
-  assert.notEqual(RACER_PROMPT_VERSION, "racer/2.5.0", "the old version must not be reused");
+test("the Racer guidance version is racer/2.7.0", () => {
+  assert.equal(RACER_PROMPT_VERSION, "racer/2.7.0");
+  assert.notEqual(RACER_PROMPT_VERSION, "racer/2.6.0", "the old version must not be reused");
 });
 
 test("a stamped turn carries the version AND the guidance, and model identity is unchanged", async () => {
@@ -289,7 +388,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/2.6.0");
+    assert.equal(result.provenance.prompt_version, "racer/2.7.0");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");
@@ -300,7 +399,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
 });
 
 test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", () => {
-  // The claim racer/2.6.0 makes to the corpus is verified against the assembled
+  // The claim racer/2.7.0 makes to the corpus is verified against the assembled
   // message, not asserted beside it. This pins that the guard exists and that
   // it is unconditional — the failure it prevents is a corpus full of turns
   // claiming guidance they never received, which is worse than no label at all.
@@ -317,18 +416,38 @@ test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", ()
   );
 });
 
-test("the canonical text is preserved in the design record against racer/2.6.0", () => {
+test("the canonical text is preserved in the design record against racer/2.7.0", () => {
   const notes = readFileSync("docs/DESIGN-NOTES.md", "utf8");
   assert.ok(
     notes.includes(CORE_RACER_RULES),
     "DESIGN-NOTES must reproduce the canonical block verbatim"
   );
-  assert.ok(notes.includes("racer/2.6.0"));
+  assert.ok(notes.includes("racer/2.7.0"));
 });
 
 // ---------------------------------------------------------------------------
 // Nothing else moved.
 // ---------------------------------------------------------------------------
+
+test("RG V2 adds no model call and leaves question budgets unchanged", () => {
+  const src = readFileSync("lib/prompts/racer.ts", "utf8");
+  const turnPath = src.slice(
+    src.indexOf("export async function runRacerTurn"),
+    src.indexOf("export async function resolveGuessIntent")
+  );
+  const revisionPath = src.slice(src.indexOf("export async function resolveGuessIntent"));
+  assert.equal(
+    (turnPath.match(/\.callTool</g) ?? []).length,
+    1,
+    "a normal Racer turn must still make exactly one model call"
+  );
+  assert.equal(
+    (revisionPath.match(/\.callTool</g) ?? []).length,
+    1,
+    "the existing revision path must still make exactly one model call when invoked"
+  );
+  assert.deepEqual(QUESTION_BUDGETS, [20, 35, 50, 100]);
+});
 
 test("the Guess Detector's own logic is untouched", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
@@ -342,12 +461,12 @@ test("the Guess Detector's own logic is untouched", () => {
   );
   assert.ok(systemPrompt.length > 0);
   assert.equal(
-    /CORE RACER RULES|two consecutive NO/.test(systemPrompt),
+    /RACER GUIDANCE V2|RECONSTRUCT/.test(systemPrompt),
     false,
     "the guess-intent system prompt must stay unedited"
   );
   const detector = readFileSync("lib/guessDetector.ts", "utf8");
-  assert.equal(/CORE RACER RULES/.test(detector), false);
+  assert.equal(/RACER GUIDANCE V2|CORE_RACER_RULES/.test(detector), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -355,7 +474,7 @@ test("the Guess Detector's own logic is untouched", () => {
 //
 // The audit gap this closes: `continue_questioning` returns a revised_question
 // that REPLACES the original in question_text, so it — not the first attempt —
-// is the question the human actually sees. Stamping racer/2.6.0 while that
+// is the question the human actually sees. Stamping racer/2.7.0 while that
 // question was authored without the block would make the version true of a
 // draft and false of the record. §32 measured 10 of ~20 turns flagged in one
 // game, so the gap was material rather than theoretical.
@@ -392,7 +511,8 @@ test("the canonical block is SINGLE-SOURCED across both authoring paths", () => 
   assert.ok(revision.includes(CORE_RACER_RULES));
 
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
-  const definitions = src.match(/CORE RACER RULES — APPLY EVERY TURN/g) ?? [];
+  const definitions =
+    src.match(/RACER GUIDANCE V2 — STRUCTURED DELIBERATION — APPLY EVERY TURN/g) ?? [];
   assert.equal(definitions.length, 1, "exactly one definition of the canonical text");
 });
 
@@ -482,7 +602,7 @@ test("the revision path does not contaminate the human's answer or the transcrip
   const before = JSON.stringify(g.qa_log);
   buildGuessIntentMessage(toRacerPublicState(g), "Is the target GPT-4?");
   assert.equal(JSON.stringify(g.qa_log), before);
-  assert.equal(JSON.stringify(g).includes("CORE RACER RULES"), false);
+  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V2"), false);
 });
 
 test("no Contest Verdict code path is touched", () => {
@@ -508,8 +628,8 @@ test("the system prompt was NOT edited — one experimental variable, not two", 
   );
   assert.ok(system.length > 0);
   assert.equal(
-    /CORE RACER RULES|two consecutive NO/.test(system),
+    /RACER GUIDANCE V2|RECONSTRUCT/.test(system),
     false,
-    "the five rules must live only in the trailing block"
+    "structured deliberation must live only in the trailing block"
   );
 });

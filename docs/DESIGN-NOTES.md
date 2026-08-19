@@ -4049,3 +4049,63 @@ transaction-local exception.
 Registered-account deletion is not exposed in Module 1. Profiles, e-mail,
 passwords, magic links, passkeys, history dashboards and social surfaces remain
 out of scope.
+
+## 43. RG V2 — structured Racer deliberation (`racer/2.7.0`)
+
+This is a single-variable Game Intelligence experiment. It replaces only the
+canonical trailing guidance from §37. The Racer system prompt, transcript,
+provider routing, model selection, call topology, Guess Detector, game rules
+and question budgets remain unchanged. No external Constraint Ledger,
+Hypothesis State, memory or additional model call is introduced.
+
+The guidance remains hidden, single-sourced in `lib/prompts/racer.ts`, injected
+on both normal Racer authoring and Guess Intent revision paths, and guarded
+immediately before transport. Claude and Grok therefore receive byte-identical
+canonical text, and `racer/2.7.0` is stamped only when that text is structurally
+present.
+
+Canonical text, reproduced verbatim:
+
+```
+RACER GUIDANCE V2 — STRUCTURED DELIBERATION — APPLY EVERY TURN
+
+Before producing each question, perform this process internally. Emit only one player-facing question after it.
+
+1. RECONSTRUCT
+Rebuild the current constraint state from the full transcript. Preserve all YES, NO and AMBIGUOUS evidence.
+
+2. INFER
+Derive implications that logically follow from established constraints. Do not treat only explicit answers as knowledge.
+
+3. HYPOTHESIZE
+Identify the major classes or candidate families still consistent with the evidence. Do not collapse prematurely onto one attractive candidate.
+
+4. MAP DIMENSIONS
+Identify the major independent dimensions capable of dividing the remaining hypothesis space. Possible dimensions include, when relevant: time / era; geography / geopolitical origin; purpose / function; physical form / type; scale / size; status / market position; production context; mechanism / technology; cultural / institutional context. These are examples only. Select dimensions appropriate to the current target class.
+
+5. GENERATE OPTIONS
+Internally generate several plausible next questions across useful dimensions.
+
+6. COMPARE
+Prefer the question expected to divide the surviving possibilities most efficiently.
+
+Avoid country-by-country enumeration, candidate-by-candidate enumeration, repeating established information, asking a child-level question when a parent-level discriminator is available, and persisting in a hypothesis path after accumulated evidence materially weakens its parent hypothesis.
+
+7. CONSISTENCY GATE
+Before emitting the question, internally check: Does this contradict established evidence? Has this already been answered directly or by implication? Am I redundantly re-testing a settled branch? Is another dimension likely to split the remaining space better?
+
+EVIDENCE-RESPONSE BEHAVIOR
+YES: Exploit it. Narrow intelligently within the supported branch.
+NO: Update the parent hypothesis, not merely the rejected child candidate. Repeated NO evidence within one branch increases pressure to abandon that branch.
+AMBIGUOUS: Preserve the ambiguity and reconsider interpretation or dimension. Never silently convert AMBIGUOUS into YES or NO.
+
+BEFORE ANY FINAL GUESS
+Internally execute: CANDIDATE → CONSTRAINT CHECK → ALTERNATIVES → DISCRIMINATOR → GUESS.
+Check: Does the candidate satisfy every established constraint? What other credible candidates still satisfy them? If more than one remains and questions remain, what question best separates them? Is the evidence strong enough to justify ending the search given the remaining question budget?
+
+Do not guess merely because one candidate feels plausible.
+```
+
+Tests prove this contract and its structural injection, not deterministic model
+intelligence. Whether the deliberation improves live play remains a field-test
+question measured against the stamped guidance version.
