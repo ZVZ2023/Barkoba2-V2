@@ -48,7 +48,7 @@ export default function PrivacyPage() {
     >
       <Section heading="Játékosfiók">
         <p>
-          Regisztráció nélkül is játszhatsz vendégként. A vásárolt RACES
+          Regisztráció nélkül is játszhatsz vendégként. A vásárolt VERSENY
           megőrzéséhez játékosfiók kell, de ehhez sem e-mail-címet, sem jelszót,
           sem profilt nem kérünk. A fiók kulcsa az egyszer megjelenített
           helyreállító kód.
@@ -116,7 +116,7 @@ export default function PrivacyPage() {
         <p>
           Vendégként a sütik törlése után új játékosként indulsz. Regisztrált
           fióknál a sütik törlése csak a bejelentkezést szünteti meg: a
-          helyreállító kóddal ugyanaz a játékos és RACES-egyenleg másik eszközön
+          helyreállító kóddal ugyanaz a játékos és VERSENY-egyenleg másik eszközön
           is visszakapható.
         </p>
         <p>
@@ -147,7 +147,7 @@ export default function PrivacyPage() {
         </p>
         <p>
           Regisztrált fiók törlését a jelenlegi változat nem kínálja fel, nehogy
-          a vásárolt RACES és a hozzá tartozó tulajdon véletlenül megsemmisüljön.
+          a vásárolt VERSENY és a hozzá tartozó tulajdon véletlenül megsemmisüljön.
         </p>
       </Section>
 
@@ -202,9 +202,9 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="RACES-egyenleg">
+      <Section heading="VERSENY-egyenleg">
         <p>
-          A futamindításhoz RACES-egyenleg tartozik. Amikor kapsz vagy felhasználsz
+          A futamindításhoz VERSENY-egyenleg tartozik. Amikor kapsz vagy felhasználsz
           belőle, arról tartós bejegyzés készül: mennyi, mikor, milyen jogcímen
           (ajándék vagy vásárolt), és melyik játékhoz lett felhasználva. Ez a
           játékosazonosítódhoz kötődik, nem a nevedhez.
@@ -212,12 +212,12 @@ export default function PrivacyPage() {
         <p>
           A bejegyzések utólag nem módosulnak és nem törlődnek — egy tévedést új
           bejegyzés javít, hogy a javítás is nyomon követhető maradjon. Ez teszi
-          ellenőrizhetővé, mennyi RACES-t kaptál és mennyit használtál el.
+          ellenőrizhetővé, mennyi VERSENYT kaptál és mennyit használtál el.
         </p>
         <p>
           Fizetett vásárlás előtt regisztrálnod és bejelentkezned kell. Így a
           böngésződ törlése nem viszi el a megszerzett
-          RACES-t. A kezdő RACES ilyet nem igényel: ha csak azzal játszol és
+          VERSENYT. A kezdő VERSENY ilyet nem igényel: ha csak azzal játszol és
           elveszted a sütidet, a fel nem használt rész elvész.
         </p>
         <p>
@@ -225,7 +225,7 @@ export default function PrivacyPage() {
           igazolt vásárlás korlátozott adatai is hozzákapcsolódhatnak: termék és
           íz, Price ID, mennyiség, pénznem, végösszeg, időpont és teszt/éles mód.
           Név, e-mail, cím és kártyaadat nem kerül ebbe a bejegyzésbe. Ezek az
-          adatok a vásárlás eredetét őrzik; a RACES mennyiségét nem ezekből
+          adatok a vásárlás eredetét őrzik; a VERSENY mennyiségét nem ezekből
           számítjuk.
         </p>
       </Section>

@@ -30,7 +30,7 @@ export async function POST(req: NextRequest) {
       {
         error: "account_required",
         message:
-          "A vásárláshoz regisztrálj vagy jelentkezz be, hogy a RACES a fiókodhoz tartozzon.",
+          "A vásárláshoz regisztrálj vagy jelentkezz be, hogy a VERSENY a fiókodhoz tartozzon.",
       },
       { status: 409 }
     );

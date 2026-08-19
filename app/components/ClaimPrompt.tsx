@@ -123,7 +123,7 @@ export default function ClaimPrompt() {
         Regisztrálsz játékosfiókot?
       </p>
       <p className="text-xs text-[var(--ink-soft)]">
-        Ugyanez a játékos és RACES-egyenleg marad meg. A belépési kóddal másik
+        Ugyanez a játékos és VERSENY-egyenleg marad meg. A belépési kóddal másik
         eszközön is bejelentkezhetsz; e-mail cím és jelszó nem kell.
       </p>
       <button

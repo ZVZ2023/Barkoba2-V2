@@ -151,11 +151,11 @@ export default function PurchaseReturn({ onResolved }: { onResolved?: () => void
   if (phase === "credited") {
     return (
       <div className="rounded-xl border border-[var(--green)]/30 bg-[var(--green)]/8 p-5 shadow-sm backdrop-blur-sm">
-        <p className="text-base font-semibold">Köszönjük! A RACES megérkezett.</p>
+        <p className="text-base font-semibold">Köszönjük! A VERSENY megérkezett.</p>
         <p className="mt-1 text-sm text-neutral-800">
           {typeof balance === "number"
-            ? `Jelenlegi RACES-egyenleged: ${balance}.`
-            : "A RACES-egyenlegedet a fenti jelzés mutatja."}
+            ? `Jelenlegi VERSENY-egyenleged: ${balance}.`
+            : "A VERSENY-egyenlegedet a fenti jelzés mutatja."}
         </p>
       </div>
     );
@@ -167,11 +167,11 @@ export default function PurchaseReturn({ onResolved }: { onResolved?: () => void
     <div className="rounded-xl border border-white/60 bg-white/75 p-5 shadow-sm backdrop-blur-sm">
       <p className="text-base font-semibold">A vásárlás feldolgozás alatt van.</p>
       <p className="mt-1 text-sm text-neutral-800">
-        A RACES néha néhány másodperccel később érkezik meg. Frissítsd az
+        A VERSENY néha néhány másodperccel később érkezik meg. Frissítsd az
         oldalt egy pillanat múlva.
       </p>
       <p className="mt-2 text-sm text-neutral-600">
-        Ha a fizetés sikeres volt, a RACES meg fog érkezni — nem kell újra
+        Ha a fizetés sikeres volt, a VERSENY meg fog érkezni — nem kell újra
         fizetned.
       </p>
     </div>

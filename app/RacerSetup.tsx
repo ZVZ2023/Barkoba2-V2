@@ -166,13 +166,13 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
                 key={b}
                 onClick={() => setBudget(b)}
                 disabled={busy}
-                title={short ? "Ehhez nincs elég RACE-ed" : undefined}
+                title={short ? "Ehhez nincs elég VERSENYED" : undefined}
                 className={`${pill(budget === b)} ${short && budget !== b ? "opacity-45" : ""}`}
               >
                 <span className="block">{b}</span>
                 {typeof cost === "number" && (
                   <span className="block text-xs opacity-80">
-                    {cost} RACE{short ? " ⚠" : ""}
+                    {cost} VERSENY{short ? " ⚠" : ""}
                   </span>
                 )}
               </button>

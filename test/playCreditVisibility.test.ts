@@ -119,14 +119,32 @@ test("§39 introductory copy stays welcoming while the account control becomes r
     UI.indexOf('view.play_state === "introductory_available"'),
     UI.indexOf('view.play_state === "has_balance"')
   );
-  assert.match(introductory, /Az első RACE-ed vár rád/);
+  assert.match(introductory, /Az első VERSENYED vár rád/);
   assert.doesNotMatch(introductory, /\b0\b|elfogyott|CreditGateway|vásárl/i);
 
   assert.match(HEADER, /<AccountControl authenticated=\{accountAuthenticated\} \/>/);
+  assert.doesNotMatch(HEADER, /comingSoon\(copy\.header\.login\)/);
   const account = readFileSync("app/components/AccountControl.tsx", "utf8");
   assert.match(account, /\/api\/account\/logout/);
   assert.match(account, /<ClaimPrompt \/>/);
   assert.match(account, /<RecoverPrompt initiallyOpen \/>/);
+});
+
+test("Hungarian player-facing entitlement copy uses VERSENY, never RACE", () => {
+  for (const file of [
+    "app/RacerSetup.tsx",
+    "app/components/BudgetPicker.tsx",
+    "app/components/ClaimPrompt.tsx",
+    "app/components/Entitlement.tsx",
+    "app/components/PurchaseReturn.tsx",
+    "app/api/entitlement/intent/route.ts",
+    "app/api/game/create/route.ts",
+    "app/api/player/entitlement/route.ts",
+    "app/privacy/page.tsx",
+  ]) {
+    const source = readFileSync(file, "utf8");
+    assert.doesNotMatch(source, /\bRACES?\b|RACE-ed/, file);
+  }
 });
 
 test("§39 does not paint introductory or unlimited players as unable to afford play", () => {

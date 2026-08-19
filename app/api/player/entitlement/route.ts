@@ -58,7 +58,7 @@ export async function GET(req: NextRequest) {
   try {
     // V2.6 — reported so the badge can say "unlimited" instead of the balance.
     //
-    // Without this the two developer identities would read "RACES 0 —
+    // Without this the two developer identities would read "VERSENY 0 —
     // elfogyott" while their games start perfectly, which looks like a defect
     // and would be re-reported as one. The balance is still returned, honestly:
     // an exempt player may also hold ordinary credits, and this endpoint's job
@@ -88,7 +88,7 @@ export async function GET(req: NextRequest) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] entitlement status read failed:", err);
     return NextResponse.json(
-      { error: "entitlement_unavailable", message: "Most nem tudjuk lekérdezni a RACES-egyenlegedet." },
+      { error: "entitlement_unavailable", message: "Most nem tudjuk lekérdezni a VERSENY-egyenlegedet." },
       { status: 503 }
     );
   }

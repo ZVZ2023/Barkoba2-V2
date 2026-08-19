@@ -81,7 +81,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "unlimited") {
     return (
       <div className="flex items-baseline gap-2 text-sm">
-        <span className="text-neutral-600">RACES</span>
+        <span className="text-neutral-600">VERSENY</span>
         <span className="font-semibold text-[#1e3a24]">korlátlan</span>
         <span className="text-neutral-500">— fejlesztői hozzáférés</span>
       </div>
@@ -91,7 +91,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "introductory_available") {
     return (
       <div className="text-sm font-medium text-[#1e3a24]">
-        Az első RACE-ed vár rád
+        Az első VERSENYED vár rád
       </div>
     );
   }
@@ -99,7 +99,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   if (view.play_state === "has_balance" && view.balance !== null) {
     return (
       <div className="flex items-baseline gap-2 text-sm">
-        <span className="text-neutral-600">RACES</span>
+        <span className="text-neutral-600">VERSENY</span>
         <span className="font-semibold text-[#1e3a24]">{view.balance}</span>
       </div>
     );
@@ -109,7 +109,7 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
 
   return (
     <div className="flex items-baseline gap-2 text-sm">
-      <span className="text-neutral-600">RACES</span>
+      <span className="text-neutral-600">VERSENY</span>
       <span className="font-semibold text-[#1e3a24]">0</span>
       <span className="text-[#8b2f2f]">— elfogyott</span>
     </div>
@@ -173,7 +173,7 @@ export function CreditGateway() {
         onClick={() => void checkAccount()}
         className="min-h-11 self-start rounded-md bg-[#1e3a24] px-4 py-2 text-sm font-medium text-[#f6ece0]"
       >
-        További RACES
+        További VERSENY
       </button>
     );
   }
@@ -186,7 +186,7 @@ export function CreditGateway() {
         <>
           <p className="text-sm font-medium">Előbb regisztrálj vagy jelentkezz be</p>
           <p className="text-sm text-neutral-700">
-            A megvásárolt RACES a játékosfiókodhoz tartozik, nem ehhez az eszközhöz.
+            A megvásárolt VERSENY a játékosfiókodhoz tartozik, nem ehhez az eszközhöz.
           </p>
           <ClaimPrompt />
           <RecoverPrompt />
@@ -203,7 +203,7 @@ export function CreditGateway() {
         <>
           <p className="text-sm font-medium">A játékosod mentve van.</p>
           <p className="text-sm text-neutral-700">
-            Most már biztonságosan szerezhetsz további RACES-t.
+            Most már biztonságosan szerezhetsz további VERSENYT.
           </p>
           <button
             onClick={() => void createIntent()}
