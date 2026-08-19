@@ -286,7 +286,6 @@ test("purchase ownership and non-merging are structural at both API and database
 test("all ownership routes use the central account-aware resolver", () => {
   for (const path of [
     "app/api/player/entitlement/route.ts",
-    "app/api/game/create/route.ts",
     "app/api/game/join/route.ts",
     "app/api/game/[id]/view/route.ts",
     "app/api/game/[id]/resolve/route.ts",
@@ -299,4 +298,33 @@ test("all ownership routes use the central account-aware resolver", () => {
     assert.match(source, /resolveActingPlayerId/, path);
     assert.doesNotMatch(source, /playerIdFromHeaders/, path);
   }
+
+  const creation = readFileSync("app/api/game/create/route.ts", "utf8");
+  assert.match(creation, /resolveActingPlayer\(req\.headers\)/);
+  assert.doesNotMatch(creation, /playerIdFromHeaders|resolveActingPlayerId/);
+});
+
+test("guest play fallback cannot authorize a registered account or purchase", () => {
+  const creation = readFileSync("app/api/game/create/route.ts", "utf8");
+  const intent = readFileSync("app/api/entitlement/intent/route.ts", "utf8");
+  const composerEntry = readFileSync("app/ComposerEntry.tsx", "utf8");
+
+  assert.match(
+    creation,
+    /allowGuestFallback:\s*playerContext\.kind === "guest" \|\| playerContext\.kind === "none"/
+  );
+  assert.doesNotMatch(creation, /allowGuestFallback:[^\n]*(?:"account"|"registered")/);
+  assert.match(intent, /context\.kind !== "account"/);
+  assert.match(intent, /account_required/);
+
+  const rateLimit = creation.indexOf("checkGameCreationRateLimit(ip)");
+  const validator = creation.indexOf("runValidator(target");
+  const aiTarget = creation.indexOf("chooseComposerTarget({");
+  assert.ok(rateLimit > 0 && validator > rateLimit && aiTarget > rateLimit);
+  assert.doesNotMatch(creation, /recovery_code|recoveryCode|RecoverPrompt/);
+  assert.doesNotMatch(
+    composerEntry,
+    /ClaimPrompt|RecoverPrompt|\/api\/account\/|account_required/,
+    "ordinary Human Composer play must have no account or recovery prerequisite"
+  );
 });

@@ -280,6 +280,38 @@ test("7c. an entitlement-store outage denies CREATION only", async () => {
   // — proven by the route scan in test 7.
 });
 
+test("7d. the explicit guest fallback restores play without writing entitlement", async () => {
+  const before = structuredClone(ledger);
+
+  assert.deepEqual(await canStartGame(null), { ok: false, reason: "no_player" });
+  assert.deepEqual(await canStartGame(null, { allowGuestFallback: true }), {
+    ok: true,
+    reason: "guest_fallback",
+  });
+
+  failNext = true;
+  assert.deepEqual(await canStartGame(P, { allowGuestFallback: true }), {
+    ok: true,
+    reason: "guest_fallback",
+  });
+  assert.deepEqual(
+    await consumeForGame(P, randomUUID(), 20, { allowGuestFallback: true }),
+    { ok: true, reason: "guest_fallback" }
+  );
+  assert.deepEqual(ledger, before, "fallback play must not mint or consume VERSENY");
+});
+
+test("7e. guest fallback never bypasses a verified exhausted balance", async () => {
+  assert.deepEqual(await canStartGame(P, { allowGuestFallback: true }), {
+    ok: false,
+    reason: "insufficient_balance",
+  });
+  assert.deepEqual(
+    await consumeForGame(P, randomUUID(), 20, { allowGuestFallback: true }),
+    { ok: false, reason: "insufficient_balance" }
+  );
+});
+
 // --- RACE normalization: one run costs one internal Play Credit -------------
 
 test("one RACE costs one Play Credit at every question budget", async () => {
@@ -319,8 +351,14 @@ test("V2.4.1-2. the charge cannot be priced by the client", async () => {
 
   // The route hands over the PERSISTED budget, not anything from the body.
   const route = readFileSync("app/api/game/create/route.ts", "utf8");
-  assert.match(route, /consumeForGame\(playerId, aiGame\.game_id, aiGame\.max_questions\)/);
-  assert.match(route, /consumeForGame\(playerId, game\.game_id, game\.max_questions\)/);
+  assert.match(
+    route,
+    /consumeForGame\(\s*playerId,\s*aiGame\.game_id,\s*aiGame\.max_questions,\s*entitlementOptions\s*\)/
+  );
+  assert.match(
+    route,
+    /consumeForGame\(\s*playerId,\s*game\.game_id,\s*game\.max_questions,\s*entitlementOptions\s*\)/
+  );
   assert.doesNotMatch(route, /consumeForGame\([^)]*body\./, "never from the request body");
 
   // No environment setting can price a game either.

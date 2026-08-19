@@ -123,7 +123,11 @@ test("the acting player is recorded in existing game state with the same player_
   assert.ok(!types.includes("interface PlayerRecord"), "game state must not embed an account");
 
   const create = readFileSync("app/api/game/create/route.ts", "utf8");
-  assert.match(create, /resolveActingPlayerId\(req\.headers\)/);
+  assert.match(create, /const playerContext = await resolveActingPlayer\(req\.headers\)/);
+  assert.match(
+    create,
+    /playerContext\.kind === "account" \|\| playerContext\.kind === "guest"[\s\S]*?\? playerContext\.playerId[\s\S]*?: null/
+  );
   // Word-boundary guarded: since V2.3 the route also sets composer_player_id,
   // which a bare substring count would wrongly include.
   assert.equal(

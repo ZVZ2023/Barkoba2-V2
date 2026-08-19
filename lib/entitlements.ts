@@ -51,8 +51,20 @@ export type PlayState =
   | "exhausted";
 
 export type ConsumeOutcome =
-  | { ok: true; reason: "consumed" | "already_consumed" | "disabled" | "unlimited" }
+  | {
+      ok: true;
+      reason: "consumed" | "already_consumed" | "disabled" | "unlimited" | "guest_fallback";
+    }
   | { ok: false; reason: "insufficient_balance" | "unavailable" | "no_player" };
+
+export interface GameEntitlementOptions {
+  /**
+   * Restore frictionless guest play when identity/account or ledger storage is
+   * unavailable. The game-creation route may set this only after the central
+   * resolver classifies the request as guest/none — never account/registered.
+   */
+  allowGuestFallback?: boolean;
+}
 
 /**
  * Is the entitlement gate switched on AND its store reachable?
@@ -414,10 +426,15 @@ export async function expireCredits(
 export async function consumeForGame(
   playerId: string | null,
   operationalGameId: string,
-  questionBudget: number
+  questionBudget: number,
+  options: GameEntitlementOptions = {}
 ): Promise<ConsumeOutcome> {
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
-  if (!playerId) return { ok: false, reason: "no_player" };
+  if (!playerId) {
+    return options.allowGuestFallback
+      ? { ok: true, reason: "guest_fallback" }
+      : { ok: false, reason: "no_player" };
+  }
 
   // V2.6 — unlimited play, checked BEFORE the cost is derived.
   //
@@ -504,13 +521,16 @@ export async function consumeForGame(
 
     return { ok: false, reason: "insufficient_balance" };
   } catch (err) {
-    // FAIL CLOSED, AND ONLY HERE. An unverifiable entitlement must not hand out
-    // a free game — but this posture exists at creation only. No turn, answer,
-    // clue, correction or resolution path consults this module, so an outage
-    // can never terminate a game already under way.
+    // Registered/account play fails closed here. The game-creation route may
+    // explicitly opt a guest into rate-limited fallback; that outcome writes no
+    // ledger row and carries no account authority. No turn, answer, clue,
+    // correction or resolution path consults this module, so an outage can
+    // never terminate a game already under way.
     // eslint-disable-next-line no-console
     console.error(`[barkoba] entitlement check failed for ${playerId}:`, err);
-    return { ok: false, reason: "unavailable" };
+    return options.allowGuestFallback
+      ? { ok: true, reason: "guest_fallback" }
+      : { ok: false, reason: "unavailable" };
   }
 }
 
@@ -522,11 +542,20 @@ export async function consumeForGame(
  * consumption is atomic. This exists to avoid burning an Anthropic call to tell
  * someone they cannot play.
  *
- * Fails closed, like the consumption it precedes.
+ * Fails closed by default, like the consumption it precedes. The sole opt-in is
+ * the route's rate-limited guest fallback; registered/account callers never set
+ * it.
  */
-export async function canStartGame(playerId: string | null): Promise<ConsumeOutcome> {
+export async function canStartGame(
+  playerId: string | null,
+  options: GameEntitlementOptions = {}
+): Promise<ConsumeOutcome> {
   if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
-  if (!playerId) return { ok: false, reason: "no_player" };
+  if (!playerId) {
+    return options.allowGuestFallback
+      ? { ok: true, reason: "guest_fallback" }
+      : { ok: false, reason: "no_player" };
+  }
 
   // V2.6 — an exempt identity is never refused here. This pre-check exists only
   // to avoid burning a model call on someone who cannot play; an unlimited
@@ -546,7 +575,9 @@ export async function canStartGame(playerId: string | null): Promise<ConsumeOutc
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[barkoba] entitlement pre-check failed for ${playerId}:`, err);
-    return { ok: false, reason: "unavailable" };
+    return options.allowGuestFallback
+      ? { ok: true, reason: "guest_fallback" }
+      : { ok: false, reason: "unavailable" };
   }
 }
 

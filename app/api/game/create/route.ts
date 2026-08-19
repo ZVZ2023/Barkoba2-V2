@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { resolveActingPlayer } from "@/lib/actingPlayer";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
@@ -10,8 +10,10 @@ import { canStartGame, consumeForGame, ensureInitialComplimentary } from "@/lib/
 import type { ConsumeOutcome } from "@/lib/entitlements";
 
 /**
- * V2.4 — the single entitlement refusal. Fails CLOSED: an unverifiable
- * entitlement denies creation rather than handing out a free game.
+ * V2.4 — the single entitlement refusal. Registered/account play fails closed:
+ * an unverifiable entitlement denies creation rather than risking owned value.
+ * TASK 6D adds one explicit exception before this helper: rate-limited guest
+ * play may return a successful `guest_fallback` outcome.
  *
  * This posture exists at creation and nowhere else. No turn, answer, clue,
  * correction or resolution route consults entitlement, so neither exhaustion
@@ -189,9 +191,18 @@ const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 // validates a budget and the screens that offer it share one definition.
 
 export async function POST(req: NextRequest) {
-  // V2.1.1 — who is acting. Null whenever identity is unconfigured; the game is
-  // fully playable either way, which is why nothing below branches on it.
-  const playerId = await resolveActingPlayerId(req.headers);
+  // Account authority and guest continuity are deliberately separate. A guest
+  // (or a request whose account authority cannot be resolved) may use the
+  // existing rate-limited guest allowance. A registered cookie without a live
+  // account session may not: it remains information, never account authority.
+  const playerContext = await resolveActingPlayer(req.headers);
+  const playerId =
+    playerContext.kind === "account" || playerContext.kind === "guest"
+      ? playerContext.playerId
+      : null;
+  const entitlementOptions = {
+    allowGuestFallback: playerContext.kind === "guest" || playerContext.kind === "none",
+  };
 
   // V2.5 — resolved once, applied to whichever branch creates the game below.
   const benchmark = resolveBenchmark(req);
@@ -232,7 +243,7 @@ export async function POST(req: NextRequest) {
   // Advisory pre-check, so a player with no balance is refused before an
   // Anthropic call is spent telling them so. consumeForGame below remains the
   // authority — only the consumption is atomic.
-  const preCheck = await canStartGame(playerId);
+  const preCheck = await canStartGame(playerId, entitlementOptions);
   const preRefusal = entitlementRefusal(preCheck);
   if (preRefusal) return preRefusal;
 
@@ -365,7 +376,12 @@ export async function POST(req: NextRequest) {
     // The budget is read back off the CREATED RECORD, not from the request:
     // aiGame.max_questions is what the server resolved and persisted. The cost
     // table itself lives in lib/questionBudget.ts and is never held here.
-    const aiCharge = await consumeForGame(playerId, aiGame.game_id, aiGame.max_questions);
+    const aiCharge = await consumeForGame(
+      playerId,
+      aiGame.game_id,
+      aiGame.max_questions,
+      entitlementOptions
+    );
     const aiRefusal = entitlementRefusal(aiCharge);
     if (aiRefusal) return aiRefusal;
 
@@ -517,7 +533,12 @@ export async function POST(req: NextRequest) {
   // Authoritative charge. Same reasoning as the AI branch: a refusal here
   // leaves an orphaned, turn-less game that never enters the corpus.
   // Same rule: the persisted, server-resolved budget decides the cost.
-  const charge = await consumeForGame(playerId, game.game_id, game.max_questions);
+  const charge = await consumeForGame(
+    playerId,
+    game.game_id,
+    game.max_questions,
+    entitlementOptions
+  );
   const refusal = entitlementRefusal(charge);
   if (refusal) return refusal;
 
