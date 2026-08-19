@@ -79,10 +79,15 @@ test("§39 guards the global entitlement query behind a verified existing identi
     /hasEstablishedPlayerIdentity=\{context\.kind === "account" \|\| context\.kind === "guest"\}/
   );
 
-  const guard = UI.indexOf("if (!enabled) return");
+  const guard = UI.indexOf("if (!enabled)");
   const request = UI.indexOf('fetch("/api/player/entitlement"');
   assert.ok(guard > 0 && request > guard, "identity guard must precede the entitlement fetch");
-  assert.match(HEADER, /useEntitlement\(hasEstablishedPlayerIdentity\)/);
+  assert.match(
+    HEADER,
+    /useEntitlement\([\s\S]*hasEstablishedPlayerIdentity,[\s\S]*accountAuthenticated \? "account" : "guest"[\s\S]*\)/
+  );
+  assert.match(UI, /\[enabled, identityScope, nonce\]/);
+  assert.match(UI, /setView\(null\)/);
 });
 
 test("§39 places the player-aware status in every existing global header shell", () => {

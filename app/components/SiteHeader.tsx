@@ -17,7 +17,10 @@ export default function SiteHeader({
   accountAuthenticated: boolean;
 }) {
   const comingSoon = useComingSoon();
-  const entitlement = useEntitlement(hasEstablishedPlayerIdentity);
+  const entitlement = useEntitlement(
+    hasEstablishedPlayerIdentity,
+    accountAuthenticated ? "account" : "guest"
+  );
 
   return (
     <header className="grid w-full grid-cols-1 items-center gap-x-3 gap-y-2 px-4 py-3 sm:px-6 md:grid-cols-[minmax(0,1fr)_minmax(0,auto)_auto] md:py-4">

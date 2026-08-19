@@ -13,6 +13,7 @@ import { issuePlayerCookie, PLAYER_HEADER } from "../lib/playerIdentity";
 import { migrateLegacyPlayer, registerPlayerAccount } from "../lib/playerAccounts";
 import { claimPlayer, type DurablePlayer } from "../lib/playerStore";
 import { POST as createPurchaseIntent } from "../app/api/entitlement/intent/route";
+import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 
 process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
 
@@ -40,6 +41,7 @@ interface LedgerRow {
 let accounts: Map<string, AccountRow>;
 let sessions: Map<string, SessionRow>;
 let ledger: LedgerRow[];
+let unlimited: Set<string>;
 
 function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   const query = strings.join(" ");
@@ -108,6 +110,26 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     }]);
   }
 
+  if (/BOOL_OR\(grant_key = 'initial_complimentary'\)/.test(query)) {
+    const playerId = String(v[0]);
+    const rows = ledger.filter((r) => r.player_id === playerId);
+    return Promise.resolve([{
+      balance: rows.reduce((n, r) => n + r.amount, 0),
+      complimentary_granted: 0,
+      purchased: rows.filter((r) => r.grant_key.startsWith("purchase:"))
+        .reduce((n, r) => n + r.amount, 0),
+      consumed: 0,
+      expired: 0,
+      initial_complimentary_granted: rows.some(
+        (r) => r.grant_key === "initial_complimentary"
+      ),
+    }]);
+  }
+
+  if (/FROM accounts\.unlimited_play/.test(query)) {
+    return Promise.resolve(unlimited.has(String(v[0])) ? [{ "?column?": 1 }] : []);
+  }
+
   return Promise.resolve([]);
 }
 fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => Promise.all(queries);
@@ -116,12 +138,15 @@ const SAVED = {
   database: process.env.DATABASE_URL,
   corpus: process.env.CORPUS_ENABLED,
   storefront: process.env.DICS_STOREFRONT_URL,
+  entitlements: process.env.ENTITLEMENTS_ENABLED,
 };
 
 beforeEach(() => {
   accounts = new Map();
   sessions = new Map();
   ledger = [];
+  unlimited = new Set();
+  process.env.ENTITLEMENTS_ENABLED = "true";
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   process.env.DICS_STOREFRONT_URL = "https://dics.example/store";
@@ -136,6 +161,33 @@ afterEach(() => {
   else process.env.CORPUS_ENABLED = SAVED.corpus;
   if (SAVED.storefront === undefined) delete process.env.DICS_STOREFRONT_URL;
   else process.env.DICS_STOREFRONT_URL = SAVED.storefront;
+  if (SAVED.entitlements === undefined) delete process.env.ENTITLEMENTS_ENABLED;
+  else process.env.ENTITLEMENTS_ENABLED = SAVED.entitlements;
+});
+
+test("an authenticated account's player_id drives the visible unlimited state", async () => {
+  const playerId = "9".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "8".repeat(64),
+    displayName: "Zsolt",
+  });
+  unlimited.add(playerId);
+  const token = await createAccountSession(playerId);
+
+  const response = await readEntitlement(
+    new Request("https://barkoba.test/api/player/entitlement", {
+      headers: {
+        cookie: `bk_account_session=${token}`,
+        [PLAYER_HEADER]: "7".repeat(32),
+      },
+    }) as Parameters<typeof readEntitlement>[0]
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.unlimited, true);
+  assert.equal(body.play_state, "unlimited");
+  assert.equal(body.balance, 0);
 });
 
 test("registration preserves player_id, ledger rows, balance and ownership markers", async () => {

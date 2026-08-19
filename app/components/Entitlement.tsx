@@ -38,7 +38,8 @@ export interface EntitlementView {
 
 /** Shared fetch. Returns null when entitlement cannot be read at all. */
 export function useEntitlement(
-  enabled = true
+  enabled = true,
+  identityScope: "guest" | "account" = "guest"
 ): { view: EntitlementView | null; refresh: () => void } {
   const [view, setView] = useState<EntitlementView | null>(null);
   const [nonce, setNonce] = useState(0);
@@ -47,7 +48,15 @@ export function useEntitlement(
     // Global headers render for anonymous traffic and crawlers too. Do not
     // turn those page views into ledger aggregates: the server wrapper enables
     // this only after it verifies a guest or authenticated account.
-    if (!enabled) return;
+    if (!enabled) {
+      setView(null);
+      return;
+    }
+
+    // A guest and an authenticated account can both be "established", so the
+    // boolean guard alone cannot identify an authority change. Clear the old
+    // identity's balance and fetch again whenever account authority changes.
+    setView(null);
 
     let live = true;
     void (async () => {
@@ -64,7 +73,7 @@ export function useEntitlement(
     return () => {
       live = false;
     };
-  }, [enabled, nonce]);
+  }, [enabled, identityScope, nonce]);
 
   return { view, refresh: useCallback(() => setNonce((n) => n + 1), []) };
 }
