@@ -14,6 +14,7 @@ import { migrateLegacyPlayer, registerPlayerAccount } from "../lib/playerAccount
 import { claimPlayer, type DurablePlayer } from "../lib/playerStore";
 import { POST as createPurchaseIntent } from "../app/api/entitlement/intent/route";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
+import { GET as readAccountDiagnostic } from "../app/api/account/diagnostic/route";
 
 process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
 
@@ -188,6 +189,54 @@ test("an authenticated account's player_id drives the visible unlimited state", 
   assert.equal(body.unlimited, true);
   assert.equal(body.play_state, "unlimited");
   assert.equal(body.balance, 0);
+});
+
+test("TASK 6G diagnostic traces the same account through display and game admission", async () => {
+  const playerId = "1".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "2".repeat(64),
+    displayName: "Zsolt",
+  });
+  unlimited.add(playerId);
+  const token = await createAccountSession(playerId);
+
+  const response = await readAccountDiagnostic(
+    new Request("https://barkoba.test/api/account/diagnostic", {
+      headers: {
+        cookie: `bk_account_session=${token}`,
+        [PLAYER_HEADER]: "3".repeat(32),
+      },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  const body = await response.json();
+  assert.deepEqual(body.unlimited_lookup, { active: true, lookup: "ok" });
+  assert.equal(body.entitlement.play_state, "unlimited");
+  assert.deepEqual(body.game_creation_precheck, { ok: true, reason: "unlimited" });
+  assert.equal(body.account.display_name, "Zsolt");
+  assert.match(body.player_fingerprint, /^[0-9a-f]{12}$/);
+
+  const serialized = JSON.stringify(body);
+  assert.doesNotMatch(serialized, /bk_account_session|recovery|session_hash|secret/i);
+  assert.doesNotMatch(serialized, new RegExp(playerId));
+  assert.doesNotMatch(serialized, new RegExp(token));
+});
+
+test("TASK 6G diagnostic refuses guest identity", async () => {
+  const response = await readAccountDiagnostic(
+    new Request("https://barkoba.test/api/account/diagnostic", {
+      headers: { [PLAYER_HEADER]: "4".repeat(32) },
+    })
+  );
+  assert.equal(response.status, 401);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  assert.deepEqual(await response.json(), {
+    diagnostic: "task6g",
+    authenticated: false,
+    identity_kind: "guest",
+  });
 });
 
 test("registration preserves player_id, ledger rows, balance and ownership markers", async () => {

@@ -184,13 +184,22 @@ function requireSql(): SqlClient {
  *
  * Cheap by construction — a partial index over a table with two rows.
  */
-export async function hasUnlimitedPlay(playerId: string | null): Promise<boolean> {
-  if (!playerId) return false;
-  if (!isCorpusConfigured()) return false;
+export type UnlimitedPlayDiagnostic = {
+  active: boolean;
+  lookup: "ok" | "not_configured" | "error";
+};
+
+/** Read-only diagnostic form of the unlimited lookup. Never exposes row data. */
+export async function inspectUnlimitedPlay(
+  playerId: string | null
+): Promise<UnlimitedPlayDiagnostic> {
+  if (!playerId || !isCorpusConfigured()) {
+    return { active: false, lookup: "not_configured" };
+  }
 
   try {
     const sql = getSql();
-    if (!sql) return false;
+    if (!sql) return { active: false, lookup: "not_configured" };
     const rows = await sql`
       SELECT 1
         FROM accounts.unlimited_play
@@ -198,14 +207,18 @@ export async function hasUnlimitedPlay(playerId: string | null): Promise<boolean
          AND revoked_at IS NULL
        LIMIT 1
     `;
-    return rows.length > 0;
+    return { active: rows.length > 0, lookup: "ok" };
   } catch (err) {
     // Deliberately NOT re-thrown and deliberately not treated as a grant. A
     // player who should be exempt and is not merely sees the ordinary gate.
     // eslint-disable-next-line no-console
     console.error(`[barkoba] unlimited-play lookup failed for ${playerId}:`, err);
-    return false;
+    return { active: false, lookup: "error" };
   }
+}
+
+export async function hasUnlimitedPlay(playerId: string | null): Promise<boolean> {
+  return (await inspectUnlimitedPlay(playerId)).active;
 }
 
 // ---------------------------------------------------------------------------

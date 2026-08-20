@@ -7,6 +7,7 @@ import {
   consumeForGame,
   ensureInitialComplimentary,
   hasUnlimitedPlay,
+  inspectUnlimitedPlay,
 } from "../lib/entitlements";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import { QUESTION_BUDGETS } from "../lib/questionBudget";
@@ -141,6 +142,14 @@ afterEach(() => {
 test("an active grant is found; an ordinary player has none", async () => {
   assert.equal(await hasUnlimitedPlay(UNLIMITED), true);
   assert.equal(await hasUnlimitedPlay(ORDINARY), false);
+  assert.deepEqual(await inspectUnlimitedPlay(UNLIMITED), {
+    active: true,
+    lookup: "ok",
+  });
+  assert.deepEqual(await inspectUnlimitedPlay(ORDINARY), {
+    active: false,
+    lookup: "ok",
+  });
 });
 
 test("the lookup only ever considers ACTIVE grants", async () => {
@@ -278,6 +287,10 @@ test("FAILS CLOSED: a broken lookup falls through to ordinary enforcement", asyn
   // error, an outage of a two-row table would become free play for everyone.
   unlimitedLookupFails = true;
 
+  assert.deepEqual(await inspectUnlimitedPlay(UNLIMITED), {
+    active: false,
+    lookup: "error",
+  });
   assert.equal(await hasUnlimitedPlay(UNLIMITED), false);
   assert.deepEqual(await canStartGame(UNLIMITED), {
     ok: false,
