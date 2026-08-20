@@ -10,11 +10,12 @@ import {
 import { resolveActingPlayer, resolveActingPlayerId } from "../lib/actingPlayer";
 import { getBalance } from "../lib/entitlements";
 import { issuePlayerCookie, PLAYER_HEADER } from "../lib/playerIdentity";
-import { migrateLegacyPlayer, registerPlayerAccount } from "../lib/playerAccounts";
+import { getPlayerAccount, migrateLegacyPlayer, registerPlayerAccount } from "../lib/playerAccounts";
 import { claimPlayer, type DurablePlayer } from "../lib/playerStore";
 import { POST as createPurchaseIntent } from "../app/api/entitlement/intent/route";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 import { GET as readAccountDiagnostic } from "../app/api/account/diagnostic/route";
+import { POST as resetIdentity } from "../app/api/account/reset-identity/route";
 
 process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
 
@@ -237,6 +238,147 @@ test("TASK 6G diagnostic refuses guest identity", async () => {
     authenticated: false,
     identity_kind: "guest",
   });
+});
+
+test("TASK 6H: a registered local identity cannot silently register again", async () => {
+  const playerId = "5".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "6".repeat(64),
+    displayName: "Zsolt",
+  });
+
+  // No account-session cookie presented: exactly the stuck state — the local
+  // bk_player already belongs to an account, but this browser is not logged in.
+  const context = await resolveActingPlayer(
+    new Request("https://barkoba.test/api/account/register", {
+      headers: { [PLAYER_HEADER]: playerId },
+    }).headers
+  );
+  assert.equal(context.kind, "registered");
+
+  // register/route.ts uses next/headers cookies() and cannot be invoked directly
+  // in this harness (see the existing structural tests above it), so the
+  // guarantee that this state is refused, not silently re-registered, is
+  // asserted the same way the rest of this suite already does for that route.
+  const source = readFileSync("app/api/account/register/route.ts", "utf8");
+  assert.match(source, /context\.kind === "registered"/);
+  assert.match(source, /login_required/);
+  assert.match(source, /status: 409/);
+  assert.doesNotMatch(
+    source.slice(source.indexOf('context.kind === "registered"'), source.indexOf("if (context.kind !== \"guest\")")),
+    /registerPlayerAccount/
+  );
+});
+
+test("TASK 6H: explicit reset clears only this browser's identity/session cookies", async () => {
+  const playerId = "1".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "old-recovery-key-do-not-lose".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+
+  const response = await resetIdentity(
+    new Request("https://barkoba.test/api/account/reset-identity", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: playerId },
+    })
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.reset, true);
+  assert.equal(
+    body.message,
+    "A régi fiók nem törlődik. Ez a böngésző új játékosként indul tovább."
+  );
+
+  const cleared = response.headers.getSetCookie();
+  assert.equal(cleared.length, 3, `expected exactly 3 cleared cookies, got: ${cleared.join(" | ")}`);
+  for (const name of ["bk_player=", "bk_player_name=", "bk_account_session="]) {
+    const cookie = cleared.find((c) => c.startsWith(name));
+    assert.ok(cookie, `expected a cleared ${name} cookie`);
+    assert.match(cookie!, /Max-Age=0/);
+  }
+});
+
+test("TASK 6H: reset leaves the old account completely untouched in the database", async () => {
+  const playerId = "2".repeat(32);
+  const recoveryKey = "another-old-recovery-key".padEnd(64, "0");
+  await registerPlayerAccount({ playerId, recoveryKey, displayName: "Zsolt" });
+  unlimited.add(playerId);
+  const before = await getPlayerAccount(playerId);
+  const sessionsBefore = sessions.size;
+
+  const response = await resetIdentity(
+    new Request("https://barkoba.test/api/account/reset-identity", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: playerId },
+    })
+  );
+  assert.equal(response.status, 200);
+
+  const after = await getPlayerAccount(playerId);
+  assert.deepEqual(after, before, "the registered account row must be byte-for-byte unchanged");
+  assert.equal(sessions.size, sessionsBefore, "no session rows should be created or altered");
+  assert.equal(unlimited.has(playerId), true, "the unlimited grant must survive the reset");
+});
+
+test("TASK 6H: reset refuses when there is no orphaned registered identity to abandon", async () => {
+  const guestResponse = await resetIdentity(
+    new Request("https://barkoba.test/api/account/reset-identity", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: "3".repeat(32) },
+    })
+  );
+  assert.equal(guestResponse.status, 409);
+  assert.equal(guestResponse.headers.getSetCookie().length, 0);
+
+  const playerId = "4".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "yet-another-key".padEnd(64, "0"), displayName: "Zsolt" });
+  const token = await createAccountSession(playerId);
+  const authenticatedResponse = await resetIdentity(
+    new Request("https://barkoba.test/api/account/reset-identity", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}`, [PLAYER_HEADER]: playerId },
+    })
+  );
+  assert.equal(authenticatedResponse.status, 409, "an active session must never be cleared by this route");
+  assert.equal(authenticatedResponse.headers.getSetCookie().length, 0);
+  assert.equal(await resolveAccountSession(token), playerId, "the active session must remain valid");
+});
+
+test("TASK 6H: the next request gets a distinct fresh guest identity, and it can register normally", async () => {
+  const oldPlayerId = "9".repeat(30) + "aa";
+  await registerPlayerAccount({
+    playerId: oldPlayerId,
+    recoveryKey: "the-lost-recovery-code".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+  const oldAccountBefore = structuredClone(accounts.get(oldPlayerId));
+
+  // What middleware does on the very next request once bk_player is cleared:
+  // no valid signed cookie survives, so a brand-new id is minted.
+  const fresh = await issuePlayerCookie();
+  assert.notEqual(fresh.playerId, oldPlayerId);
+
+  const freshContext = await resolveActingPlayer(
+    new Request("https://barkoba.test/", { headers: { [PLAYER_HEADER]: fresh.playerId } }).headers
+  );
+  assert.equal(freshContext.kind, "guest", "a freshly minted id must not inherit the old account's status");
+
+  const { account, created } = await registerPlayerAccount({
+    playerId: fresh.playerId,
+    recoveryKey: "brand-new-recovery-code".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+  assert.equal(created, true);
+  assert.equal(account.player_id, fresh.playerId);
+  assert.equal(account.display_name, "Zsolt");
+
+  // The old account is a separate row, entirely undisturbed by the new one.
+  assert.deepEqual(accounts.get(oldPlayerId), oldAccountBefore);
+  assert.equal(accounts.size, 2);
 });
 
 test("registration preserves player_id, ledger rows, balance and ownership markers", async () => {

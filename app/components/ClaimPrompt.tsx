@@ -21,6 +21,8 @@ export default function ClaimPrompt() {
   const [state, setState] = useState<State>({ step: "loading" });
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetError, setResetError] = useState<string | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -56,6 +58,24 @@ export default function ClaimPrompt() {
       setState({ step: "offer" });
     } finally {
       setBusy(false);
+    }
+  }, []);
+
+  const resetIdentity = useCallback(async () => {
+    setResetBusy(true);
+    setResetError(null);
+    try {
+      const res = await fetch("/api/account/reset-identity", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setResetError(data.message || "Ez most nem sikerült.");
+        return;
+      }
+      window.location.reload();
+    } catch {
+      setResetError("Hálózati hiba — próbáld újra.");
+    } finally {
+      setResetBusy(false);
     }
   }, []);
 
@@ -113,6 +133,19 @@ export default function ClaimPrompt() {
           helyreállító kódodat.
         </p>
         <RecoverPrompt initiallyOpen />
+        <div className="flex flex-col gap-2 border-t border-[var(--ink)]/10 pt-3">
+          <p className="text-xs text-[var(--ink-soft)]">
+            A régi fiók nem törlődik. Ez a böngésző új játékosként indul tovább.
+          </p>
+          <button
+            onClick={() => void resetIdentity()}
+            disabled={resetBusy}
+            className="min-h-11 self-start rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40"
+          >
+            Új fiók létrehozása
+          </button>
+          {resetError && <p className="text-sm text-[var(--red)]">{resetError}</p>}
+        </div>
       </div>
     );
   }
