@@ -662,6 +662,76 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
 }
 
 // ---------------------------------------------------------------------------
+// Player-facing game history.
+//
+// Read-only, and scoped by construction: it takes exactly one player_id and
+// the WHERE clause is that same literal, so this can never return another
+// player's games. Uses games_player_history — the partial index migration
+// 0001 already built for exactly this query, unused until now.
+//
+// NEVER THROWS, matching every other function in this module. A read failure
+// returns null; the caller (the route) is the one place that turns that into
+// an HTTP response.
+// ---------------------------------------------------------------------------
+
+const PLAYER_HISTORY_LIMIT = 100;
+
+export interface PlayerHistoryEntry {
+  game_id: string;
+  created_at: string;
+  lifecycle_state: string;
+  outcome: string | null;
+  /**
+   * Which seat this player occupied. Exact for every game recorded since
+   * migration 0003 via composer_player_id/racer_player_id. Pre-V2.3 rows
+   * never had those columns populated, so they fall back to the
+   * single-human-seat convention those games always followed
+   * (composer_kind/racer_kind never both "human" before Human-vs-Human
+   * existed). Null only if neither can determine it.
+   */
+  role: "composer" | "racer" | null;
+}
+
+export async function listPlayerHistory(playerId: string): Promise<PlayerHistoryEntry[] | null> {
+  if (!isCorpusConfigured()) return null;
+  const sql = getSql();
+  if (!sql) return null;
+
+  try {
+    const rows = await sql`
+      SELECT operational_game_id, created_at, lifecycle_state, outcome,
+             composer_player_id, racer_player_id, composer_kind, racer_kind
+        FROM corpus.games
+       WHERE player_id = ${playerId}
+       ORDER BY created_at DESC
+       LIMIT ${PLAYER_HISTORY_LIMIT}
+    `;
+
+    return rows.map((row) => {
+      let role: "composer" | "racer" | null = null;
+      if (row.composer_player_id === playerId) role = "composer";
+      else if (row.racer_player_id === playerId) role = "racer";
+      else if (row.composer_player_id === null && row.racer_player_id === null) {
+        if (row.composer_kind === "human" && row.racer_kind !== "human") role = "composer";
+        else if (row.racer_kind === "human" && row.composer_kind !== "human") role = "racer";
+      }
+      return {
+        game_id: String(row.operational_game_id),
+        created_at:
+          row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+        lifecycle_state: String(row.lifecycle_state),
+        outcome: typeof row.outcome === "string" ? row.outcome : null,
+        role,
+      };
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] corpus: player history read failed for ${playerId}:`, err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Opportunistic reconciliation.
 //
 // Two jobs, neither of which needs a scheduler and neither of which may ever
