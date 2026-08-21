@@ -7,6 +7,7 @@ import {
   getPlayerAccount,
   getPlayerAccountByVerificationTokenHash,
   markEmailVerified,
+  setAccountEmail,
 } from "../lib/playerAccounts";
 import {
   EMAIL_VERIFICATION_TTL_SECONDS,
@@ -16,6 +17,10 @@ import {
   verificationTokenHash,
 } from "../lib/emailVerification";
 import { GET as verifyEmail } from "../app/api/account/verify-email/route";
+import { POST as updateEmail } from "../app/api/account/email/route";
+import { GET as readProfile } from "../app/api/account/profile/route";
+import { createAccountSession } from "../lib/accountSession";
+import { PLAYER_HEADER } from "../lib/playerIdentity";
 
 // ---------------------------------------------------------------------------
 // V2.6.x — email collection, the verification token lifecycle, and
@@ -43,11 +48,35 @@ interface AccountRow {
   photo_url: string | null;
 }
 
+interface SessionRow {
+  player_id: string;
+  expires_at: string;
+  revoked_at: string | null;
+}
+
 let accounts: Map<string, AccountRow>;
+let sessions: Map<string, SessionRow>;
 
 function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   const query = strings.join(" ");
   const v = values as unknown[];
+
+  if (/INSERT INTO accounts\.player_sessions/.test(query)) {
+    const hash = String(v[0]);
+    const playerId = String(v[2]);
+    if (!accounts.has(playerId)) return Promise.resolve([]);
+    sessions.set(hash, { player_id: playerId, expires_at: String(v[1]), revoked_at: null });
+    return Promise.resolve([{ player_id: playerId }]);
+  }
+
+  if (/FROM accounts\.player_sessions/.test(query)) {
+    const row = sessions.get(String(v[0]));
+    return Promise.resolve(
+      row && !row.revoked_at && Date.parse(row.expires_at) > Date.now()
+        ? [{ player_id: row.player_id }]
+        : []
+    );
+  }
 
   if (/INSERT INTO accounts\.players/.test(query)) {
     const playerId = String(v[0]);
@@ -77,6 +106,17 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     return Promise.resolve([{ player_id: playerId }]);
   }
 
+  if (/UPDATE accounts\.players/.test(query) && /SET email =/.test(query)) {
+    const [email, tokenHash, expiresAt, playerId] = v.map(String);
+    const row = accounts.get(playerId!);
+    if (!row || row.disabled_at) return Promise.resolve([]);
+    row.email = email!;
+    row.email_verified_at = null;
+    row.email_verification_token = tokenHash!;
+    row.email_verification_expires_at = expiresAt!;
+    return Promise.resolve([{ player_id: playerId }]);
+  }
+
   if (/FROM accounts\.players/.test(query) && /email_verification_token =/.test(query)) {
     const hash = String(v[0]);
     const row = [...accounts.values()].find((a) => a.email_verification_token === hash);
@@ -100,6 +140,8 @@ fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => Promise
 
 beforeEach(() => {
   accounts = new Map();
+  sessions = new Map();
+  process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   __setSqlClientForTests(fakeSql);
@@ -526,4 +568,167 @@ test("register/route.ts is wired to validate, store and (non-fatally) send the v
     /return/,
     "a failed send must fall through to registration's normal success response, not return early"
   );
+});
+
+// ---------------------------------------------------------------------------
+// setAccountEmail — the reachable-any-time add/change path.
+// ---------------------------------------------------------------------------
+
+test("setAccountEmail changes the address and resets verification, leaving other columns untouched", async () => {
+  const playerId = "9".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "9".repeat(64),
+    displayName: "Zsolt",
+    email: "old@example.com",
+    emailVerificationTokenHash: "a".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+  await markEmailVerified(playerId);
+  const before = await getPlayerAccount(playerId);
+  assert.equal(before?.email_verified_at !== null, true, "precondition: the old address was verified");
+
+  const newHash = "b".repeat(64);
+  const newExpiry = new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString();
+  assert.equal(await setAccountEmail(playerId, "new@example.com", newHash, newExpiry), true);
+
+  const after = await getPlayerAccount(playerId);
+  assert.equal(after?.email, "new@example.com");
+  assert.equal(after?.email_verified_at, null, "a changed address must go back to unverified");
+  assert.equal(after?.email_verification_token, newHash);
+  assert.equal(after?.email_verification_expires_at, newExpiry);
+  assert.equal(after?.display_name, "Zsolt", "unrelated columns must be untouched");
+  assert.equal(after?.recovery_key, before?.recovery_key, "unrelated columns must be untouched");
+});
+
+test("setAccountEmail refuses a disabled or nonexistent account", async () => {
+  assert.equal(
+    await setAccountEmail("0".repeat(32), "x@example.com", "c".repeat(64), new Date().toISOString()),
+    false
+  );
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/account/email
+// ---------------------------------------------------------------------------
+
+async function registeredSession(playerId: string, email?: string): Promise<string> {
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: `${playerId}-key`.padEnd(64, "0"),
+    displayName: "Zsolt",
+    email,
+  });
+  return createAccountSession(playerId);
+}
+
+test("POST /api/account/email refuses a caller without an active session", async () => {
+  const guestResponse = await updateEmail(
+    new Request("https://barkoba.test/api/account/email", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: "1".repeat(32) },
+      body: JSON.stringify({ email: "x@example.com" }),
+    })
+  );
+  assert.equal(guestResponse.status, 401);
+
+  const playerId = "2".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "2".repeat(64), displayName: "Zsolt" });
+  const registeredNoSessionResponse = await updateEmail(
+    new Request("https://barkoba.test/api/account/email", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: playerId },
+      body: JSON.stringify({ email: "x@example.com" }),
+    })
+  );
+  assert.equal(registeredNoSessionResponse.status, 401);
+});
+
+test("POST /api/account/email refuses an implausible address without touching the account", async () => {
+  const playerId = "3".repeat(32);
+  const token = await registeredSession(playerId, "old@example.com");
+  const response = await updateEmail(
+    new Request("https://barkoba.test/api/account/email", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "not-an-email" }),
+    })
+  );
+  assert.equal(response.status, 400);
+  assert.equal((await response.json()).error, "invalid_email");
+  assert.equal((await getPlayerAccount(playerId))?.email, "old@example.com");
+});
+
+test("POST /api/account/email changes exactly the caller's own account and reports the new address", async () => {
+  const playerId = "4".repeat(32);
+  const other = "5".repeat(32);
+  const token = await registeredSession(playerId, "old@example.com");
+  await registerPlayerAccount({ playerId: other, recoveryKey: "o".repeat(64), displayName: "Other", email: "other@example.com" });
+
+  const response = await updateEmail(
+    new Request("https://barkoba.test/api/account/email", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "new@example.com" }),
+    })
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.email, "new@example.com");
+  assert.equal(typeof body.email_verification_sent, "boolean");
+
+  assert.equal((await getPlayerAccount(playerId))?.email, "new@example.com");
+  assert.equal(
+    (await getPlayerAccount(other))?.email,
+    "other@example.com",
+    "another account's email must be untouched"
+  );
+});
+
+// ---------------------------------------------------------------------------
+// GET /api/account/profile
+// ---------------------------------------------------------------------------
+
+test("GET /api/account/profile refuses a caller without an active session", async () => {
+  const response = await readProfile(
+    new Request("https://barkoba.test/api/account/profile", {
+      headers: { [PLAYER_HEADER]: "6".repeat(32) },
+    })
+  );
+  assert.equal(response.status, 401);
+});
+
+test("GET /api/account/profile reports display name, email, verification status and photo — nothing else", async () => {
+  const playerId = "7".repeat(32);
+  const token = await registeredSession(playerId, "zsolt@example.com");
+  const response = await readProfile(
+    new Request("https://barkoba.test/api/account/profile", {
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.deepEqual(body, {
+    display_name: "Zsolt",
+    email: "zsolt@example.com",
+    email_verified: false,
+    photo_url: null,
+  });
+
+  const serialized = JSON.stringify(body);
+  assert.doesNotMatch(serialized, /recovery|session_hash|verification_token/i);
+});
+
+test("GET /api/account/profile reports email_verified:true once the address has been verified", async () => {
+  const playerId = "8".repeat(32);
+  const token = await registeredSession(playerId, "zsolt@example.com");
+  await markEmailVerified(playerId);
+
+  const response = await readProfile(
+    new Request("https://barkoba.test/api/account/profile", {
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  const body = await response.json();
+  assert.equal(body.email_verified, true);
 });

@@ -3,15 +3,21 @@
 import { useState } from "react";
 
 /**
- * Optional profile photo upload, shown right after registration succeeds —
- * this browser already holds a valid account session by then, which
- * POST /api/account/photo requires. Skippable: an account with no photo is a
- * normal, supported state, not an incomplete one.
+ * Profile photo upload/replace. Used both right after registration succeeds
+ * and, reachable any time, from the logged-in profile screen
+ * (AccountProfile.tsx) — either way POST /api/account/photo requires the
+ * caller to already hold a valid account session. Skippable: an account
+ * with no photo is a normal, supported state, not an incomplete one.
  */
-export default function ProfilePhotoPrompt() {
+export default function ProfilePhotoPrompt({
+  currentPhotoUrl = null,
+}: {
+  currentPhotoUrl?: string | null;
+}) {
   const [file, setFile] = useState<File | null>(null);
+  const [uploadedUrl, setUploadedUrl] = useState<string | null>(currentPhotoUrl);
   const [busy, setBusy] = useState(false);
-  const [done, setDone] = useState(false);
+  const [justUploaded, setJustUploaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   async function upload() {
@@ -27,7 +33,9 @@ export default function ProfilePhotoPrompt() {
         setError(data.message || "A feltöltés nem sikerült.");
         return;
       }
-      setDone(true);
+      setUploadedUrl(data.photo_url);
+      setJustUploaded(true);
+      setFile(null);
     } catch {
       setError("Hálózati hiba — próbáld újra.");
     } finally {
@@ -35,17 +43,25 @@ export default function ProfilePhotoPrompt() {
     }
   }
 
-  if (done) {
-    return <p className="text-sm text-[var(--green)]">Profilkép feltöltve.</p>;
-  }
-
   return (
-    <div className="flex flex-col gap-2 border-t border-[var(--ink)]/10 pt-3">
+    <div className="flex flex-col gap-2">
       <p className="text-sm text-[var(--ink)]">Profilkép (nem kötelező).</p>
+      {uploadedUrl && (
+        // eslint-disable-next-line @next/next/no-img-element -- a remote Blob
+        // URL, not a local asset; next/image's optimizer has nothing to do here.
+        <img
+          src={uploadedUrl}
+          alt=""
+          className="h-16 w-16 rounded-full border border-[var(--ink)]/15 object-cover"
+        />
+      )}
       <input
         type="file"
         accept="image/png,image/jpeg,image/webp"
-        onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+        onChange={(e) => {
+          setFile(e.target.files?.[0] ?? null);
+          setJustUploaded(false);
+        }}
         disabled={busy}
         className="text-sm text-[var(--ink-soft)]"
       />
@@ -54,8 +70,11 @@ export default function ProfilePhotoPrompt() {
         disabled={busy || !file}
         className="min-h-11 self-start rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40"
       >
-        Feltöltés
+        {uploadedUrl ? "Csere" : "Feltöltés"}
       </button>
+      {justUploaded && !error && (
+        <p className="text-sm text-[var(--green)]">Profilkép feltöltve.</p>
+      )}
       {error && <p className="text-sm text-[var(--red)]">{error}</p>}
     </div>
   );

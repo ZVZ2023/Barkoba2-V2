@@ -215,3 +215,31 @@ export async function setAccountPhotoUrl(
   `;
   return rows.length === 1;
 }
+
+/**
+ * Add or change the account's email, reachable any time (not one-shot like
+ * registration). Resets email_verified_at to NULL — a changed address has
+ * not been verified, and carrying over the old address's verified status
+ * onto a different one would be a lie the ledger of trust here depends on
+ * being honest about. The new token hash and expiry are set in the same
+ * statement so there is never a moment with an email but no live token.
+ */
+export async function setAccountEmail(
+  playerId: string,
+  email: string,
+  verificationTokenHash: string,
+  verificationExpiresAt: string
+): Promise<boolean> {
+  const sql = requireSql();
+  const rows = await sql`
+    UPDATE accounts.players
+       SET email = ${email},
+           email_verified_at = NULL,
+           email_verification_token = ${verificationTokenHash},
+           email_verification_expires_at = ${verificationExpiresAt}
+     WHERE player_id = ${playerId}
+       AND disabled_at IS NULL
+     RETURNING player_id
+  `;
+  return rows.length === 1;
+}

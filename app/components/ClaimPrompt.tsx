@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import RecoverPrompt from "./RecoverPrompt";
 import ProfilePhotoPrompt from "./ProfilePhotoPrompt";
+import AccountProfile from "./AccountProfile";
 
 /**
  * Register the current guest in place, preserving its player_id and ownership.
@@ -147,7 +148,9 @@ export default function ClaimPrompt() {
             Elmentettem
           </button>
         </div>
-        <ProfilePhotoPrompt />
+        <div className="border-t border-[var(--ink)]/10 pt-3">
+          <ProfilePhotoPrompt />
+        </div>
       </div>
     );
   }
@@ -188,6 +191,7 @@ export default function ClaimPrompt() {
           Új helyreállító kód generálása
         </button>
         {rotateError && <p className="text-sm text-[var(--red)]">{rotateError}</p>}
+        <AccountProfile />
       </div>
     );
   }

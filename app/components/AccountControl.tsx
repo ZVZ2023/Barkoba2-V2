@@ -38,7 +38,7 @@ export default function AccountControl({ authenticated }: { authenticated: boole
         className="flex min-h-10 min-w-0 items-center gap-2 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
       >
         <span aria-hidden="true" className="shrink-0">👤</span>
-        <span className="truncate">Bejelentkezés</span>
+        <span className="truncate">Regisztráció / Belépés</span>
       </button>
 
       {open && (
