@@ -4265,3 +4265,33 @@ reconsideration after repeated NO, visible replanning after AMBIGUOUS, a
 guess that never violates KNOWN) and a loss can still represent a genuine
 improvement. The two-game comparison against `racer/2.7.0`'s Volga/Porsche
 911 baselines remains an open follow-up, blocked only on API access.
+
+## 46. The complimentary grant now requires a VERIFIED email
+
+**Closes an abuse path identified after §45's registration work shipped.**
+`ensureInitialComplimentary()` credited the ledger at first game creation
+regardless of whether the account's email had ever been confirmed — so
+"verify your email" carried no actual enforcement, and the same person could
+register throwaway addresses indefinitely, drawing a fresh grant from each
+one without ever opening an inbox.
+
+The gate is now `email_verified_at IS NOT NULL`, checked via
+`getPlayerAccount()` immediately before the grant attempt (after the
+existing amount and `hasUnlimitedPlay` checks, so the unlimited-exemption
+guarantee is proven independently of email status). A guest with no
+`accounts.players` row at all is refused for the identical reason as a
+registered-but-unverified account: neither has a verified email, and the two
+must not be treated as different trust tiers.
+
+**This is a real behavior change, stated plainly:** pure guest play no
+longer earns the first-contact allowance. Accepted deliberately — the
+alternative (guests exempt, registered accounts gated) would make
+registering the *worse* way to get a free allowance than not registering at
+all, which is backwards from what the gate is for. A player who wants the
+free credits now has exactly one path: register, verify, then play.
+
+Currently moot in production either way — `complimentary_grant` is
+independently configured at `0` there (§ recorded in the V2.6.x
+reconnaissance pass), so `ensureInitialComplimentary()` already returns
+before reaching this check. The gate matters the moment that value is
+restored to a positive number.

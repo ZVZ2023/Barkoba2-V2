@@ -619,6 +619,26 @@ export async function ensureInitialComplimentary(playerId: string | null): Promi
   // deployments that grant no allowance at all.
   if (await hasUnlimitedPlay(playerId)) return;
 
+  // V2.6.x — VERIFIED EMAIL IS THE GATE, NOT MERELY A REGISTERED ACCOUNT.
+  //
+  // Without this, "verify your email" is a suggestion with no enforcement:
+  // an account collects its free credits at registration regardless of
+  // whether the address it gave was real or ever confirmed, so the same
+  // person can register throwaway addresses indefinitely and draw a fresh
+  // grant from each one. Requiring email_verified_at closes that path — the
+  // grant now actually costs an inbox, not merely a form submission.
+  //
+  // A guest with no accounts.players row at all (getPlayerAccount returns
+  // null) is refused for the same reason as an account with a null
+  // email_verified_at: neither has a verified email, and the two must not be
+  // treated as different tiers of trust. This is a behavior change from
+  // before email verification existed — pure guest play no longer earns the
+  // complimentary grant — accepted because the alternative (guests exempt,
+  // accounts gated) would make registering the WORSE way to get a free
+  // allowance, which is backwards.
+  const account = await getPlayerAccount(playerId);
+  if (!account || account.email_verified_at === null) return;
+
   try {
     await grantComplimentary(playerId, amount, {
       grantKey: "initial_complimentary",

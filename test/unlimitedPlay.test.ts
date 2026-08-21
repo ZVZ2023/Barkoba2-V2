@@ -30,6 +30,9 @@ import { QUESTION_BUDGETS } from "../lib/questionBudget";
 const UNLIMITED = "u".repeat(32);
 const ORDINARY = "o".repeat(32);
 
+/** player_id -> email_verified_at, or absent entirely for "no account at all". */
+let emailVerifiedAt: Map<string, string | null>;
+
 interface Recorded {
   sql: string;
   values: SqlValue[];
@@ -99,6 +102,28 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     return Promise.resolve([{ entry_id: applied.length }]);
   }
 
+  // getPlayerAccount(), which ensureInitialComplimentary now consults to gate
+  // on email_verified_at. Absent from the map models "no accounts.players row
+  // at all" — a guest — the same way a real SELECT returns no rows for one.
+  if (/FROM accounts\.players/.test(sql) && /player_id =/.test(sql)) {
+    const playerId = String(v[0]);
+    if (!emailVerifiedAt.has(playerId)) return Promise.resolve([]);
+    return Promise.resolve([
+      {
+        player_id: playerId,
+        recovery_key: "k".repeat(64),
+        display_name: null,
+        created_at: new Date().toISOString(),
+        registered_at: new Date().toISOString(),
+        email: "player@example.com",
+        email_verified_at: emailVerifiedAt.get(playerId) ?? null,
+        email_verification_token: null,
+        email_verification_expires_at: null,
+        photo_url: null,
+      },
+    ]);
+  }
+
   return Promise.resolve([]);
 }
 fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => Promise.all(queries);
@@ -118,6 +143,7 @@ beforeEach(() => {
   applied = [];
   exempt = new Set([UNLIMITED]);
   balances = new Map();
+  emailVerifiedAt = new Map();
   unlimitedLookupFails = false;
   process.env.ENTITLEMENTS_ENABLED = "true";
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
@@ -215,14 +241,56 @@ test("the exemption is budget-INDEPENDENT, not budget-exempt", async () => {
 });
 
 test("an unlimited player never accrues complimentary value", async () => {
+  // UNLIMITED deliberately has no accounts.players row in this test — the
+  // point is that the exemption fires from hasUnlimitedPlay() alone, before
+  // the email-verification gate is ever consulted, not that it happens to
+  // also pass that gate.
   await ensureInitialComplimentary(UNLIMITED);
   assert.deepEqual(ledgerWrites(), []);
   // The contrast, in the same test so the two can never drift apart: an
-  // ordinary player still receives the first-contact allowance unchanged.
+  // ordinary player with a verified email still receives the first-contact
+  // allowance unchanged.
+  emailVerifiedAt.set(ORDINARY, new Date().toISOString());
   await ensureInitialComplimentary(ORDINARY);
   assert.deepEqual(
     ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind })),
     [{ player_id: ORDINARY, kind: "complimentary_grant" }]
+  );
+});
+
+// ---------------------------------------------------------------------------
+// V2.6.x — the complimentary grant now requires a VERIFIED email, not merely
+// a registered account. Closes the abuse path where "verify your email" had
+// no actual enforcement: credits arrived at registration regardless of
+// whether the address was ever confirmed.
+// ---------------------------------------------------------------------------
+
+test("ensureInitialComplimentary refuses a player with no account at all", async () => {
+  // A guest player_id with no accounts.players row — getPlayerAccount returns
+  // null. Guests are refused for the same reason as an unverified account:
+  // neither has a verified email, and the grant must not be reachable by
+  // simply not registering.
+  const guest = "g".repeat(32);
+  await ensureInitialComplimentary(guest);
+  assert.deepEqual(ledgerWrites(), []);
+});
+
+test("ensureInitialComplimentary refuses a registered account whose email is not yet verified", async () => {
+  emailVerifiedAt.set(ORDINARY, null);
+  await ensureInitialComplimentary(ORDINARY);
+  assert.deepEqual(
+    ledgerWrites(),
+    [],
+    "an unverified address must not be worth the same as a confirmed one"
+  );
+});
+
+test("ensureInitialComplimentary grants once the account's email is verified", async () => {
+  emailVerifiedAt.set(ORDINARY, new Date().toISOString());
+  await ensureInitialComplimentary(ORDINARY);
+  assert.deepEqual(
+    ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind, amount: r.amount })),
+    [{ player_id: ORDINARY, kind: "complimentary_grant", amount: 10 }]
   );
 });
 
