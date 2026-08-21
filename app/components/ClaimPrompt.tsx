@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import RecoverPrompt from "./RecoverPrompt";
+import ProfilePhotoPrompt from "./ProfilePhotoPrompt";
 
 /**
  * Register the current guest in place, preserving its player_id and ownership.
@@ -23,6 +24,8 @@ export default function ClaimPrompt() {
   const [copied, setCopied] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [email, setEmail] = useState("");
+  const [registerError, setRegisterError] = useState<string | null>(null);
   const [rotateBusy, setRotateBusy] = useState(false);
   const [rotateError, setRotateError] = useState<string | null>(null);
   const [rotatedCode, setRotatedCode] = useState<string | null>(null);
@@ -52,18 +55,27 @@ export default function ClaimPrompt() {
 
   const register = useCallback(async () => {
     setBusy(true);
+    setRegisterError(null);
     try {
-      const res = await fetch("/api/account/register", { method: "POST" });
+      const res = await fetch("/api/account/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: email.trim() }),
+      });
       const data = await res.json();
+      if (!res.ok) {
+        setRegisterError(data.message || "A regisztráció most nem sikerült.");
+        return;
+      }
       if (data.recovery_code) setState({ step: "code", code: data.recovery_code });
       else if (data.authenticated) window.location.reload();
       else setState({ step: "offer" });
     } catch {
-      setState({ step: "offer" });
+      setRegisterError("Hálózati hiba — próbáld újra.");
     } finally {
       setBusy(false);
     }
-  }, []);
+  }, [email]);
 
   const resetIdentity = useCallback(async () => {
     setResetBusy(true);
@@ -135,6 +147,7 @@ export default function ClaimPrompt() {
             Elmentettem
           </button>
         </div>
+        <ProfilePhotoPrompt />
       </div>
     );
   }
@@ -212,15 +225,27 @@ export default function ClaimPrompt() {
       </p>
       <p className="text-xs text-[var(--ink-soft)]">
         Ugyanez a játékos és VERSENY-egyenleg marad meg. A belépési kóddal másik
-        eszközön is bejelentkezhetsz; e-mail cím és jelszó nem kell.
+        eszközön is bejelentkezhetsz. Jelszó nem kell, de egy megerősített
+        e-mail cím igen.
       </p>
+      <input
+        type="email"
+        inputMode="email"
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="te@pelda.hu"
+        disabled={busy}
+        className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
+      />
       <button
         onClick={() => void register()}
-        disabled={busy}
+        disabled={busy || !email.trim()}
         className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
       >
         Regisztráció
       </button>
+      {registerError && <p className="text-xs text-[var(--red)]">{registerError}</p>}
     </div>
   );
 }

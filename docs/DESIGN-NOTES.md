@@ -4109,3 +4109,54 @@ Do not guess merely because one candidate feels plausible.
 Tests prove this contract and its structural injection, not deterministic model
 intelligence. Whether the deliberation improves live play remains a field-test
 question measured against the stamped guidance version.
+
+## 44. V2.6.x session catch-up — registration reversal, purchase design confirmed, GOA restated (2026-08-21)
+
+**RATIFIED.** This entry exists so a fresh session or a different reviewer does
+not have to reconstruct these four decisions from chat history.
+
+### 44.1 Registration design reversal — supersedes §42's "out of scope" line
+
+§42 stated: "Profiles, e-mail, passwords, magic links, passkeys, history
+dashboards and social surfaces remain out of scope." That line is superseded
+for e-mail and photo specifically, by explicit product decision: **verified
+email and a profile photo are now required at registration**, alongside the
+display name Module 1 already collects. `accounts.players` gains `email`,
+`email_verified_at`, `photo_url`. Passwords, magic-link login and passkeys
+remain out of scope — only what an account collects at registration changes,
+not how it authenticates afterward; the recovery-code login stays.
+
+Implementation is BLOCKED as of this entry: it requires a Resend account/API
+key (email delivery) and Vercel Blob enabled on the project (photo storage),
+neither of which exists in any environment yet. No schema migration, code, or
+the still-contradictory "no email invented" code comments (`NamePrompt.tsx`,
+`app/contact/page.tsx`) have been touched — updating them belongs to the
+implementation pass, once unblocked, not this doc entry. Provider choices
+(Resend, Vercel Blob) were proposed and accepted without objection, pending
+one open product question: whether profile photos are visible to other
+players or account-owner-only, which decides whether a moderation surface is
+also needed.
+
+### 44.2 Purchase/pricing design — RATIFIED AS-IS, no change
+
+§41's money boundary is confirmed correct on review and stays exactly as
+shipped: Barkóba holds no cash pricing at all; the caller names a
+`package_id`, Barkóba independently decides what it is worth in Play Credits
+(`lib/playCreditPackages.ts`); DICS keeps its own prices, products and Payment
+Links unchanged. `test_scoop_5`'s cancellation (§40.4, §41.2) is confirmed
+correct — it was a proposed Barkóba-specific product and was rightly retired
+once §41 established that Barkóba sells nothing of its own.
+
+### 44.3 V2.6.x GOA, restated
+
+register (name + verified email + photo) → buy credits → game history stored.
+
+Game Intelligence work moves to **V2.7.x**. Contest/Social Review work moves
+to **V2.8.x**. Neither is in scope for the remainder of V2.6.x.
+
+### 44.4 `2.6.9.0` → `2.6.10.0`
+
+Player-facing game history: `GET /api/player/history`, commit `8187ebf`. Uses
+`games_player_history` (migration 0001's partial index, unused until this
+release). Scoped to the resolved acting `player_id`; no leaderboard, no
+filtering — a plain list of the caller's own games (outcome, date, role).

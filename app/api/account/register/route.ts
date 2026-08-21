@@ -15,6 +15,13 @@ import {
   readPlayerName,
 } from "@/lib/playerIdentity";
 import { generateRecoveryCode, recoveryKey } from "@/lib/recoveryCode";
+import {
+  generateVerificationToken,
+  looksLikeEmail,
+  sendVerificationEmail,
+  verificationTokenHash,
+  EMAIL_VERIFICATION_TTL_SECONDS,
+} from "@/lib/emailVerification";
 
 export const dynamic = "force-dynamic";
 
@@ -51,6 +58,20 @@ export async function POST(req: Request) {
   }
   if (context.kind !== "guest") return unavailable();
 
+  let body: { email?: string } = {};
+  try {
+    body = (await req.json()) as { email?: string };
+  } catch {
+    body = {};
+  }
+  const email = typeof body.email === "string" ? body.email.trim() : "";
+  if (!looksLikeEmail(email)) {
+    return NextResponse.json(
+      { error: "invalid_email", message: "Adj meg egy érvényes e-mail címet." },
+      { status: 400 }
+    );
+  }
+
   const playerId = context.playerId;
   let recoveryCode: string | undefined;
 
@@ -58,11 +79,32 @@ export async function POST(req: Request) {
     const jar = cookies();
     const nameState = await readPlayerName(playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
     recoveryCode = generateRecoveryCode();
+    const verificationToken = generateVerificationToken();
+    const verificationExpiresAt = new Date(
+      Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000
+    ).toISOString();
+
     await registerPlayerAccount({
       playerId,
       recoveryKey: await recoveryKey(recoveryCode),
       displayName: nameState.name,
+      email,
+      emailVerificationTokenHash: await verificationTokenHash(verificationToken),
+      emailVerificationExpiresAt: verificationExpiresAt,
     });
+
+    // Never lets a stubbed-or-not mail step block account creation, which has
+    // already committed by this point. The same reasoning as consumePurchaseRef
+    // in lib/purchaseRef.ts: the primary effect succeeded; a secondary one
+    // failing is logged, not surfaced as the request's failure.
+    let emailVerificationSent = false;
+    try {
+      const sent = await sendVerificationEmail(email, verificationToken);
+      emailVerificationSent = sent.sent;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] sendVerificationEmail failed (registration still succeeded):", err);
+    }
 
     const secure = new URL(req.url).protocol === "https:";
     let sessionToken: string;
@@ -78,6 +120,7 @@ export async function POST(req: Request) {
           error: "session_unavailable",
           registered: true,
           authenticated: false,
+          email_verification_sent: emailVerificationSent,
           ...(recoveryCode ? { recovery_code: recoveryCode } : {}),
           message: "A fiók elkészült. Mentsd el a kódot, majd próbálj bejelentkezni.",
         },
@@ -88,6 +131,7 @@ export async function POST(req: Request) {
     const res = NextResponse.json({
       registered: true,
       authenticated: true,
+      email_verification_sent: emailVerificationSent,
       ...(recoveryCode ? { recovery_code: recoveryCode } : {}),
     });
     res.cookies.set(
