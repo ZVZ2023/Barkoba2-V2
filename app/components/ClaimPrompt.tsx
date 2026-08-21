@@ -23,6 +23,10 @@ export default function ClaimPrompt() {
   const [copied, setCopied] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
+  const [rotateBusy, setRotateBusy] = useState(false);
+  const [rotateError, setRotateError] = useState<string | null>(null);
+  const [rotatedCode, setRotatedCode] = useState<string | null>(null);
+  const [rotateCopied, setRotateCopied] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -79,6 +83,25 @@ export default function ClaimPrompt() {
     }
   }, []);
 
+  const rotateRecoveryCode = useCallback(async () => {
+    setRotateBusy(true);
+    setRotateError(null);
+    try {
+      const res = await fetch("/api/account/rotate-recovery-code", { method: "POST" });
+      const data = await res.json();
+      if (!res.ok) {
+        setRotateError(data.message || "A kód cseréje most nem sikerült.");
+        return;
+      }
+      setRotatedCode(data.recovery_code);
+      setRotateCopied(false);
+    } catch {
+      setRotateError("Hálózati hiba — próbáld újra.");
+    } finally {
+      setRotateBusy(false);
+    }
+  }, []);
+
   if (state.step === "loading") return null;
 
   const box = "flex flex-col gap-3 rounded-md border p-4";
@@ -117,9 +140,41 @@ export default function ClaimPrompt() {
   }
 
   if (state.step === "protected") {
+    if (rotatedCode) {
+      return (
+        <div className={`${box} border-[var(--blue)]/40 bg-[var(--blue)]/6`}>
+          <p className="text-sm font-semibold text-[var(--blue)]">Mentsd el ezt az új kódot.</p>
+          <p className="break-all rounded-md border border-[var(--blue)]/30 bg-white/80 px-3 py-2 font-mono text-sm tracking-wide text-[var(--ink)]">
+            {rotatedCode}
+          </p>
+          <p className="text-xs text-[var(--ink-soft)]">
+            A régi kód mostantól nem működik. Csak most mutatjuk meg: nálunk nem marad
+            meg, és később nem tudjuk újra megmutatni.
+          </p>
+          <button
+            onClick={() => {
+              void navigator.clipboard?.writeText(rotatedCode);
+              setRotateCopied(true);
+            }}
+            className="min-h-11 self-start rounded-md bg-[var(--blue)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
+          >
+            {rotateCopied ? "Másolva" : "Másolom"}
+          </button>
+        </div>
+      );
+    }
+
     return (
-      <div className="rounded-md border border-[var(--green)]/25 bg-white/50 px-3 py-2">
+      <div className={`${box} border-[var(--green)]/25 bg-white/50`}>
         <p className="text-sm text-[var(--green)]">Be vagy jelentkezve.</p>
+        <button
+          onClick={() => void rotateRecoveryCode()}
+          disabled={rotateBusy}
+          className="min-h-11 self-start rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40"
+        >
+          Új helyreállító kód generálása
+        </button>
+        {rotateError && <p className="text-sm text-[var(--red)]">{rotateError}</p>}
       </div>
     );
   }
