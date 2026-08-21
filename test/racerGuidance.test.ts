@@ -27,7 +27,7 @@ import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "../lib/types"
 // §45.1). What is provable here is everything the evidence record depends
 // on — that the block reaches the model, that it reaches both providers
 // identically, that it never touches the human's answer or the visible
-// transcript, and that `racer/3.2.0` cannot be stamped on a turn that did not
+// transcript, and that `racer/4.0.0` cannot be stamped on a turn that did not
 // carry it.
 // ---------------------------------------------------------------------------
 
@@ -124,7 +124,7 @@ test("the block survives a long transcript — it does not get pushed up by hist
 
 test("the block is present on the final turn too", () => {
   // The final-guess gate governs this moment, and an unconditional block is what
-  // keeps racer/3.2.0 true of EVERY stamped turn rather than most of them.
+  // keeps racer/4.0.0 true of EVERY stamped turn rather than most of them.
   const content = buildRacerTurnMessage(answeredWith("YES"), {
     forceFinal: true,
     clueAvailable: false,
@@ -154,16 +154,13 @@ test("an AMBIGUOUS explanation is still carried, and is not displaced by the blo
   assert.ok(content.includes(CORE_RACER_RULES));
 });
 
-test("RG #3 contains the complete ordered uncertainty-management contract", () => {
+test("RG #4 contains the complete ordered six-stage loop", () => {
   const stages = [
     "KNOWN",
     "UNKNOWN",
     "HYPOTHESES",
-    "NEXT QUESTION OPTIONS",
     "SELECT",
-    "CHECK",
-    "EVIDENCE-RESPONSE BEHAVIOR",
-    "DIMINISHING RETURNS",
+    "RED FLAGS",
     "BEFORE ANY FINAL GUESS",
   ];
   let previous = -1;
@@ -172,8 +169,23 @@ test("RG #3 contains the complete ordered uncertainty-management contract", () =
     assert.ok(at > previous, `${stage} must occur once and in order`);
     previous = at;
   }
-  assert.match(CORE_RACER_RULES, /Emit only one player-facing question/);
-  assert.match(CORE_RACER_RULES, /Does my candidate violate any fact in KNOWN\?/);
+  // The old v3 sections were folded in, not carried forward as separate stages.
+  for (const retired of [
+    "NEXT QUESTION OPTIONS",
+    "CHECK —",
+    "EVIDENCE-RESPONSE BEHAVIOR",
+    "DIMINISHING RETURNS",
+  ]) {
+    assert.equal(CORE_RACER_RULES.includes(retired), false, `${retired} must not survive into v4`);
+  }
+  assert.match(CORE_RACER_RULES, /Emit only the resulting question or guess\./);
+  assert.match(CORE_RACER_RULES, /Does the leader violate any fact in KNOWN\?/);
+});
+
+test("RG #4 is under 400 words — the compression is real, not nominal", () => {
+  const words = CORE_RACER_RULES.trim().split(/\s+/).length;
+  assert.ok(words <= 400, `expected <= 400 words, got ${words}`);
+  assert.ok(words >= 300, `expected >= 300 words (a materially compressed block, not a stub), got ${words}`);
 });
 
 function promptFor(log: QuestionLogEntry[]): string {
@@ -192,11 +204,13 @@ test("a European automobile state carries a dimension-first alternative to enume
   ]);
   assert.match(content, /Q4: Is it European\?\nA4: YES/);
   assert.match(content, /UNKNOWN/);
-  assert.match(content, /Partition before you enumerate/);
-  assert.match(content, /country after country, brand after brand, candidate after candidate/);
+  assert.match(content, /A broad split across an unresolved dimension beats naming siblings one at a time\./);
 });
 
-test("strong positive evidence is paired with dimension-selection guidance, not candidate spraying", () => {
+test("a confirmed branch is protected from re-probing by a RED FLAG, not just YES-handling prose", () => {
+  // v3 had a dedicated EVIDENCE-RESPONSE BEHAVIOR / YES paragraph for this.
+  // v4 folds it into a RED FLAG instead — a harder, question-selection-time
+  // gate, matching how Resolved-branch was already built in racer/3.2.0.
   const content = promptFor([
     entry({
       turn_index: 1,
@@ -207,25 +221,32 @@ test("strong positive evidence is paired with dimension-selection guidance, not 
   assert.match(content, /A1: YES/);
   assert.match(
     content,
-    /YES: This is not license to spray further candidates within the branch you just confirmed\./
+    /Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value/
   );
 });
 
-test("repeated negative evidence is paired with parent-level reconsideration", () => {
+test("repeated negative evidence is paired with parent-level reconsideration, elevated into SELECT", () => {
   const content = promptFor([
     entry({ turn_index: 1, question_text: "Is it German?", composer_response: "NO" }),
     entry({ turn_index: 2, question_text: "Is it French?", composer_response: "NO" }),
   ]);
   assert.match(content, /A1: NO/);
   assert.match(content, /A2: NO/);
-  assert.match(content, /Update the parent hypothesis, not only the one candidate it ruled out/);
+  // The two/three-related-NOs rule must sit inside SELECT, ahead of RED
+  // FLAGS — not in a trailing appendix below the reject-and-regenerate list,
+  // which is where v3 buried it.
+  const selectAt = content.indexOf("SELECT\n");
+  const rowsAt = content.indexOf("After two or three related NOs on the same branch");
+  const redFlagsAt = content.indexOf("RED FLAGS");
+  assert.ok(selectAt >= 0 && rowsAt > selectAt, "the NOs rule must be inside SELECT");
+  assert.ok(redFlagsAt > rowsAt, "the NOs rule must precede RED FLAGS, not follow it");
   assert.match(
     content,
-    /stop, ask whether you are inside the wrong parent category or the wrong assumption entirely/
+    /stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings\./
   );
 });
 
-test("pre-1970 evidence is carried into the state alongside dimension-discovery guidance", () => {
+test("domain-discovered UNKNOWN dimensions are still asserted, not a fixed checklist", () => {
   const content = promptFor([
     entry({
       turn_index: 1,
@@ -237,7 +258,7 @@ test("pre-1970 evidence is carried into the state alongside dimension-discovery 
   assert.match(content, /UNKNOWN/);
   assert.match(
     content,
-    /Discover these dimensions from the target's apparent domain rather than a fixed checklist/
+    /discovered from the target itself, not a fixed checklist/
   );
 });
 
@@ -251,45 +272,43 @@ test("a plausible candidate with alternatives remaining receives the pre-guess g
   ]);
   assert.match(
     content,
-    /What is the strongest remaining alternative — a specific one, not a vague sense that other options remain\?/
+    /Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain\./
   );
   assert.match(
     content,
-    /If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess\./
-  );
-  assert.match(content, /Do not guess merely because one candidate feels familiar/);
-});
-
-test("racer/3.1.0: confirming a broader category does not settle a specific rival inside it", () => {
-  // The Volga field-test gap: Claude confirmed "Russian/Soviet luxury
-  // automobile" and guessed the specific model immediately after, without
-  // checking whether a sibling model was equally consistent with that same
-  // category confirmation.
-  const content = promptFor([]);
-  assert.match(
-    content,
-    /Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second\./
+    /If an important discriminator remains unasked and budget allows, ask it instead of guessing\./
   );
 });
 
-test("racer/3.1.0: a named sibling question is rejected while its parent level has live alternatives (Hierarchy gate)", () => {
+test("racer/4.0.0: a reasonably-informed-human pressure test guards against premature conviction", () => {
+  // The GAZ-13/Claude field-test gap this session's cross-check named: guessed
+  // Porsche 911 at 31/50 without having actually ruled out the alternative.
+  // Prior versions relied only on the discriminator question; this adds a
+  // cheap, general overconfidence check independent of that.
   const content = promptFor([]);
   assert.match(
     content,
-    /Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up \(region, era, family, category\) still has multiple live alternatives, reject it and ask the broader-level question first\. This applies to any hierarchical dimension the target has, not only geography\./
+    /Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess\./
+  );
+});
+
+test("racer/4.0.0: a named sibling question is rejected while its parent level has live alternatives (Hierarchy, compressed to one line)", () => {
+  const content = promptFor([]);
+  assert.match(
+    content,
+    /Names one specific sibling while a broader grouping one level up still has multiple live alternatives/
   );
 });
 
 test("the block forbids spelling/alphabet extraction and disguised identity questions", () => {
-  // §10 and §11 of the build brief, both structural requirements new to RG #3.
   const content = promptFor([]);
   assert.match(
     content,
-    /Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position\./
+    /Investigates spelling, letters, or name structure instead of meaning and properties/
   );
   assert.match(
     content,
-    /Not a disguised identity question: naming one specific candidate is a GUESS, not a question\./
+    /Is a disguised identity question — naming a candidate is a GUESS, not a question/
   );
 });
 
@@ -305,9 +324,9 @@ test("AMBIGUOUS is treated as informative failure requiring replanning, not a we
   assert.match(content, /A1: AMBIGUOUS/);
   assert.match(
     content,
-    /AMBIGUOUS: This is informative failure, not a weak YES or a weak NO\./
+    /AMBIGUOUS is informative failure, not a soft answer/
   );
-  assert.match(content, /Do not re-ask a paraphrase of the same question\./);
+  assert.match(content, /never re-ask a paraphrase of it\./);
 });
 
 // ---------------------------------------------------------------------------
@@ -324,7 +343,7 @@ test("the stored human answer is untouched", () => {
   assert.equal(JSON.stringify(g.qa_log), before, "assembly must not mutate game state");
   assert.equal(g.qa_log[0]?.composer_response, "NO");
   assert.equal(
-    g.qa_log[0]?.question_text?.includes("RACER GUIDANCE V3"),
+    g.qa_log[0]?.question_text?.includes("RACER GUIDANCE V4"),
     false,
     "the reminder must never be persisted as part of a turn"
   );
@@ -337,10 +356,10 @@ test("the visible transcript contains no trace of the block", () => {
   const racerState = toRacerPublicState(g);
 
   for (const turn of racerState.transcript) {
-    assert.equal(turn.question.includes("RACER GUIDANCE V3"), false);
-    assert.equal((turn.ambiguous_explanation ?? "").includes("RACER GUIDANCE V3"), false);
+    assert.equal(turn.question.includes("RACER GUIDANCE V4"), false);
+    assert.equal((turn.ambiguous_explanation ?? "").includes("RACER GUIDANCE V4"), false);
   }
-  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V3"), false);
+  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V4"), false);
 });
 
 test("the reminder is not addressed as though the human said it", () => {
@@ -418,7 +437,7 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
   ]) {
     const src = readFileSync(file, "utf8");
     assert.equal(
-      /RACER GUIDANCE V3|CORE_RACER_RULES/.test(src),
+      /RACER GUIDANCE V4|CORE_RACER_RULES/.test(src),
       false,
       `${file} must not contain strategy text`
     );
@@ -429,14 +448,19 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/3.2.0", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/3.2.0");
+test("the Racer guidance version is racer/4.0.0", () => {
+  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/2.7.0", "the RG v2 version must not be reused");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/3.0.0", "the pre-Hierarchy-gate RG v3 version must not be reused");
   assert.notEqual(
     RACER_PROMPT_VERSION,
     "racer/3.1.0",
     "the pre-Resolved-branch-gate RG v3 version must not be reused"
+  );
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/3.2.0",
+    "the pre-compression, nine-stage RG v3 version must not be reused"
   );
 });
 
@@ -455,7 +479,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/3.2.0");
+    assert.equal(result.provenance.prompt_version, "racer/4.0.0");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");
@@ -466,7 +490,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
 });
 
 test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", () => {
-  // The claim racer/3.2.0 makes to the corpus is verified against the assembled
+  // The claim racer/4.0.0 makes to the corpus is verified against the assembled
   // message, not asserted beside it. This pins that the guard exists and that
   // it is unconditional — the failure it prevents is a corpus full of turns
   // claiming guidance they never received, which is worse than no label at all.
@@ -483,13 +507,13 @@ test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", ()
   );
 });
 
-test("the canonical text is preserved in the design record against racer/3.2.0", () => {
+test("the canonical text is preserved in the design record against racer/4.0.0", () => {
   const notes = readFileSync("docs/DESIGN-NOTES.md", "utf8");
   assert.ok(
     notes.includes(CORE_RACER_RULES),
     "DESIGN-NOTES must reproduce the canonical block verbatim"
   );
-  assert.ok(notes.includes("racer/3.2.0"));
+  assert.ok(notes.includes("racer/4.0.0"));
 });
 
 // ---------------------------------------------------------------------------
@@ -528,12 +552,12 @@ test("the Guess Detector's own logic is untouched", () => {
   );
   assert.ok(systemPrompt.length > 0);
   assert.equal(
-    /RACER GUIDANCE V3|UNCERTAINTY-MANAGEMENT/.test(systemPrompt),
+    /RACER GUIDANCE V4|UNCERTAINTY-MANAGEMENT/.test(systemPrompt),
     false,
     "the guess-intent system prompt must stay unedited"
   );
   const detector = readFileSync("lib/guessDetector.ts", "utf8");
-  assert.equal(/RACER GUIDANCE V3|CORE_RACER_RULES/.test(detector), false);
+  assert.equal(/RACER GUIDANCE V4|CORE_RACER_RULES/.test(detector), false);
 });
 
 // ---------------------------------------------------------------------------
@@ -541,7 +565,7 @@ test("the Guess Detector's own logic is untouched", () => {
 //
 // The audit gap this closes: `continue_questioning` returns a revised_question
 // that REPLACES the original in question_text, so it — not the first attempt —
-// is the question the human actually sees. Stamping racer/3.2.0 while that
+// is the question the human actually sees. Stamping racer/4.0.0 while that
 // question was authored without the block would make the version true of a
 // draft and false of the record. §32 measured 10 of ~20 turns flagged in a
 // single game, so the gap was material, not theoretical.
@@ -579,7 +603,7 @@ test("the canonical block is SINGLE-SOURCED across both authoring paths", () => 
 
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
   const definitions =
-    src.match(/RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN/g) ?? [];
+    src.match(/RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN/g) ?? [];
   assert.equal(definitions.length, 1, "exactly one definition of the canonical text");
 });
 
@@ -669,7 +693,7 @@ test("the revision path does not contaminate the human's answer or the transcrip
   const before = JSON.stringify(g.qa_log);
   buildGuessIntentMessage(toRacerPublicState(g), "Is the target GPT-4?");
   assert.equal(JSON.stringify(g.qa_log), before);
-  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V3"), false);
+  assert.equal(JSON.stringify(g).includes("RACER GUIDANCE V4"), false);
 });
 
 test("no Contest Verdict code path is touched", () => {
@@ -695,7 +719,7 @@ test("the system prompt was NOT edited — one experimental variable, not two", 
   );
   assert.ok(system.length > 0);
   assert.equal(
-    /RACER GUIDANCE V3|UNCERTAINTY-MANAGEMENT/.test(system),
+    /RACER GUIDANCE V4|UNCERTAINTY-MANAGEMENT/.test(system),
     false,
     "the uncertainty-management loop must live only in the trailing block"
   );
@@ -719,7 +743,8 @@ test("the canonical text names no vehicle, geography, era or manufacturer vocabu
     "government limousine",
     "official-use",
     "Porsche",
-    // racer/3.2.0's field test — same principle, a different benchmark.
+    // racer/3.2.0's field test — same principle, a different benchmark. Still
+    // forbidden in racer/4.0.0's compressed text.
     "Komondor",
     "Kuvasz",
     "sheepdog",
@@ -738,23 +763,44 @@ test("the canonical text names no vehicle, geography, era or manufacturer vocabu
   }
 });
 
-test("racer/3.2.0: a question re-probing an already-confirmed dimension's neighborhood is rejected (Resolved-branch gate)", () => {
+test("racer/4.0.0: a generic descriptive question is rejected once candidates have narrowed to a close pair (Close-candidate specificity, compressed to one line)", () => {
   const content = promptFor([]);
   assert.match(
     content,
-    /Resolved branch: if it re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — reject it\. A settled dimension stays settled; move to a different unresolved dimension instead of re-testing its neighborhood a different way\./
+    /Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them/
   );
 });
 
-test("racer/3.2.0: a generic descriptive question is rejected once candidates have narrowed to a close pair (Close-candidate specificity)", () => {
-  const content = promptFor([]);
-  assert.match(
-    content,
-    /Close-candidate specificity: if HYPOTHESES has narrowed to two or three very similar candidates, a generic descriptive question is not enough, even one that technically discriminates\. Identify the single property that specifically separates THESE remaining candidates from each other, and ask exactly that — not a broader attribute that could apply to either\./
-  );
+test("FOUR-WAY CROSS-CHECK: all four prior field-test fixes have an identifiable phrase in the compressed text", () => {
+  // Not a restatement of the tests above — a single pass over the exact four
+  // failures this session's field tests produced, each checked against its
+  // own specific covering phrase, matching docs/DESIGN-NOTES.md §50's table.
+  const fixes: Record<string, RegExp> = {
+    "GAZ-13/Grok — sibling enumeration instead of region-first partition":
+      /A broad split across an unresolved dimension beats naming siblings one at a time/,
+    "GAZ-13/Grok — named sibling while a broader grouping still had alternatives":
+      /Names one specific sibling while a broader grouping one level up still has multiple live alternatives/,
+    "GAZ-13/Claude — premature conviction (Porsche, 31\\/50)":
+      /Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess/,
+    "Komondor\\/Kuvasz — close-candidate miss":
+      /Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them/,
+    "Komondor\\/Grok — failure to close after confirmation":
+      /Re-probes a dimension already settled by a YES or a NO/,
+  };
+  for (const [failure, phrase] of Object.entries(fixes)) {
+    assert.match(CORE_RACER_RULES, phrase, `no covering phrase found for: ${failure}`);
+  }
 });
 
 test("the version-bump discipline documents RG #3 as a replacement, not a refinement, of RG v2", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
   assert.match(src, /RG #3 — `racer\/3\.0\.0` REPLACES `racer\/2\.7\.0`, NOT A REFINEMENT OF IT\./);
+});
+
+test("the version-bump discipline documents RG #4 as a compression and restructure, not an additive pass", () => {
+  const src = readFileSync("lib/prompts/racer.ts", "utf8");
+  assert.match(
+    src,
+    /`racer\/4\.0\.0` — A COMPRESSION AND RESTRUCTURE, NOT AN ADDITIVE PASS\./
+  );
 });

@@ -4426,7 +4426,7 @@ Not yet field-tested; the acceptance path is the same one used for §45–47: pl
 
 **Still no benchmark-specific vocabulary.** No dog breed, coat, ear, or Hungary/Romania/Czech Republic wording appears in the canonical text — both new gates are worded exactly as domain-generally as Hierarchy and the rest of the block, per the same §17 constraint restated in §47.
 
-**Not yet re-validated** beyond the one field-test run described above — same no-credentials constraint as every prior RG #3 pass. The full canonical text, current as of this section:
+**Not yet re-validated** beyond the one field-test run described above — same no-credentials constraint as every prior RG #3 pass. The full canonical text, current as of this section (superseded by `racer/4.0.0` — see §50):
 
 ```
 RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
@@ -4469,5 +4469,57 @@ If several consecutive questions have targeted the same dimension with declining
 BEFORE ANY FINAL GUESS
 Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
 If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.
+```
+
+---
+
+## 50. RG #4 — compression and restructure, not an additive pass (`racer/4.0.0`)
+
+**A different kind of change from 3.0.0 → 3.2.0.** Every prior RG #3 pass added a gate onto a growing block — each fix held, but the block itself grew from ~600 to ~800 words across three passes. The compression proposal that motivated this version named the risk directly: a long, checklist-heavy block invites a model to satisfy each rule locally while losing the single coherent stance the rules exist to produce, and crowds out exactly the "zoom out, this whole frame might be wrong" judgment that no individual gate can substitute for.
+
+**The change.** `racer/4.0.0` replaces the nine-stage v3 text (KNOWN / UNKNOWN / HYPOTHESES / NEXT QUESTION OPTIONS / SELECT / CHECK / EVIDENCE-RESPONSE BEHAVIOR / DIMINISHING RETURNS / BEFORE ANY FINAL GUESS) with a six-stage loop — KNOWN / UNKNOWN / HYPOTHESES / SELECT / RED FLAGS / BEFORE ANY FINAL GUESS — at roughly half the length (~400 words, down from ~800). NEXT QUESTION OPTIONS and EVIDENCE-RESPONSE BEHAVIOR / DIMINISHING RETURNS are not carried forward as standing sections; their substance is folded into SELECT and RED FLAGS. CHECK's five paragraph-length gates become six one-line RED FLAGS. The two-or-three-related-NOs "reopen the parent frame" instruction — previously buried in the EVIDENCE-RESPONSE BEHAVIOR appendix, below the entire CHECK list — moves into SELECT itself, ahead of RED FLAGS, per the proposal's explicit instruction to elevate it. A new pressure test is added to BEFORE ANY FINAL GUESS: "would a reasonably informed human, given everything established so far, still be seriously considering that alternative" — a cheap, general overconfidence check that does not depend on having already identified a specific discriminator.
+
+**THE FOUR-WAY CROSS-CHECK.** Before this version was cut, the compressed text was checked against every prior field-test failure from this session's RG #3 lineage, phrase by phrase — not by assuming the restructure preserved them, but by finding the specific covering text for each:
+
+| Field test | Failure | v3 mechanism that fixed it | v4 phrase that still covers it |
+|---|---|---|---|
+| GAZ-13 / Grok (racer/3.0.0 field test) | Won messily: right family, wrong sibling, geography enumerated country-by-country instead of partitioned by region first | `racer/3.1.0`'s Hierarchy gate (§47) | SELECT: *"A broad split across an unresolved dimension beats naming siblings one at a time."* RED FLAGS: *"Names one specific sibling while a broader grouping one level up still has multiple live alternatives."* |
+| GAZ-13 / Claude (pre-RG-#3, motivated the original v3 build) | Premature conviction — guessed Porsche 911 at 31/50 without having ruled out the strongest alternative | RG #3's original uncertainty-management loop: HYPOTHESES' strongest-alternative tracking + BEFORE ANY FINAL GUESS's pre-guess gate | HYPOTHESES: *"plus the single strongest credible alternative."* BEFORE ANY FINAL GUESS: *"Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain"* + the new pressure test, *"Would a reasonably informed human... still be seriously considering that alternative — if yes, I am not ready to guess."* |
+| Komondor / Kuvasz — close-candidate miss (Hungarian-sheepdog field test) | Down to two close candidates, asked generic descriptive questions (coat, ears) instead of the one property that actually separates them, then guessed the wrong one | `racer/3.2.0`'s Close-candidate-specificity gate (§49) | RED FLAGS: *"Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them."* This is a SELECT-time gate, matching §49's own point that the BEFORE ANY FINAL GUESS check alone is too late — the wrong questions are already spent by then. |
+| Komondor / Grok — failure to close after confirmation (same field test) | Confirmed a dimension (YES), then kept re-probing its neighborhood — siblings, edge cases — instead of treating it as resolved | `racer/3.2.0`'s Resolved-branch gate (§49) | RED FLAGS: *"Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value."* |
+
+Two items from the compression proposal's own "non-negotiable to keep" list were absent from its illustrative sketch and were added back during this cross-check, not carried over automatically: AMBIGUOUS-as-informative-failure (now in KNOWN: *"AMBIGUOUS is informative failure, not a soft answer... never re-ask a paraphrase of it"*) and the KNOWN-violation check on the final candidate (now the second-to-last sentence of BEFORE ANY FINAL GUESS: *"Does the leader violate any fact in KNOWN?"*). Both were reworded to fit the compression, not dropped.
+
+**Still no benchmark-specific vocabulary.** No vehicle, geography, era, breed, or manufacturer term from any prior field test — GAZ-13, Volga, Chaika, Soviet, Komondor, Kuvasz, Hungary, Porsche — appears anywhere in the canonical text.
+
+**NOT YET FIELD-VALIDATED.** No live game has been played against this text — same no-credentials constraint as every RG #3 pass. Unlike 3.0.0 → 3.2.0, this version also carries an untested *hypothesis about the compression itself*: that a ~400-word loop is read and applied more coherently under repeated per-turn injection than an ~800-word one was. That is exactly what field-testing this version needs to establish, separately from whether the individual mechanisms still hold. The full canonical text, current as of this section:
+
+```
+RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+
+Before every turn, hold this state internally. Emit only the resulting question or guess.
+
+KNOWN
+Every hard YES, NO, and AMBIGUOUS answer so far. These are filters, not suggestions — nothing later may contradict one. AMBIGUOUS is informative failure, not a soft answer: it means the last question conflated two things a truthful answerer could not separate. Isolate one of them next; never re-ask a paraphrase of it.
+
+UNKNOWN
+The open dimensions that actually matter for this target's domain — discovered from the target itself, not a fixed checklist. Which one, if answered, would most shrink what remains possible?
+
+HYPOTHESES
+The leading family or families still consistent with KNOWN, plus the single strongest credible alternative. Keep this small and live, never a single premature favorite.
+
+SELECT
+Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After two or three related NOs on the same branch, stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings.
+
+RED FLAGS — reject and regenerate if the question:
+- Contradicts anything in KNOWN
+- Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
+- Names one specific sibling while a broader grouping one level up still has multiple live alternatives
+- Is a disguised identity question — naming a candidate is a GUESS, not a question
+- Investigates spelling, letters, or name structure instead of meaning and properties
+- Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
+
+BEFORE ANY FINAL GUESS
+Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.
 ```
 

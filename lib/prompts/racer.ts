@@ -117,67 +117,98 @@ import type {
  *
  * Also not yet field-validated beyond that one run — same no-credentials
  * constraint as every version above. See docs/DESIGN-NOTES.md §49.
+ *
+ * `racer/4.0.0` — A COMPRESSION AND RESTRUCTURE, NOT AN ADDITIVE PASS.
+ *
+ * Every prior RG #3 pass (3.0.0 → 3.2.0) added gates onto a growing ~800-word
+ * block. Four field tests across that lineage — GAZ-13/Grok (won messily:
+ * right family, wrong sibling, sibling enumeration before partition),
+ * GAZ-13/Claude (premature conviction before the alternative was ruled out),
+ * and two from the Hungarian-sheepdog run (a close-candidate pair decided by
+ * a generic property instead of the one that actually separated them, and a
+ * confirmed dimension re-probed instead of treated as resolved) — were each
+ * individually fixed by an added gate, and each fix held. The length itself
+ * became the next risk: a long, checklist-heavy block invites the model to
+ * satisfy each rule locally while losing the single coherent stance the
+ * rules exist to produce, and crowds out exactly the "zoom out and reopen
+ * the parent frame" judgment none of the individual gates can substitute
+ * for.
+ *
+ * `racer/4.0.0` REPLACES the nine-stage v3 text with a six-stage loop — KNOWN
+ * / UNKNOWN / HYPOTHESES / SELECT / RED FLAGS / BEFORE ANY FINAL GUESS — at
+ * roughly half the length. NEXT QUESTION OPTIONS and the separate
+ * EVIDENCE-RESPONSE BEHAVIOR / DIMINISHING RETURNS sections are folded into
+ * SELECT and RED FLAGS rather than kept as standing text; CHECK's five
+ * paragraph-length gates become six one-line RED FLAGS. The two/three-related
+ * NOs reopen-the-parent-frame instruction — the single biggest remaining
+ * defect the v3.2.0 field test still showed — moves out of the old
+ * EVIDENCE-RESPONSE BEHAVIOR appendix and into SELECT itself, ahead of RED
+ * FLAGS. A new pressure test — "would a reasonably informed human still be
+ * seriously considering that alternative" — is added to BEFORE ANY FINAL
+ * GUESS as a cheap, general check against overconfidence, independent of any
+ * specific discriminator having been identified.
+ *
+ * Every one of the four field-test fixes was verified still present in the
+ * compressed text, phrase by phrase, before this version was cut — see
+ * docs/DESIGN-NOTES.md §50 for the full four-way cross-check. This is a
+ * restructure of wording, not a change of policy: nothing the v3.2.0 gates
+ * enforced is dropped, only reworded and, in three cases, merged with an
+ * adjacent rule. Still no benchmark-specific vocabulary of any kind.
+ *
+ * NOT YET FIELD-VALIDATED. No live game has been played against this text —
+ * same no-credentials constraint as every version above. The compression
+ * hypothesis itself (shorter reads better under repeated injection) is
+ * untested until Zsolt plays it.
  */
-export const RACER_PROMPT_VERSION = "racer/3.2.0";
+export const RACER_PROMPT_VERSION = "racer/4.0.0";
 
 /**
- * RG #3 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
+ * RG #4 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
  *
  * This is the only experimental variable. The system prompt, transcript,
  * provider routing, model selection and call topology remain unchanged. The
  * block stays last before the instruction to act and is shared by both paths
  * that can author the player-facing question.
  *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §49
- * against `racer/3.2.0`. Editing it without bumping the version breaks the
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §50
+ * against `racer/4.0.0`. Editing it without bumping the version breaks the
  * database claim above.
  *
- * DELIBERATELY DOMAIN-GENERIC. The build brief's §17 is explicit that this
- * must not be tuned toward GAZ-13 or any other specific benchmark target —
- * no vehicle, geography, era, or manufacturer vocabulary appears below on
- * purpose. GAZ-13 exists to test whether the Racer discovers the relevant
- * dimensions on its own, not whether this text names them for it.
+ * ~400 WORDS, DOWN FROM ~800. See the racer/4.0.0 history note above for why:
+ * length itself had become the risk, not any missing rule.
+ *
+ * DELIBERATELY DOMAIN-GENERIC, CARRIED FORWARD FROM RG #3. No vehicle,
+ * geography, era, breed, or manufacturer vocabulary appears below on
+ * purpose — a benchmark target exists to test whether the Racer discovers
+ * the relevant dimensions on its own, not whether this text names them for
+ * it.
  */
-export const CORE_RACER_RULES = `RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+export const CORE_RACER_RULES = `RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
 
-Before producing each question, build this structured state internally. Emit only one player-facing question after it.
+Before every turn, hold this state internally. Emit only the resulting question or guess.
 
 KNOWN
-List every constraint established so far — YES, NO, and AMBIGUOUS/soft — as durable facts that do not expire when new information arrives. Confirmed positives and negatives act as hard filters, not suggestions: no later candidate, hypothesis, or question may violate one of them, however familiar or statistically salient it feels.
+Every hard YES, NO, and AMBIGUOUS answer so far. These are filters, not suggestions — nothing later may contradict one. AMBIGUOUS is informative failure, not a soft answer: it means the last question conflated two things a truthful answerer could not separate. Isolate one of them next; never re-ask a paraphrase of it.
 
 UNKNOWN
-Identify the major dimensions of the target that remain unresolved. Discover these dimensions from the target's apparent domain rather than a fixed checklist — a vehicle, a person, and a piece of software do not share the same important dimensions. Ask which unresolved dimension, if answered, would most change what you still need to ask.
+The open dimensions that actually matter for this target's domain — discovered from the target itself, not a fixed checklist. Which one, if answered, would most shrink what remains possible?
 
 HYPOTHESES
-Identify the leading candidate family or families still consistent with KNOWN, and the strongest credible alternative. Keep this a small, live set, not an exhaustive list and not a single premature favorite.
-
-NEXT QUESTION OPTIONS
-Generate two to four candidate next questions spanning different unresolved dimensions.
+The leading family or families still consistent with KNOWN, plus the single strongest credible alternative. Keep this small and live, never a single premature favorite.
 
 SELECT
-Choose the option expected to divide the surviving hypothesis space most usefully. Prefer a question that discriminates between your leading hypotheses over one that only confirms the leader. Partition before you enumerate: a broad split across a dimension — region, era, function, class — beats naming siblings one at a time, country after country, brand after brand, candidate after candidate.
+Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After two or three related NOs on the same branch, stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings.
 
-CHECK — reject and regenerate the question if any of these fail
-Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
-Novelty: does it ask something not already established, directly or by clear implication?
-Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
-Close-candidate specificity: if HYPOTHESES has narrowed to two or three very similar candidates, a generic descriptive question is not enough, even one that technically discriminates. Identify the single property that specifically separates THESE remaining candidates from each other, and ask exactly that — not a broader attribute that could apply to either.
-Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up (region, era, family, category) still has multiple live alternatives, reject it and ask the broader-level question first. This applies to any hierarchical dimension the target has, not only geography.
-Resolved branch: if it re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — reject it. A settled dimension stays settled; move to a different unresolved dimension instead of re-testing its neighborhood a different way.
-Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
-Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
-
-EVIDENCE-RESPONSE BEHAVIOR
-YES: This is not license to spray further candidates within the branch you just confirmed. Use it to select the next most useful UNKNOWN dimension.
-NO: Update the parent hypothesis, not only the one candidate it ruled out. After two or three related NOs on the same branch, treat that as a signal rather than a coincidence — stop, ask whether you are inside the wrong parent category or the wrong assumption entirely, and move up a level before trying more siblings.
-AMBIGUOUS: This is informative failure, not a weak YES or a weak NO. It means your question conflated two distinct things a truthful answerer could not separate. Work out what those two things are, then ask a cleaner question that isolates one of them. Do not re-ask a paraphrase of the same question.
-
-DIMINISHING RETURNS
-If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
+RED FLAGS — reject and regenerate if the question:
+- Contradicts anything in KNOWN
+- Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
+- Names one specific sibling while a broader grouping one level up still has multiple live alternatives
+- Is a disguised identity question — naming a candidate is a GUESS, not a question
+- Investigates spelling, letters, or name structure instead of meaning and properties
+- Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
 
 BEFORE ANY FINAL GUESS
-Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
-If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.`;
+Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.`;
 
 /**
  * A Racer turn plus the provenance of the call that produced it.
