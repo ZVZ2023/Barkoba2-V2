@@ -20,6 +20,20 @@ function nullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
+/**
+ * V2.6.x — thrown when an email is already attached to a DIFFERENT account.
+ * Migration 0011's unique index is what actually enforces this; this class
+ * exists so callers (register, and the authenticated email-change route) can
+ * catch specifically this case and say so, rather than the generic
+ * "registration failed" / "could not save" message every other failure gets.
+ */
+export class EmailAlreadyRegisteredError extends Error {
+  constructor(public readonly email: string) {
+    super(`accounts: email is already registered to a different account`);
+    this.name = "EmailAlreadyRegisteredError";
+  }
+}
+
 function accountFromRow(row: Record<string, unknown> | undefined): PlayerAccount | null {
   if (!row || typeof row.player_id !== "string" || typeof row.recovery_key !== "string") {
     return null;
@@ -66,6 +80,24 @@ export async function getPlayerAccountByRecoveryKey(
            email, email_verified_at, email_verification_token, email_verification_expires_at, photo_url
       FROM accounts.players
      WHERE recovery_key = ${recoveryKey}
+       AND disabled_at IS NULL
+     LIMIT 1
+  `;
+  return accountFromRow(rows[0]);
+}
+
+/**
+ * Case-insensitive: matches migration 0011's UNIQUE INDEX on LOWER(email),
+ * so this lookup and the constraint that actually enforces uniqueness can
+ * never disagree about what counts as "the same address".
+ */
+export async function getPlayerAccountByEmail(email: string): Promise<PlayerAccount | null> {
+  const sql = requireSql();
+  const rows = await sql`
+    SELECT player_id, recovery_key, display_name, created_at, registered_at,
+           email, email_verified_at, email_verification_token, email_verification_expires_at, photo_url
+      FROM accounts.players
+     WHERE LOWER(email) = LOWER(${email})
        AND disabled_at IS NULL
      LIMIT 1
   `;
@@ -123,10 +155,24 @@ export async function registerPlayerAccount(input: {
   if (created) return { account: created, created: true };
 
   const existing = await getPlayerAccount(input.playerId);
-  if (!existing || existing.recovery_key !== input.recoveryKey) {
-    throw new Error("accounts: player or recovery credential already registered");
+  if (existing) {
+    if (existing.recovery_key !== input.recoveryKey) {
+      throw new Error("accounts: player or recovery credential already registered");
+    }
+    return { account: existing, created: false };
   }
-  return { account: existing, created: false };
+
+  // The insert conflicted on something other than THIS player_id — a bare
+  // ON CONFLICT DO NOTHING absorbs a collision on any of player_id,
+  // recovery_key, or (since migration 0011) LOWER(email), so it alone can't
+  // say which. Distinguish email specifically, since unlike a recovery_key
+  // collision (astronomically unlikely, and not actionable by the caller
+  // either way) it is a real, common case with a clear message to give.
+  if (email) {
+    const emailTaken = await getPlayerAccountByEmail(email);
+    if (emailTaken) throw new EmailAlreadyRegisteredError(email);
+  }
+  throw new Error("accounts: player or recovery credential already registered");
 }
 
 export async function migrateLegacyPlayer(record: DurablePlayer): Promise<PlayerAccount> {
@@ -223,6 +269,13 @@ export async function setAccountPhotoUrl(
  * onto a different one would be a lie the ledger of trust here depends on
  * being honest about. The new token hash and expiry are set in the same
  * statement so there is never a moment with an email but no live token.
+ *
+ * Pre-checks for a conflicting owner rather than relying solely on
+ * migration 0011's unique index to reject the UPDATE: a caught constraint
+ * violation here would still be correct, but a pre-check gives a specific,
+ * actionable EmailAlreadyRegisteredError instead of a raw SQL exception. A
+ * player changing their email to the one THEY ALREADY HAVE is not a
+ * conflict — only a match on a DIFFERENT player_id is.
  */
 export async function setAccountEmail(
   playerId: string,
@@ -230,6 +283,11 @@ export async function setAccountEmail(
   verificationTokenHash: string,
   verificationExpiresAt: string
 ): Promise<boolean> {
+  const conflicting = await getPlayerAccountByEmail(email);
+  if (conflicting && conflicting.player_id !== playerId) {
+    throw new EmailAlreadyRegisteredError(email);
+  }
+
   const sql = requireSql();
   const rows = await sql`
     UPDATE accounts.players

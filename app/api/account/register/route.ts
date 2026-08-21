@@ -6,7 +6,7 @@ import {
   accountSessionCookieOptions,
   createAccountSession,
 } from "@/lib/accountSession";
-import { registerPlayerAccount } from "@/lib/playerAccounts";
+import { EmailAlreadyRegisteredError, registerPlayerAccount } from "@/lib/playerAccounts";
 import {
   PLAYER_COOKIE,
   PLAYER_NAME_COOKIE,
@@ -147,6 +147,15 @@ export async function POST(req: Request) {
     res.cookies.set(PLAYER_COOKIE, freshGuest.value, playerCookieOptions(secure));
     return res;
   } catch (err) {
+    if (err instanceof EmailAlreadyRegisteredError) {
+      return NextResponse.json(
+        {
+          error: "email_already_registered",
+          message: "Ez az e-mail cím már regisztrálva van egy másik fiókhoz.",
+        },
+        { status: 409 }
+      );
+    }
     // eslint-disable-next-line no-console
     console.error("[barkoba] account registration failed:", err);
     return NextResponse.json(

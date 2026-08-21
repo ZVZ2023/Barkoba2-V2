@@ -5,9 +5,11 @@ import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import {
   registerPlayerAccount,
   getPlayerAccount,
+  getPlayerAccountByEmail,
   getPlayerAccountByVerificationTokenHash,
   markEmailVerified,
   setAccountEmail,
+  EmailAlreadyRegisteredError,
 } from "../lib/playerAccounts";
 import {
   EMAIL_VERIFICATION_TTL_SECONDS,
@@ -80,7 +82,16 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
 
   if (/INSERT INTO accounts\.players/.test(query)) {
     const playerId = String(v[0]);
-    if (accounts.has(playerId)) return Promise.resolve([]);
+    const email = typeof v[4] === "string" ? v[4] : null;
+    // Models migration 0011's UNIQUE INDEX ON LOWER(email): a bare
+    // ON CONFLICT DO NOTHING absorbs a collision on ANY unique constraint,
+    // not only player_id, so the fake must refuse here too.
+    const emailTaken =
+      email !== null &&
+      [...accounts.values()].some(
+        (a) => a.email !== null && a.email.toLowerCase() === email.toLowerCase()
+      );
+    if (accounts.has(playerId) || emailTaken) return Promise.resolve([]);
     const row: AccountRow = {
       player_id: playerId,
       recovery_key: String(v[1]),
@@ -88,7 +99,7 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
       created_at: String(v[3]),
       registered_at: new Date().toISOString(),
       disabled_at: null,
-      email: typeof v[4] === "string" ? v[4] : null,
+      email,
       email_verified_at: null,
       email_verification_token: typeof v[5] === "string" ? v[5] : null,
       email_verification_expires_at: typeof v[6] === "string" ? v[6] : null,
@@ -115,6 +126,14 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     row.email_verification_token = tokenHash!;
     row.email_verification_expires_at = expiresAt!;
     return Promise.resolve([{ player_id: playerId }]);
+  }
+
+  if (/FROM accounts\.players/.test(query) && /LOWER\(email\)/.test(query)) {
+    const email = String(v[0]).toLowerCase();
+    const row = [...accounts.values()].find(
+      (a) => (a.email ?? "").toLowerCase() === email && !a.disabled_at
+    );
+    return Promise.resolve(row ? [row] : []);
   }
 
   if (/FROM accounts\.players/.test(query) && /email_verification_token =/.test(query)) {
@@ -386,6 +405,68 @@ test("registerPlayerAccount without email fields (the legacy-migration path) lea
   assert.equal(account.email_verification_expires_at, null);
 });
 
+// ---------------------------------------------------------------------------
+// V2.6.x — migration 0011: email uniqueness.
+// ---------------------------------------------------------------------------
+
+test("registerPlayerAccount refuses a second account with the same email, case-insensitively", async () => {
+  const firstId = "e".repeat(32);
+  await registerPlayerAccount({
+    playerId: firstId,
+    recoveryKey: "e".repeat(64),
+    displayName: "First",
+    email: "zsolt@example.com",
+    emailVerificationTokenHash: "e".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+
+  const secondId = "f".repeat(32);
+  await assert.rejects(
+    () =>
+      registerPlayerAccount({
+        playerId: secondId,
+        recoveryKey: "f".repeat(64),
+        displayName: "Second",
+        email: "ZSOLT@Example.com",
+        emailVerificationTokenHash: "f".repeat(64),
+        emailVerificationExpiresAt: new Date().toISOString(),
+      }),
+    (err: unknown) => err instanceof EmailAlreadyRegisteredError
+  );
+
+  // The rejected attempt must not have left any trace — no second row, and
+  // the first account completely untouched.
+  assert.equal(await getPlayerAccount(secondId), null);
+  assert.equal((await getPlayerAccount(firstId))?.display_name, "First");
+});
+
+test("getPlayerAccountByEmail finds the right account case-insensitively, and nothing else", async () => {
+  const mineId = "1".repeat(31) + "a";
+  const otherId = "1".repeat(31) + "b";
+  await registerPlayerAccount({
+    playerId: mineId,
+    recoveryKey: "1".repeat(63) + "a",
+    displayName: "Mine",
+    email: "mine@example.com",
+    emailVerificationTokenHash: "a".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+  await registerPlayerAccount({
+    playerId: otherId,
+    recoveryKey: "1".repeat(63) + "b",
+    displayName: "Other",
+    email: "other@example.com",
+    emailVerificationTokenHash: "b".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+
+  const found = await getPlayerAccountByEmail("Mine@Example.COM");
+  assert.equal(found?.player_id, mineId);
+
+  const unknown = await getPlayerAccountByEmail("nobody@example.com");
+  assert.equal(unknown, null);
+});
+
 test("getPlayerAccountByVerificationTokenHash finds the right account and nothing else", async () => {
   const mineId = "3".repeat(32);
   const otherId = "4".repeat(32);
@@ -570,6 +651,13 @@ test("register/route.ts is wired to validate, store and (non-fatally) send the v
   );
 });
 
+test("register/route.ts surfaces a duplicate email as its own distinct outcome", () => {
+  const source = readFileSync("app/api/account/register/route.ts", "utf8");
+  assert.match(source, /EmailAlreadyRegisteredError/);
+  assert.match(source, /email_already_registered/);
+  assert.match(source, /err instanceof EmailAlreadyRegisteredError/);
+});
+
 // ---------------------------------------------------------------------------
 // setAccountEmail — the reachable-any-time add/change path.
 // ---------------------------------------------------------------------------
@@ -606,6 +694,48 @@ test("setAccountEmail refuses a disabled or nonexistent account", async () => {
     await setAccountEmail("0".repeat(32), "x@example.com", "c".repeat(64), new Date().toISOString()),
     false
   );
+});
+
+test("setAccountEmail refuses to move an address onto a DIFFERENT account, case-insensitively", async () => {
+  const ownerId = "2".repeat(31) + "a";
+  const otherId = "2".repeat(31) + "b";
+  await registerPlayerAccount({
+    playerId: ownerId,
+    recoveryKey: "2".repeat(63) + "a",
+    displayName: "Owner",
+    email: "owner@example.com",
+    emailVerificationTokenHash: "a".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+  await registerPlayerAccount({
+    playerId: otherId,
+    recoveryKey: "2".repeat(63) + "b",
+    displayName: "Other",
+  });
+
+  await assert.rejects(
+    () =>
+      setAccountEmail(otherId, "Owner@Example.com", "b".repeat(64), new Date().toISOString()),
+    (err: unknown) => err instanceof EmailAlreadyRegisteredError
+  );
+  assert.equal((await getPlayerAccount(otherId))?.email, null, "the rejected change must not apply");
+});
+
+test("setAccountEmail allows re-saving the SAME email the account already has — not a conflict with itself", async () => {
+  const playerId = "3".repeat(31) + "a";
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "3".repeat(63) + "a",
+    displayName: "Zsolt",
+    email: "zsolt@example.com",
+    emailVerificationTokenHash: "a".repeat(64),
+    emailVerificationExpiresAt: new Date().toISOString(),
+  });
+
+  const newHash = "b".repeat(64);
+  const newExpiry = new Date(Date.now() + 1000).toISOString();
+  assert.equal(await setAccountEmail(playerId, "zsolt@example.com", newHash, newExpiry), true);
+  assert.equal((await getPlayerAccount(playerId))?.email_verification_token, newHash);
 });
 
 // ---------------------------------------------------------------------------
@@ -683,6 +813,30 @@ test("POST /api/account/email changes exactly the caller's own account and repor
     "other@example.com",
     "another account's email must be untouched"
   );
+});
+
+test("POST /api/account/email refuses an address already registered to a different account", async () => {
+  const playerId = "6".repeat(32);
+  const other = "7".repeat(32);
+  const token = await registeredSession(playerId, "mine@example.com");
+  await registerPlayerAccount({
+    playerId: other,
+    recoveryKey: "o".repeat(64),
+    displayName: "Other",
+    email: "taken@example.com",
+  });
+
+  const response = await updateEmail(
+    new Request("https://barkoba.test/api/account/email", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ email: "Taken@Example.com" }),
+    })
+  );
+  assert.equal(response.status, 409);
+  const body = await response.json();
+  assert.equal(body.error, "email_already_registered");
+  assert.equal((await getPlayerAccount(playerId))?.email, "mine@example.com", "the rejected change must not apply");
 });
 
 // ---------------------------------------------------------------------------

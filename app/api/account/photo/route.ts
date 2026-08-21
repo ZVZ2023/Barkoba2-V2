@@ -45,7 +45,7 @@ export async function POST(req: Request) {
   }
   if (!isPhotoSizeAllowed(file.size)) {
     return NextResponse.json(
-      { error: "file_too_large", message: "A kép mérete legfeljebb 5 MB lehet." },
+      { error: "file_too_large", message: "A kép mérete legfeljebb 4 MB lehet." },
       { status: 400 }
     );
   }

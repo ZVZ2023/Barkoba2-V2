@@ -10,7 +10,13 @@ import { env } from "./env";
 // walked back to an account.
 // ---------------------------------------------------------------------------
 
-const MAX_PHOTO_BYTES = 5 * 1024 * 1024;
+// 4 MB, not 5. Vercel enforces a hard 4.5 MB request-body limit on Serverless
+// Functions, platform-level, before this route's own code ever runs — a
+// higher ceiling here was dead code for anything the platform would not have
+// already rejected with its own 413 first. That 413 is not our JSON, so the
+// client-side fetch failed with a generic "network error" that pointed
+// nowhere useful — see ProfilePhotoPrompt.tsx's non-JSON handling.
+const MAX_PHOTO_BYTES = 4 * 1024 * 1024;
 const ALLOWED_PHOTO_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export function isAllowedPhotoType(type: string): boolean {

@@ -28,11 +28,30 @@ export default function ProfilePhotoPrompt({
       const form = new FormData();
       form.append("photo", file);
       const res = await fetch("/api/account/photo", { method: "POST", body: form });
-      const data = await res.json();
+
       if (!res.ok) {
-        setError(data.message || "A feltöltés nem sikerült.");
+        // The error body is not guaranteed to be JSON: a request over
+        // Vercel's platform-level 4.5 MB limit never reaches this route's
+        // own code at all, and comes back as a 413 with a platform page as
+        // its body, not our JSON. That is a real, specific refusal — it
+        // must not be reported as the generic network-error catch below,
+        // which would tell a player nothing about what actually happened.
+        let message: string | undefined;
+        try {
+          message = (await res.json()).message;
+        } catch {
+          // Not JSON — fall through to the status-based message below.
+        }
+        setError(
+          message ??
+            (res.status === 413
+              ? "A kép túl nagy a feltöltéshez. Válassz egy kisebb fájlt."
+              : "A feltöltés nem sikerült.")
+        );
         return;
       }
+
+      const data = await res.json();
       setUploadedUrl(data.photo_url);
       setJustUploaded(true);
       setFile(null);

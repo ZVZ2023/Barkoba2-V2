@@ -1,5 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { MockAgent, setGlobalDispatcher, getGlobalDispatcher } from "undici";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import { createAccountSession } from "../lib/accountSession";
@@ -174,10 +175,13 @@ test("isAllowedPhotoType accepts exactly jpeg/png/webp", () => {
   }
 });
 
-test("isPhotoSizeAllowed enforces a positive size within the 5 MB cap", () => {
+test("isPhotoSizeAllowed enforces a positive size within the 4 MB cap", () => {
+  // 4 MB, not 5 — Vercel's own platform-level Serverless Function request
+  // body limit is 4.5 MB, hard, before this code ever runs. A ceiling above
+  // that was dead code: the platform's 413 (non-JSON) got there first.
   assert.equal(isPhotoSizeAllowed(1), true);
-  assert.equal(isPhotoSizeAllowed(5 * 1024 * 1024), true);
-  assert.equal(isPhotoSizeAllowed(5 * 1024 * 1024 + 1), false);
+  assert.equal(isPhotoSizeAllowed(4 * 1024 * 1024), true);
+  assert.equal(isPhotoSizeAllowed(4 * 1024 * 1024 + 1), false);
   assert.equal(isPhotoSizeAllowed(0), false);
   assert.equal(isPhotoSizeAllowed(-1), false);
   assert.equal(isPhotoSizeAllowed(NaN), false);
@@ -284,11 +288,11 @@ test("photo upload refuses an unsupported type", async () => {
   assert.equal((await response.json()).error, "unsupported_type");
 });
 
-test("photo upload refuses a file over 5 MB", async () => {
+test("photo upload refuses a file over 4 MB", async () => {
   const playerId = "5".repeat(32);
   const token = await registeredSession(playerId);
   const form = new FormData();
-  form.append("photo", photoFile({ bytes: 5 * 1024 * 1024 + 1 }));
+  form.append("photo", photoFile({ bytes: 4 * 1024 * 1024 + 1 }));
   const response = await uploadPhoto(uploadRequest(token, form));
   assert.equal(response.status, 400);
   assert.equal((await response.json()).error, "file_too_large");
@@ -326,4 +330,48 @@ test("photo upload succeeds for a valid file and persists the URL to exactly thi
 
   assert.equal((await getPlayerAccount(playerId))?.photo_url, body.photo_url);
   assert.equal((await getPlayerAccount(other))?.photo_url, null, "another account's photo must be untouched");
+});
+
+// ---------------------------------------------------------------------------
+// ProfilePhotoPrompt.tsx — non-JSON error responses must not collapse into
+// the generic "network error" message. No React rendering harness exists in
+// this codebase (see every other UI-adjacent test file), so this is
+// structural, the same convention playCreditVisibility.test.ts already uses
+// for component source.
+// ---------------------------------------------------------------------------
+
+test("ProfilePhotoPrompt.tsx does not call res.json() unconditionally before checking res.ok", () => {
+  const src = readFileSync("app/components/ProfilePhotoPrompt.tsx", "utf8");
+  // A platform-level rejection (Vercel's 413 for a request over its own
+  // 4.5 MB limit) never reaches our route code, so its body is not JSON.
+  // res.json() on that body throws, and if that call sat unconditionally
+  // before the res.ok check, the throw would land in the generic catch and
+  // report "Hálózati hiba" for what is actually a specific, known refusal.
+  const uploadFn = src.slice(src.indexOf("async function upload()"));
+  const okCheckAt = uploadFn.indexOf("if (!res.ok)");
+  const firstJsonCallAt = uploadFn.indexOf(".json()");
+  assert.ok(okCheckAt > 0, "the function must check res.ok");
+  assert.ok(
+    okCheckAt < firstJsonCallAt,
+    "res.ok must be checked before any res.json() call is reached"
+  );
+});
+
+test("ProfilePhotoPrompt.tsx handles a non-JSON error body without throwing into the generic catch", () => {
+  const src = readFileSync("app/components/ProfilePhotoPrompt.tsx", "utf8");
+  const uploadFn = src.slice(
+    src.indexOf("async function upload()"),
+    src.indexOf("return (")
+  );
+  const errorBranch = uploadFn.slice(uploadFn.indexOf("if (!res.ok)"));
+  assert.match(errorBranch, /try\s*{[\s\S]*res\.json\(\)/, "res.json() must be wrapped in its own try");
+  assert.match(errorBranch, /catch/, "a non-JSON error body must be caught, not left to throw");
+  assert.match(errorBranch, /413/, "a 413 specifically should get its own message");
+});
+
+test("MAX_PHOTO_BYTES and the route's own message agree on 4 MB", () => {
+  const lib = readFileSync("lib/photoUpload.ts", "utf8");
+  const route = readFileSync("app/api/account/photo/route.ts", "utf8");
+  assert.match(lib, /MAX_PHOTO_BYTES = 4 \* 1024 \* 1024/);
+  assert.match(route, /legfeljebb 4 MB/);
 });

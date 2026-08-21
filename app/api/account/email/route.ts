@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { resolveActingPlayer } from "@/lib/actingPlayer";
-import { setAccountEmail } from "@/lib/playerAccounts";
+import { EmailAlreadyRegisteredError, setAccountEmail } from "@/lib/playerAccounts";
 import {
   EMAIL_VERIFICATION_TTL_SECONDS,
   generateVerificationToken,
@@ -54,6 +54,15 @@ export async function POST(req: Request) {
   try {
     saved = await setAccountEmail(context.playerId, email, hash, expiresAt);
   } catch (err) {
+    if (err instanceof EmailAlreadyRegisteredError) {
+      return NextResponse.json(
+        {
+          error: "email_already_registered",
+          message: "Ez az e-mail cím már regisztrálva van egy másik fiókhoz.",
+        },
+        { status: 409, headers: PRIVATE_NO_STORE }
+      );
+    }
     // eslint-disable-next-line no-console
     console.error("[barkoba] account email update failed:", err);
     return NextResponse.json(
