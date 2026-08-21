@@ -394,13 +394,15 @@ test("both providers receive the same prompt version", () => {
   //
   // RG V2 moved this literal from "racer/2.6.0" to "racer/2.7.0"; RG #3 moved
   // it again, from "racer/2.7.0" to "racer/3.0.0", when the uncertainty-
-  // management block replaced the seven-stage deliberation. The INVARIANT is
+  // management block replaced the seven-stage deliberation, and again to
+  // "racer/3.1.0" when the Hierarchy gate and the strengthened pre-guess
+  // validation check were added on top of that block. The INVARIANT is
   // unchanged and is what this test is really for: exactly one version,
   // shared by both providers. The literal is pinned as well so that an
   // accidental revert to a previously-published version — which would
   // silently relabel new evidence as old — fails here rather than in the
   // corpus.
-  assert.equal(RACER_PROMPT_VERSION, "racer/3.0.0");
+  assert.equal(RACER_PROMPT_VERSION, "racer/3.1.0");
   const versions = RACER_SRC.match(/RACER_PROMPT_VERSION = "[^"]+"/g) ?? [];
   assert.equal(versions.length, 1, "exactly one prompt version, shared by both providers");
 });

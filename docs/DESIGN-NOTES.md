@@ -4295,3 +4295,96 @@ independently configured at `0` there (§ recorded in the V2.6.x
 reconnaissance pass), so `ensureInitialComplimentary()` already returns
 before reaching this check. The gate matters the moment that value is
 restored to a positive number.
+
+## 47. RG #3 refinement — Hierarchy gate and a stronger validation gate (`racer/3.1.0`)
+
+**Two targeted additions to §45's text, not a rewrite of it.** Motivated by
+`racer/3.0.0`'s first live field result: GAZ-13/Chaika, Grok, **49/50 —
+correct family, wrong sibling (guessed Volga)**. A real win — the
+uncertainty-management loop reached Soviet → GAZ correctly — with two
+specific, named gaps:
+
+1. **Geography/nationality was still enumerated country-by-country**
+   instead of partitioned by broader region first, despite SELECT's
+   existing "partition before you enumerate" line. A descriptive preference
+   proved too weak to reliably override the pull toward naming siblings
+   directly.
+2. **The candidate validation gate was too weak.** Claude guessed "Volga"
+   immediately after confirming the broader category "Russian/Soviet luxury
+   automobile," without checking whether a neighboring specific candidate
+   (the actual target, GAZ-13/Chaika) was equally consistent with the
+   evidence. Confirming a category was treated as though it had eliminated
+   the nearest rival inside it — it hadn't.
+
+**Fix 1 — Hierarchical Discriminator Rule, added as a CHECK gate, not a
+SELECT preference.** SELECT already said to partition before enumerating;
+that alone wasn't enforced strongly enough. CHECK's job is different in
+kind — it can *reject and regenerate* a question outright — so the rule
+moved there: a question naming one specific sibling (one country, one
+model, one brand, one individual case) is rejected outright whenever a
+broader grouping one level up (region, era, family, category) still has
+multiple live alternatives. Stated domain-generally on purpose, per the
+brief's §17 constraint carried over from RG v3: no GAZ-13 vocabulary, no
+geography-specific special case — the same rule is meant to fire for era
+before model or family before individual member exactly as it fires for
+region before country.
+
+**Fix 2 — BEFORE ANY FINAL GUESS strengthened in place.** Two sentences
+inserted into the existing paragraph, every original sentence unchanged:
+the compared alternative must be named *specifically*, not gestured at
+("a vague sense that other options remain" is explicitly ruled out), and
+confirming a broader category is explicitly called out as **not**
+equivalent to eliminating a specific rival inside it. This targets the
+exact failure mode observed: a model that has just confirmed "Soviet
+luxury car" treating that confirmation as though it had already ruled out
+every other Soviet luxury car.
+
+**Not yet re-validated beyond the one Grok run this pass responds to** —
+same constraint as `racer/3.0.0`: no Anthropic or xAI credentials in this
+build session. Field-testing happens when Zsolt plays it; report back
+against these same two named failure modes specifically (enumeration
+depth on a hierarchical dimension, and whether a specific rival was
+checked before the final guess), not just win/loss.
+
+Canonical text, reproduced verbatim:
+
+```
+RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+
+Before producing each question, build this structured state internally. Emit only one player-facing question after it.
+
+KNOWN
+List every constraint established so far — YES, NO, and AMBIGUOUS/soft — as durable facts that do not expire when new information arrives. Confirmed positives and negatives act as hard filters, not suggestions: no later candidate, hypothesis, or question may violate one of them, however familiar or statistically salient it feels.
+
+UNKNOWN
+Identify the major dimensions of the target that remain unresolved. Discover these dimensions from the target's apparent domain rather than a fixed checklist — a vehicle, a person, and a piece of software do not share the same important dimensions. Ask which unresolved dimension, if answered, would most change what you still need to ask.
+
+HYPOTHESES
+Identify the leading candidate family or families still consistent with KNOWN, and the strongest credible alternative. Keep this a small, live set, not an exhaustive list and not a single premature favorite.
+
+NEXT QUESTION OPTIONS
+Generate two to four candidate next questions spanning different unresolved dimensions.
+
+SELECT
+Choose the option expected to divide the surviving hypothesis space most usefully. Prefer a question that discriminates between your leading hypotheses over one that only confirms the leader. Partition before you enumerate: a broad split across a dimension — region, era, function, class — beats naming siblings one at a time, country after country, brand after brand, candidate after candidate.
+
+CHECK — reject and regenerate the question if any of these fail
+Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
+Novelty: does it ask something not already established, directly or by clear implication?
+Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up (region, era, family, category) still has multiple live alternatives, reject it and ask the broader-level question first. This applies to any hierarchical dimension the target has, not only geography.
+Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
+Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
+
+EVIDENCE-RESPONSE BEHAVIOR
+YES: This is not license to spray further candidates within the branch you just confirmed. Use it to select the next most useful UNKNOWN dimension.
+NO: Update the parent hypothesis, not only the one candidate it ruled out. After two or three related NOs on the same branch, treat that as a signal rather than a coincidence — stop, ask whether you are inside the wrong parent category or the wrong assumption entirely, and move up a level before trying more siblings.
+AMBIGUOUS: This is informative failure, not a weak YES or a weak NO. It means your question conflated two distinct things a truthful answerer could not separate. Work out what those two things are, then ask a cleaner question that isolates one of them. Do not re-ask a paraphrase of the same question.
+
+DIMINISHING RETURNS
+If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
+
+BEFORE ANY FINAL GUESS
+Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
+If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.
+```

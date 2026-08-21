@@ -65,8 +65,30 @@ import type {
  * Anthropic or xAI credentials were available in the build session. See
  * docs/DESIGN-NOTES.md §45 for the tracked follow-up. Do not treat this
  * version as field-validated until that comparison exists.
+ *
+ * `racer/3.1.0` — TWO TARGETED ADDITIONS, NOT A REWRITE.
+ *
+ * racer/3.0.0's first live field test (GAZ-13/Chaika, Grok, 49/50 — a real
+ * win) surfaced two specific remaining gaps, not a wrong architecture: (1)
+ * geography/nationality was still enumerated country-by-country rather than
+ * partitioned by a broader region first, despite SELECT's existing
+ * "partition before you enumerate" guidance — descriptive preference proved
+ * too weak, so CHECK gained a Hierarchy gate that can reject and regenerate
+ * a sibling-level question outright; (2) Claude guessed "Volga" immediately
+ * after confirming the broader category "Russian/Soviet luxury automobile"
+ * without checking whether a neighboring specific candidate was equally
+ * consistent — BEFORE ANY FINAL GUESS gained two inserted sentences making
+ * explicit that confirming a category does not eliminate a specific rival
+ * inside it, and that the compared alternative must be named specifically.
+ * Every existing sentence in racer/3.0.0's text is unchanged; both are pure
+ * additions. Still no GAZ-13-specific vocabulary — the two new gate items
+ * are worded exactly as domain-generally as the rest of the block, per the
+ * brief's own §17 constraint, restated for this pass.
+ *
+ * Also not yet field-validated beyond the one Grok run above — same
+ * no-credentials constraint as racer/3.0.0. See docs/DESIGN-NOTES.md §47.
  */
-export const RACER_PROMPT_VERSION = "racer/3.0.0";
+export const RACER_PROMPT_VERSION = "racer/3.1.0";
 
 /**
  * RG #3 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
@@ -76,8 +98,8 @@ export const RACER_PROMPT_VERSION = "racer/3.0.0";
  * block stays last before the instruction to act and is shared by both paths
  * that can author the player-facing question.
  *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §45
- * against `racer/3.0.0`. Editing it without bumping the version breaks the
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §47
+ * against `racer/3.1.0`. Editing it without bumping the version breaks the
  * database claim above.
  *
  * DELIBERATELY DOMAIN-GENERIC. The build brief's §17 is explicit that this
@@ -109,6 +131,7 @@ CHECK — reject and regenerate the question if any of these fail
 Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
 Novelty: does it ask something not already established, directly or by clear implication?
 Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up (region, era, family, category) still has multiple live alternatives, reject it and ask the broader-level question first. This applies to any hierarchical dimension the target has, not only geography.
 Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
 Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
 
@@ -121,7 +144,7 @@ DIMINISHING RETURNS
 If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
 
 BEFORE ANY FINAL GUESS
-Answer internally: What is my leading candidate? What is the strongest remaining alternative? Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
+Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
 If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.`;
 
 /**
