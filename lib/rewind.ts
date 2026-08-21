@@ -1,4 +1,4 @@
-import type { ComposerAnswer, QuestionLogEntry } from "./types";
+import type { ComposerAnswer, GamePhase, GameResult, QuestionLogEntry } from "./types";
 
 // ---------------------------------------------------------------------------
 // Answer correction and rewind. Pure functions, no I/O.
@@ -93,4 +93,38 @@ export function isNoOpCorrection(
   if (entry.composer_response !== answer) return false;
   if (answer !== "AMBIGUOUS") return true;
   return (entry.ambiguous_explanation ?? null) === explanation;
+}
+
+// ---------------------------------------------------------------------------
+// V2.6.x — the pre-guess checkpoint.
+//
+// Corrections are normally closed the moment the Racer guesses or concedes
+// (phase leaves "questioning"): once the Composer can see the guess, letting
+// them rewind would let them read the outcome and retroactively invalidate
+// it — a cheat, not a recovery affordance. See the WINDOW comment in
+// app/api/game/[id]/correct/route.ts.
+//
+// GameClient.tsx now withholds exactly that guess from view until the
+// Composer confirms the single answer that produced it — the AI's guess is
+// computed and stored server-side as soon as the triggering answer is
+// recorded, but never rendered, and /resolve is never called, until the
+// Composer either confirms it or corrects that one answer. This function is
+// the server-side half of that checkpoint: it opens the same correction path
+// used mid-game, but ONLY for the one turn directly beneath an unrevealed
+// guess, and ONLY before adjudication has produced a result. Once `result`
+// is set the original close applies again unconditionally. See
+// docs/DESIGN-NOTES.md §48.
+// ---------------------------------------------------------------------------
+export function isPreGuessCheckpointCorrection(
+  game: { phase: GamePhase; result: GameResult; qa_log: QuestionLogEntry[] },
+  turnIndex: number
+): boolean {
+  if (game.phase !== "resolving") return false;
+  if (game.result !== null) return false;
+  const log = game.qa_log;
+  const last = log[log.length - 1];
+  if (!last || last.turn_type !== "guess") return false;
+  const preceding = log[log.length - 2];
+  if (!preceding || preceding.turn_index !== turnIndex) return false;
+  return true;
 }

@@ -39,20 +39,54 @@ function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   );
 }
 
+interface GuessCheckpoint {
+  guessEntry: QuestionLogEntry;
+  /** The single answer that produced the guess — the only thing the Composer sees here. */
+  answeredEntry: QuestionLogEntry;
+}
+
+/**
+ * V2.6.x — the pre-guess checkpoint.
+ *
+ * The turn route computes and stores the Racer's final guess in the same
+ * call that records the triggering answer, so by the time this component
+ * sees it the guess already exists in `game`. This deliberately does NOT
+ * render it (see the `turns` filter below) or let the auto-resolve effect
+ * fire until the Composer has confirmed — or corrected — the one answer that
+ * produced it. A mis-tap immediately before a guess used to be irreversible
+ * the instant the guess appeared; now it has one more, narrower chance: the
+ * Composer sees their own last answer, never the AI's guess, and can still
+ * fix it via the ordinary correction flow before the guess is ever shown.
+ * See docs/DESIGN-NOTES.md §48 and lib/rewind.ts's
+ * isPreGuessCheckpointCorrection, which is what makes the correction
+ * itself possible while phase is "resolving".
+ */
+function pendingGuessCheckpoint(game: GameRecord): GuessCheckpoint | null {
+  if (game.phase !== "resolving") return null;
+  const guessEntry = game.qa_log[game.qa_log.length - 1];
+  if (!guessEntry || guessEntry.turn_type !== "guess") return null;
+  const answeredEntry = game.qa_log[game.qa_log.length - 2];
+  if (
+    !answeredEntry ||
+    answeredEntry.turn_type !== "question" ||
+    answeredEntry.composer_response === null
+  ) {
+    return null;
+  }
+  return { guessEntry, answeredEntry };
+}
+
 export default function GameClient({ initialGame, versionLabel }: Props) {
   const [game, setGame] = useState<GameRecord>(initialGame);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambiguousMode, setAmbiguousMode] = useState(false);
   const [explanation, setExplanation] = useState("");
-  // V2.6.x — an answer is staged here on tap, not sent. It only reaches
-  // sendTurn (and therefore the Racer) when the player explicitly confirms.
-  // Before this, YES/NO called sendTurn directly on the first tap — the
-  // Racer's next question or guess could be generated against an answer the
-  // player never actually meant to lock in. AMBIGUOUS already had this shape
-  // (explanation textarea, then an explicit send) via ambiguousMode; this
-  // gives YES/NO the same shape rather than inventing a different one.
-  const [stagedAnswer, setStagedAnswer] = useState<"YES" | "NO" | null>(null);
+  // V2.6.x — set only by the pre-guess checkpoint's own confirm button. While
+  // false and a guess is pending reveal, the guess entry is withheld from the
+  // transcript and the auto-resolve effect below does not fire. See
+  // pendingGuessCheckpoint above.
+  const [guessConfirmed, setGuessConfirmed] = useState(false);
   const [correcting, setCorrecting] = useState<number | null>(null);
   const [correctionExplanation, setCorrectionExplanation] = useState("");
   // Mirrors `ambiguousMode` on the main answer path: Ambiguous reveals the
@@ -140,7 +174,6 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         setBusy(false);
         setAmbiguousMode(false);
         setExplanation("");
-        setStagedAnswer(null);
       }
     },
     [game.game_id]
@@ -217,15 +250,21 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
     }
   }, [game.game_id]);
 
-  // Resolve as soon as the game reaches "resolving". The ref guards strict-mode
-  // double-effect; the route is idempotent regardless, which matters here
-  // because each real invocation spends strong-model calls.
+  const guessCheckpoint = pendingGuessCheckpoint(game);
+  const guessRevealPending = guessCheckpoint !== null && !guessConfirmed;
+
+  // Resolve as soon as the game reaches "resolving" — UNLESS an unconfirmed
+  // guess is sitting behind the pre-guess checkpoint, in which case scoring
+  // waits for the Composer, same as the reveal does. The ref guards
+  // strict-mode double-effect; the route is idempotent regardless, which
+  // matters here because each real invocation spends strong-model calls.
   useEffect(() => {
     if (resolveFired.current) return;
     if (game.phase !== "resolving") return;
+    if (guessRevealPending) return;
     resolveFired.current = true;
     void resolveGame();
-  }, [game.phase, resolveGame]);
+  }, [game.phase, guessRevealPending, resolveGame]);
 
   // Ask the Racer for the next question whenever the game is live and nothing
   // is pending. That covers the opening turn and the resume after a rewind,
@@ -266,7 +305,12 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
 
   // See lib/questionNumbers.ts — turn_index is an identifier, not a count.
   const numbers = questionNumbers(game.qa_log);
-  const turns = answeredTurns(game);
+  // The guess itself stays out of the transcript entirely until the
+  // checkpoint above is confirmed — "show the player their own last answer,
+  // not the AI's proposed guess."
+  const turns = answeredTurns(game).filter(
+    (e) => !(guessRevealPending && e.id === guessCheckpoint!.guessEntry.id)
+  );
   const questionsLeft = Math.max(0, game.max_questions - game.question_count);
 
   return (
@@ -347,7 +391,12 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   </div>
                 )}
 
-                {game.phase === "questioning" && correcting !== entry.turn_index && (
+                {(game.phase === "questioning" ||
+                  // The pre-guess checkpoint reuses this same correction UI
+                  // for exactly one turn: the answer that produced the
+                  // unrevealed guess. See pendingGuessCheckpoint above.
+                  (guessRevealPending && guessCheckpoint!.answeredEntry.turn_index === entry.turn_index)) &&
+                  correcting !== entry.turn_index && (
                   <div className="flex min-w-0 gap-3">
                     <span className="w-6 shrink-0 sm:w-8" />
                     <button
@@ -514,6 +563,23 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           </div>
         )}
 
+        {guessRevealPending && (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
+            <p className="text-sm text-[var(--ink)]">
+              Az AI a végső tippjére készül. Mielőtt megmutatnánk, nézd át az
+              utolsó válaszod itt fent — utoljára most tudod javítani, utána
+              már nem.
+            </p>
+            <button
+              onClick={() => setGuessConfirmed(true)}
+              disabled={busy || correcting !== null}
+              className="min-h-12 self-start rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40"
+            >
+              Tovább, jöhet a tipp
+            </button>
+          </div>
+        )}
+
         {pending && pending.question_text && (
           <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
             <div className="flex min-w-0 gap-3">
@@ -523,40 +589,17 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
               <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
             </div>
 
-            {stagedAnswer ? (
-              <div className="flex flex-col gap-2 sm:pl-11">
-                <p className="text-xs text-[var(--ink-soft)]">
-                  Ez a válaszod erre a kérdésre. Amíg nem küldöd el, még
-                  módosíthatod — az AI csak a küldés után látja.
-                </p>
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => void sendTurn(stagedAnswer)}
-                    disabled={busy}
-                    className="min-h-12 flex-1 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40 sm:flex-none"
-                  >
-                    {ANSWER_HU[stagedAnswer]} küldése
-                  </button>
-                  <button
-                    onClick={() => setStagedAnswer(null)}
-                    disabled={busy}
-                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
-                  >
-                    Mégsem
-                  </button>
-                </div>
-              </div>
-            ) : !ambiguousMode ? (
+            {!ambiguousMode ? (
               <div className="flex flex-wrap gap-2 sm:pl-11">
                 <button
-                  onClick={() => setStagedAnswer("YES")}
+                  onClick={() => void sendTurn("YES")}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
                   IGEN
                 </button>
                 <button
-                  onClick={() => setStagedAnswer("NO")}
+                  onClick={() => void sendTurn("NO")}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
@@ -614,7 +657,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         )}
       </section>
 
-      {game.phase === "resolving" && (
+      {/*
+        Not shown while guessRevealPending — still at the checkpoint above,
+        nothing has actually started resolving yet.
+      */}
+      {game.phase === "resolving" && !guessRevealPending && (
         <EvaluationState error={resolveError} busy={resolving} onRetry={() => void resolveGame()} />
       )}
 

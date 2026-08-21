@@ -3,6 +3,7 @@ import { getGame, saveGame } from "@/lib/gameStore";
 import {
   isCorrectable,
   isNoOpCorrection,
+  isPreGuessCheckpointCorrection,
   recomputeCounters,
   splitAtTurn,
 } from "@/lib/rewind";
@@ -16,10 +17,20 @@ import type { ComposerAnswer } from "@/lib/types";
 // so the Racer resumes through the existing path with existing budget
 // accounting. Nothing about turn generation changes.
 //
-// WINDOW: `questioning` only. Once the Racer has guessed or conceded, the
-// Composer can see the guess on screen, and allowing a rewind then would let
-// them read the guess and retroactively invalidate it. That is not a recovery
-// affordance, it is a cheat, and no audit trail makes it acceptable.
+// WINDOW: `questioning`, plus one narrow exception. Once the Racer has
+// guessed or conceded, the Composer can see the guess on screen, and allowing
+// a rewind then would let them read the guess and retroactively invalidate
+// it. That is not a recovery affordance, it is a cheat, and no audit trail
+// makes it acceptable.
+//
+// V2.6.x exception: GameClient.tsx now withholds an unrevealed final guess
+// from the screen until the Composer confirms the one answer that produced
+// it (see the pre-guess checkpoint there). While THAT is still true — phase
+// is "resolving", nothing has been adjudicated yet, and this correction
+// targets exactly the turn beneath the unrevealed guess — the Composer has
+// not seen the outcome, so allowing this one correction is not the cheat the
+// window above exists to prevent. isPreGuessCheckpointCorrection is the only
+// door through the phase gate; see docs/DESIGN-NOTES.md §48.
 // ---------------------------------------------------------------------------
 
 interface CorrectBody {
@@ -44,7 +55,22 @@ export async function POST(
     );
   }
 
-  if (game.phase !== "questioning") {
+  let body: CorrectBody;
+  try {
+    body = (await req.json()) as CorrectBody;
+  } catch {
+    return NextResponse.json(
+      { error: "invalid_body", message: "A kérés törzsének JSON formátumúnak kell lennie." },
+      { status: 400 }
+    );
+  }
+
+  const { turn_index: turnIndex, answer } = body;
+
+  if (
+    game.phase !== "questioning" &&
+    !(typeof turnIndex === "number" && isPreGuessCheckpointCorrection(game, turnIndex))
+  ) {
     return NextResponse.json(
       {
         error: "corrections_closed",
@@ -57,18 +83,6 @@ export async function POST(
       { status: 409 }
     );
   }
-
-  let body: CorrectBody;
-  try {
-    body = (await req.json()) as CorrectBody;
-  } catch {
-    return NextResponse.json(
-      { error: "invalid_body", message: "A kérés törzsének JSON formátumúnak kell lennie." },
-      { status: 400 }
-    );
-  }
-
-  const { turn_index: turnIndex, answer } = body;
 
   if (typeof turnIndex !== "number") {
     return NextResponse.json(
@@ -158,9 +172,10 @@ export async function POST(
   game.question_count = counters.questionCount;
   game.ambiguous_count = counters.ambiguousCount;
 
-  // Defensive: a rewind can only happen while questioning, so these are already
-  // clear. Setting them explicitly means a future phase change cannot leave a
-  // stale verdict attached to a game that is live again.
+  // A mid-game rewind finds these already clear. A pre-guess-checkpoint
+  // rewind (the V2.6.x exception above) does NOT: final_action and
+  // final_guess_text are set to the guess this correction just discarded, so
+  // clearing them here is load-bearing, not defensive, for that path.
   game.final_action = null;
   game.final_guess_text = null;
   game.result = null;

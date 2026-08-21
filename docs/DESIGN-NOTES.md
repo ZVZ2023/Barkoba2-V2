@@ -4388,3 +4388,26 @@ BEFORE ANY FINAL GUESS
 Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
 If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.
 ```
+
+---
+
+## 48. The pre-guess checkpoint replaces the stage-every-answer design (V2.6.x)
+
+Commit `a309a3e` shipped a fix for "the Racer could act on an answer the Composer never meant to lock in": every YES/NO tap staged the answer behind an explicit confirm-and-send step, mirroring the shape AMBIGUOUS already had.
+
+Reported back for review, the actual bug turned out to be narrower and the fix broader than it needed to be: the real failure mode is a mis-tap on the single answer immediately before a final guess, with no way back once the guess appears on screen — not every answer in the game. Staging every YES/NO trades a small but real per-question tax (an extra tap on all ~20 questions) for protection against a risk that only exists on one of them. It was reverted.
+
+**THE NEW DESIGN.** Single-tap YES/NO is restored for ordinary questions. A checkpoint is inserted only at the one moment that mattered: after the answer that causes the Racer to produce its final guess, and before that guess is shown or scored.
+
+**MECHANICS.** The turn route (`app/api/game/[id]/turn/route.ts`) is unchanged: it still records the answer, calls the Racer, and — if the Racer's action is `"guess"` — stores the guess and flips `phase` to `"resolving"`, all in one request. The guess therefore already exists in the `GameRecord` the client receives. What changed is what the client does with it:
+
+- `GameClient.tsx`'s `pendingGuessCheckpoint()` recognizes this state (phase `"resolving"`, last entry a `"guess"`, preceded by an answered question) and the component withholds that guess entry from the rendered transcript, and suspends the effect that would otherwise call `/resolve` automatically — both gated on a single `guessConfirmed` boolean that starts false and is set true by nothing except the checkpoint's own "Tovább, jöhet a tipp" button.
+- The checkpoint UI shows the Composer their own last answer — never the AI's guess text, which is why the guess is filtered out of the transcript rather than merely styled differently — and offers two paths: confirm (reveal + let `/resolve` proceed), or correct that one answer via the *same* correction UI already used mid-game (the "Válasz javítása" trigger's visibility condition was extended to include exactly this one turn while the checkpoint is open).
+- Correcting during the checkpoint calls the existing `/api/game/[id]/correct` endpoint, which discards the guess (it is after the corrected turn in the log) and reverts `phase` to `"questioning"` — the ordinary rewind path, resumed rather than reinvented.
+
+**THE ONE SERVER-SIDE CHANGE, AND WHY IT'S SAFE.** `/correct` has always refused any correction once `phase !== "questioning"`, with a deliberate, hand-written reason: once the Composer can see the guess, letting them rewind would let them read the outcome and retroactively invalidate it — a cheat. The checkpoint needs corrections to work while `phase === "resolving"`, which looks like exactly that hole. It isn't, because of what the checkpoint actually withholds: the guess is never rendered and `/resolve` is never called until confirmation, so at the moment a correction is possible, the Composer has not seen the outcome — there is nothing to retroactively invalidate. `lib/rewind.ts`'s `isPreGuessCheckpointCorrection(game, turnIndex)` encodes the narrow window this is actually true in: phase is `"resolving"`, `result` is still `null` (adjudication has not run), and `turnIndex` names exactly the turn directly beneath the final guess — not any earlier turn, not after a result exists. Outside that window the original refusal is unchanged and unconditional.
+
+**SCOPE, DELIBERATELY NARROW.** Concede is not gated — there is no guess text to protect a Composer from seeing early, and gating it would add a UI state with no integrity purpose behind it. The reserved `GamePhase.guess_pending_confirmation` value (§ Phase 2 human-Racer notes, near the top of this document) is untouched and unrelated: it is reserved for the *Racer* confirming *their own* guess in a future human-Racer mode, not the Composer confirming the answer that produced an AI Racer's guess. This feature adds no new `GamePhase`.
+
+Not yet field-tested; the acceptance path is the same one used for §45–47: play it, then report back.
+

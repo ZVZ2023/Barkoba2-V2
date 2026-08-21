@@ -3,10 +3,11 @@ import assert from "node:assert/strict";
 import {
   isCorrectable,
   isNoOpCorrection,
+  isPreGuessCheckpointCorrection,
   recomputeCounters,
   splitAtTurn,
 } from "../lib/rewind";
-import type { ComposerAnswer, QuestionLogEntry } from "../lib/types";
+import type { ComposerAnswer, GamePhase, GameResult, QuestionLogEntry } from "../lib/types";
 
 // ---------------------------------------------------------------------------
 // Rewind arithmetic. This decides how many questions a Racer has left after a
@@ -149,6 +150,78 @@ test("re-submitting the same answer is a no-op", () => {
     false,
     "a changed explanation is a real correction"
   );
+});
+
+// ---------------------------------------------------------------------------
+// V2.6.x — the pre-guess checkpoint's server-side half. GameClient.tsx
+// withholds an unrevealed final guess from the screen and never calls
+// /resolve until the Composer confirms — or corrects — the single answer
+// that produced it. This function is the ONLY door that lets a correction
+// through the phase gate in app/api/game/[id]/correct/route.ts once phase
+// has left "questioning"; everywhere else that gate stays exactly as narrow
+// as it always was.
+// ---------------------------------------------------------------------------
+
+function checkpointGame(
+  qaLog: QuestionLogEntry[],
+  phase: GamePhase = "resolving",
+  result: GameResult = null
+): { phase: GamePhase; result: GameResult; qa_log: QuestionLogEntry[] } {
+  return { phase, result, qa_log: qaLog };
+}
+
+function guessEntry(turnIndex: number): QuestionLogEntry {
+  const e = entry(turnIndex, null);
+  e.turn_type = "guess";
+  e.guess_text = "a guess";
+  return e;
+}
+
+test("checkpoint: open while resolving, unrevealed guess, targeting the turn directly beneath it", () => {
+  const log = [entry(1, "YES"), guessEntry(2)];
+  assert.equal(isPreGuessCheckpointCorrection(checkpointGame(log), 1), true);
+});
+
+test("checkpoint: closed while questioning — the ordinary window already handles that case", () => {
+  const log = [entry(1, "YES"), guessEntry(2)];
+  assert.equal(
+    isPreGuessCheckpointCorrection(checkpointGame(log, "questioning"), 1),
+    false
+  );
+});
+
+test("checkpoint: closed once the guess has actually been scored", () => {
+  const log = [entry(1, "YES"), guessEntry(2)];
+  assert.equal(
+    isPreGuessCheckpointCorrection(checkpointGame(log, "resolving", "racer_correct"), 1),
+    false,
+    "a result means adjudication already ran — the original cheat concern is back in force"
+  );
+});
+
+test("checkpoint: closed for any turn other than the one directly beneath the guess", () => {
+  const log = [entry(1, "YES"), entry(2, "NO"), guessEntry(3)];
+  assert.equal(
+    isPreGuessCheckpointCorrection(checkpointGame(log), 1),
+    false,
+    "only the immediate predecessor of the guess is in scope, not earlier history"
+  );
+  assert.equal(isPreGuessCheckpointCorrection(checkpointGame(log), 2), true);
+});
+
+test("checkpoint: closed when the last entry is not a guess", () => {
+  const concede = entry(2, null);
+  concede.turn_type = "concede";
+  const log = [entry(1, "YES"), concede];
+  assert.equal(
+    isPreGuessCheckpointCorrection(checkpointGame(log), 1),
+    false,
+    "the checkpoint is scoped to guesses only, per the brief"
+  );
+});
+
+test("checkpoint: closed when there is nothing beneath the guess at all", () => {
+  assert.equal(isPreGuessCheckpointCorrection(checkpointGame([guessEntry(1)]), 1), false);
 });
 
 test("a full rewind restores credits exactly, not approximately", () => {
