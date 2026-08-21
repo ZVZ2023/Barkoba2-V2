@@ -4411,3 +4411,63 @@ Reported back for review, the actual bug turned out to be narrower and the fix b
 
 Not yet field-tested; the acceptance path is the same one used for §45–47: play it, then report back.
 
+---
+
+## 49. RG #3 refinement — Resolved-branch gate and close-candidate specificity (`racer/3.2.0`)
+
+**Two more targeted additions to §47's text, not a rewrite of it.** Motivated by `racer/3.1.0`'s field test (Hungarian sheepdog breed). The Hierarchy gate and the strengthened validation gate both worked as intended — no sibling-before-region enumeration, no blind category-confirms-candidate guess — and the test surfaced two further, specific gaps:
+
+1. **Once a dimension was confirmed by a YES, the Racer kept re-probing that same neighborhood** instead of treating it as resolved: a sibling within the confirmed value ("Hungary = YES," then asked about a neighboring country), an edge case of it, or a more precise variant of the same fact ("Hungary proper" vs. former territory). EVIDENCE-RESPONSE BEHAVIOR's YES line already says this in prose — "not license to spray further candidates within the branch you just confirmed" — but prose alone did not reliably stop it, the same way SELECT's partition preference did not reliably stop sibling enumeration before §47.
+2. **The candidate validation gate governs the final guess, not the questions leading up to it.** Once HYPOTHESES had narrowed to two or three very similar candidates, the Racer kept asking generic descriptive questions (a broad attribute either candidate could plausibly have) instead of identifying and asking the one property that actually separates that specific pair — then guessed the wrong one of the two.
+
+**Fix 1 — Resolved-branch gate, added to CHECK.** Same escalation as Hierarchy: a soft preference (EVIDENCE-RESPONSE BEHAVIOR's YES prose) proved insufficient, so the enforcement moved to CHECK, which can reject and regenerate outright. A question that re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — is now rejected, forcing a move to a different unresolved dimension instead. The existing YES/NO prose in EVIDENCE-RESPONSE BEHAVIOR is untouched; this is a second, harder enforcement layer alongside it, not a replacement for it.
+
+**Fix 2 — Close-candidate specificity, added to CHECK.** This is a refinement of the existing Discrimination check, not a rename of it: Discrimination asks whether a YES/NO split separates *any* plausible alternatives; the new gate additionally requires that once the hypothesis set has narrowed to two or three very similar candidates, the selected question must name the single property that separates *those specific candidates* from each other — not a broader attribute that happens to be technically discriminating but could be true of either one. This targets the moment the validation gate at BEFORE ANY FINAL GUESS is too late for: the wrong questions were already spent getting there.
+
+**Still no benchmark-specific vocabulary.** No dog breed, coat, ear, or Hungary/Romania/Czech Republic wording appears in the canonical text — both new gates are worded exactly as domain-generally as Hierarchy and the rest of the block, per the same §17 constraint restated in §47.
+
+**Not yet re-validated** beyond the one field-test run described above — same no-credentials constraint as every prior RG #3 pass. The full canonical text, current as of this section:
+
+```
+RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+
+Before producing each question, build this structured state internally. Emit only one player-facing question after it.
+
+KNOWN
+List every constraint established so far — YES, NO, and AMBIGUOUS/soft — as durable facts that do not expire when new information arrives. Confirmed positives and negatives act as hard filters, not suggestions: no later candidate, hypothesis, or question may violate one of them, however familiar or statistically salient it feels.
+
+UNKNOWN
+Identify the major dimensions of the target that remain unresolved. Discover these dimensions from the target's apparent domain rather than a fixed checklist — a vehicle, a person, and a piece of software do not share the same important dimensions. Ask which unresolved dimension, if answered, would most change what you still need to ask.
+
+HYPOTHESES
+Identify the leading candidate family or families still consistent with KNOWN, and the strongest credible alternative. Keep this a small, live set, not an exhaustive list and not a single premature favorite.
+
+NEXT QUESTION OPTIONS
+Generate two to four candidate next questions spanning different unresolved dimensions.
+
+SELECT
+Choose the option expected to divide the surviving hypothesis space most usefully. Prefer a question that discriminates between your leading hypotheses over one that only confirms the leader. Partition before you enumerate: a broad split across a dimension — region, era, function, class — beats naming siblings one at a time, country after country, brand after brand, candidate after candidate.
+
+CHECK — reject and regenerate the question if any of these fail
+Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
+Novelty: does it ask something not already established, directly or by clear implication?
+Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Close-candidate specificity: if HYPOTHESES has narrowed to two or three very similar candidates, a generic descriptive question is not enough, even one that technically discriminates. Identify the single property that specifically separates THESE remaining candidates from each other, and ask exactly that — not a broader attribute that could apply to either.
+Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up (region, era, family, category) still has multiple live alternatives, reject it and ask the broader-level question first. This applies to any hierarchical dimension the target has, not only geography.
+Resolved branch: if it re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — reject it. A settled dimension stays settled; move to a different unresolved dimension instead of re-testing its neighborhood a different way.
+Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
+Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
+
+EVIDENCE-RESPONSE BEHAVIOR
+YES: This is not license to spray further candidates within the branch you just confirmed. Use it to select the next most useful UNKNOWN dimension.
+NO: Update the parent hypothesis, not only the one candidate it ruled out. After two or three related NOs on the same branch, treat that as a signal rather than a coincidence — stop, ask whether you are inside the wrong parent category or the wrong assumption entirely, and move up a level before trying more siblings.
+AMBIGUOUS: This is informative failure, not a weak YES or a weak NO. It means your question conflated two distinct things a truthful answerer could not separate. Work out what those two things are, then ask a cleaner question that isolates one of them. Do not re-ask a paraphrase of the same question.
+
+DIMINISHING RETURNS
+If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
+
+BEFORE ANY FINAL GUESS
+Answer internally: What is my leading candidate? What is the strongest remaining alternative — a specific one, not a vague sense that other options remain? Confirming a broader category does not eliminate a specific rival inside it; do not treat the first as settling the second. Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
+If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.
+```
+

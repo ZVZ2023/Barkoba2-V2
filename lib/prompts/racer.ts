@@ -87,8 +87,38 @@ import type {
  *
  * Also not yet field-validated beyond the one Grok run above — same
  * no-credentials constraint as racer/3.0.0. See docs/DESIGN-NOTES.md §47.
+ *
+ * `racer/3.2.0` — TWO MORE TARGETED ADDITIONS, STILL NOT A REWRITE.
+ *
+ * racer/3.1.0's field test (Hungarian sheepdog breed) showed the Hierarchy
+ * gate and the strengthened validation gate both working, and surfaced two
+ * further specific gaps: (1) once a dimension was confirmed by a YES, the
+ * Racer kept re-probing that same neighborhood — a sibling of the confirmed
+ * value, an edge case of it, a more precise variant of it — instead of
+ * treating it as resolved and moving to a different unresolved dimension;
+ * EVIDENCE-RESPONSE BEHAVIOR's existing YES guidance already says this in
+ * prose ("not license to spray further candidates within the branch you
+ * just confirmed") but, like SELECT's pre-3.1.0 partition preference, prose
+ * alone was not enough — so CHECK gained a Resolved-branch gate that can
+ * reject and regenerate the question outright, the same escalation
+ * Hierarchy already used for the equivalent geography gap; (2) once
+ * HYPOTHESES had narrowed to two or three very similar candidates, generic
+ * descriptive questions kept being asked instead of the one property that
+ * actually separates that specific pair — so CHECK also gained a
+ * Close-candidate-specificity gate requiring the selected question to name
+ * the discriminator between THOSE remaining candidates, not a broad
+ * attribute that could be true of either. Every existing sentence in
+ * racer/3.1.0's text is unchanged; both are pure additions, and both are
+ * CHECK-stage gates rather than softer SELECT-stage preferences, matching
+ * how Hierarchy was built. Still no benchmark-specific vocabulary — no dog
+ * breed, coat, ear, or Hungary/Romania/Czech Republic wording appears below;
+ * the two new gate items are worded exactly as domain-generally as the rest
+ * of the block.
+ *
+ * Also not yet field-validated beyond that one run — same no-credentials
+ * constraint as every version above. See docs/DESIGN-NOTES.md §49.
  */
-export const RACER_PROMPT_VERSION = "racer/3.1.0";
+export const RACER_PROMPT_VERSION = "racer/3.2.0";
 
 /**
  * RG #3 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
@@ -98,8 +128,8 @@ export const RACER_PROMPT_VERSION = "racer/3.1.0";
  * block stays last before the instruction to act and is shared by both paths
  * that can author the player-facing question.
  *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §47
- * against `racer/3.1.0`. Editing it without bumping the version breaks the
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §49
+ * against `racer/3.2.0`. Editing it without bumping the version breaks the
  * database claim above.
  *
  * DELIBERATELY DOMAIN-GENERIC. The build brief's §17 is explicit that this
@@ -131,7 +161,9 @@ CHECK — reject and regenerate the question if any of these fail
 Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
 Novelty: does it ask something not already established, directly or by clear implication?
 Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Close-candidate specificity: if HYPOTHESES has narrowed to two or three very similar candidates, a generic descriptive question is not enough, even one that technically discriminates. Identify the single property that specifically separates THESE remaining candidates from each other, and ask exactly that — not a broader attribute that could apply to either.
 Hierarchy: if it names one specific sibling — one country, one model, one brand, one individual case — while a broader grouping one level up (region, era, family, category) still has multiple live alternatives, reject it and ask the broader-level question first. This applies to any hierarchical dimension the target has, not only geography.
+Resolved branch: if it re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — reject it. A settled dimension stays settled; move to a different unresolved dimension instead of re-testing its neighborhood a different way.
 Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
 Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
 

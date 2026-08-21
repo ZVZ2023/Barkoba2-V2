@@ -27,7 +27,7 @@ import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "../lib/types"
 // §45.1). What is provable here is everything the evidence record depends
 // on — that the block reaches the model, that it reaches both providers
 // identically, that it never touches the human's answer or the visible
-// transcript, and that `racer/3.1.0` cannot be stamped on a turn that did not
+// transcript, and that `racer/3.2.0` cannot be stamped on a turn that did not
 // carry it.
 // ---------------------------------------------------------------------------
 
@@ -124,7 +124,7 @@ test("the block survives a long transcript — it does not get pushed up by hist
 
 test("the block is present on the final turn too", () => {
   // The final-guess gate governs this moment, and an unconditional block is what
-  // keeps racer/3.1.0 true of EVERY stamped turn rather than most of them.
+  // keeps racer/3.2.0 true of EVERY stamped turn rather than most of them.
   const content = buildRacerTurnMessage(answeredWith("YES"), {
     forceFinal: true,
     clueAvailable: false,
@@ -429,10 +429,15 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/3.1.0", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/3.1.0");
+test("the Racer guidance version is racer/3.2.0", () => {
+  assert.equal(RACER_PROMPT_VERSION, "racer/3.2.0");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/2.7.0", "the RG v2 version must not be reused");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/3.0.0", "the pre-Hierarchy-gate RG v3 version must not be reused");
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/3.1.0",
+    "the pre-Resolved-branch-gate RG v3 version must not be reused"
+  );
 });
 
 test("a stamped turn carries the version AND the guidance, and model identity is unchanged", async () => {
@@ -450,7 +455,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/3.1.0");
+    assert.equal(result.provenance.prompt_version, "racer/3.2.0");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");
@@ -461,7 +466,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
 });
 
 test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", () => {
-  // The claim racer/3.1.0 makes to the corpus is verified against the assembled
+  // The claim racer/3.2.0 makes to the corpus is verified against the assembled
   // message, not asserted beside it. This pins that the guard exists and that
   // it is unconditional — the failure it prevents is a corpus full of turns
   // claiming guidance they never received, which is worse than no label at all.
@@ -478,13 +483,13 @@ test("STRUCTURAL GUARANTEE: the version cannot be stamped without the block", ()
   );
 });
 
-test("the canonical text is preserved in the design record against racer/3.1.0", () => {
+test("the canonical text is preserved in the design record against racer/3.2.0", () => {
   const notes = readFileSync("docs/DESIGN-NOTES.md", "utf8");
   assert.ok(
     notes.includes(CORE_RACER_RULES),
     "DESIGN-NOTES must reproduce the canonical block verbatim"
   );
-  assert.ok(notes.includes("racer/3.1.0"));
+  assert.ok(notes.includes("racer/3.2.0"));
 });
 
 // ---------------------------------------------------------------------------
@@ -536,7 +541,7 @@ test("the Guess Detector's own logic is untouched", () => {
 //
 // The audit gap this closes: `continue_questioning` returns a revised_question
 // that REPLACES the original in question_text, so it — not the first attempt —
-// is the question the human actually sees. Stamping racer/3.1.0 while that
+// is the question the human actually sees. Stamping racer/3.2.0 while that
 // question was authored without the block would make the version true of a
 // draft and false of the record. §32 measured 10 of ~20 turns flagged in a
 // single game, so the gap was material, not theoretical.
@@ -714,6 +719,16 @@ test("the canonical text names no vehicle, geography, era or manufacturer vocabu
     "government limousine",
     "official-use",
     "Porsche",
+    // racer/3.2.0's field test — same principle, a different benchmark.
+    "Komondor",
+    "Kuvasz",
+    "sheepdog",
+    "Hungary",
+    "Hungarian",
+    "Romania",
+    "Czech Republic",
+    "coat color",
+    "ear shape",
   ]) {
     assert.equal(
       CORE_RACER_RULES.includes(forbidden),
@@ -721,6 +736,22 @@ test("the canonical text names no vehicle, geography, era or manufacturer vocabu
       `the canonical block must not mention "${forbidden}"`
     );
   }
+});
+
+test("racer/3.2.0: a question re-probing an already-confirmed dimension's neighborhood is rejected (Resolved-branch gate)", () => {
+  const content = promptFor([]);
+  assert.match(
+    content,
+    /Resolved branch: if it re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case of it, or a more precise variant of the same confirmed value — reject it\. A settled dimension stays settled; move to a different unresolved dimension instead of re-testing its neighborhood a different way\./
+  );
+});
+
+test("racer/3.2.0: a generic descriptive question is rejected once candidates have narrowed to a close pair (Close-candidate specificity)", () => {
+  const content = promptFor([]);
+  assert.match(
+    content,
+    /Close-candidate specificity: if HYPOTHESES has narrowed to two or three very similar candidates, a generic descriptive question is not enough, even one that technically discriminates\. Identify the single property that specifically separates THESE remaining candidates from each other, and ask exactly that — not a broader attribute that could apply to either\./
+  );
 });
 
 test("the version-bump discipline documents RG #3 as a replacement, not a refinement, of RG v2", () => {
