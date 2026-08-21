@@ -26,7 +26,7 @@ import type {
  * produces confidently mislabelled evidence, which is worse than no label.
  * Treat bumping this as part of editing the prompt, not as follow-up.
  *
- * V2.7 — `racer/2.7.0` IS A LOAD-BEARING DATABASE CLAIM, NOT A LABEL.
+ * `racer/X.Y.Z` IS A LOAD-BEARING DATABASE CLAIM, NOT A LABEL.
  *
  * It asserts one specific thing about every turn it is stamped on: that the
  * canonical CORE_RACER_RULES block below was present, verbatim, in the message
@@ -44,58 +44,85 @@ import type {
  * `continue_questioning` and returns a revised_question that REPLACES the
  * original. Both assemble the block and both are guarded. Covering only the
  * first would make this version true of a draft and false of the record.
+ *
+ * RG #3 — `racer/3.0.0` REPLACES `racer/2.7.0`, NOT A REFINEMENT OF IT.
+ *
+ * RG v2 (structured deliberation, seven numbered stages) improved local
+ * continuity but did not give the Racer an explicit model of what remains
+ * unknown — see the RG #3 build brief's diagnosis: it either over-drills one
+ * dimension (Grok, GAZ-13: 49/50 → Volga, wrong sibling within the right
+ * family) or under-explores before committing (Claude, GAZ-13: 31/50 →
+ * Porsche 911, premature conviction). RG v3 replaces the seven-stage
+ * deliberation with an explicit uncertainty-management loop — KNOWN / UNKNOWN
+ * / HYPOTHESES / NEXT QUESTION OPTIONS / SELECT / CHECK — per the brief's own
+ * §20 minimum-implementation recommendation: one compact structured block in
+ * the same single call, not a new backend system, not an additional model
+ * call, not a domain ontology. §21 of that brief is explicit about what NOT
+ * to build yet, and none of it is built here.
+ *
+ * THE REQUIRED §22 BENCHMARK (GAZ-13, 50 questions, both providers, compared
+ * against the RG v2 baselines above) HAS NOT BEEN RUN AS OF THIS COMMIT — no
+ * Anthropic or xAI credentials were available in the build session. See
+ * docs/DESIGN-NOTES.md §45 for the tracked follow-up. Do not treat this
+ * version as field-validated until that comparison exists.
  */
-export const RACER_PROMPT_VERSION = "racer/2.7.0";
+export const RACER_PROMPT_VERSION = "racer/3.0.0";
 
 /**
- * V2.7 — THE CANONICAL TRAILING STRUCTURED-DELIBERATION BLOCK.
+ * RG #3 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
  *
  * This is the only experimental variable. The system prompt, transcript,
  * provider routing, model selection and call topology remain unchanged. The
  * block stays last before the instruction to act and is shared by both paths
  * that can author the player-facing question.
  *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §43
- * against `racer/2.7.0`. Editing it without bumping the version breaks the
+ * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §45
+ * against `racer/3.0.0`. Editing it without bumping the version breaks the
  * database claim above.
+ *
+ * DELIBERATELY DOMAIN-GENERIC. The build brief's §17 is explicit that this
+ * must not be tuned toward GAZ-13 or any other specific benchmark target —
+ * no vehicle, geography, era, or manufacturer vocabulary appears below on
+ * purpose. GAZ-13 exists to test whether the Racer discovers the relevant
+ * dimensions on its own, not whether this text names them for it.
  */
-export const CORE_RACER_RULES = `RACER GUIDANCE V2 — STRUCTURED DELIBERATION — APPLY EVERY TURN
+export const CORE_RACER_RULES = `RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
 
-Before producing each question, perform this process internally. Emit only one player-facing question after it.
+Before producing each question, build this structured state internally. Emit only one player-facing question after it.
 
-1. RECONSTRUCT
-Rebuild the current constraint state from the full transcript. Preserve all YES, NO and AMBIGUOUS evidence.
+KNOWN
+List every constraint established so far — YES, NO, and AMBIGUOUS/soft — as durable facts that do not expire when new information arrives. Confirmed positives and negatives act as hard filters, not suggestions: no later candidate, hypothesis, or question may violate one of them, however familiar or statistically salient it feels.
 
-2. INFER
-Derive implications that logically follow from established constraints. Do not treat only explicit answers as knowledge.
+UNKNOWN
+Identify the major dimensions of the target that remain unresolved. Discover these dimensions from the target's apparent domain rather than a fixed checklist — a vehicle, a person, and a piece of software do not share the same important dimensions. Ask which unresolved dimension, if answered, would most change what you still need to ask.
 
-3. HYPOTHESIZE
-Identify the major classes or candidate families still consistent with the evidence. Do not collapse prematurely onto one attractive candidate.
+HYPOTHESES
+Identify the leading candidate family or families still consistent with KNOWN, and the strongest credible alternative. Keep this a small, live set, not an exhaustive list and not a single premature favorite.
 
-4. MAP DIMENSIONS
-Identify the major independent dimensions capable of dividing the remaining hypothesis space. Possible dimensions include, when relevant: time / era; geography / geopolitical origin; purpose / function; physical form / type; scale / size; status / market position; production context; mechanism / technology; cultural / institutional context. These are examples only. Select dimensions appropriate to the current target class.
+NEXT QUESTION OPTIONS
+Generate two to four candidate next questions spanning different unresolved dimensions.
 
-5. GENERATE OPTIONS
-Internally generate several plausible next questions across useful dimensions.
+SELECT
+Choose the option expected to divide the surviving hypothesis space most usefully. Prefer a question that discriminates between your leading hypotheses over one that only confirms the leader. Partition before you enumerate: a broad split across a dimension — region, era, function, class — beats naming siblings one at a time, country after country, brand after brand, candidate after candidate.
 
-6. COMPARE
-Prefer the question expected to divide the surviving possibilities most efficiently.
-
-Avoid country-by-country enumeration, candidate-by-candidate enumeration, repeating established information, asking a child-level question when a parent-level discriminator is available, and persisting in a hypothesis path after accumulated evidence materially weakens its parent hypothesis.
-
-7. CONSISTENCY GATE
-Before emitting the question, internally check: Does this contradict established evidence? Has this already been answered directly or by implication? Am I redundantly re-testing a settled branch? Is another dimension likely to split the remaining space better?
+CHECK — reject and regenerate the question if any of these fail
+Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
+Novelty: does it ask something not already established, directly or by clear implication?
+Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
+Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
 
 EVIDENCE-RESPONSE BEHAVIOR
-YES: Exploit it. Narrow intelligently within the supported branch.
-NO: Update the parent hypothesis, not merely the rejected child candidate. Repeated NO evidence within one branch increases pressure to abandon that branch.
-AMBIGUOUS: Preserve the ambiguity and reconsider interpretation or dimension. Never silently convert AMBIGUOUS into YES or NO.
+YES: This is not license to spray further candidates within the branch you just confirmed. Use it to select the next most useful UNKNOWN dimension.
+NO: Update the parent hypothesis, not only the one candidate it ruled out. After two or three related NOs on the same branch, treat that as a signal rather than a coincidence — stop, ask whether you are inside the wrong parent category or the wrong assumption entirely, and move up a level before trying more siblings.
+AMBIGUOUS: This is informative failure, not a weak YES or a weak NO. It means your question conflated two distinct things a truthful answerer could not separate. Work out what those two things are, then ask a cleaner question that isolates one of them. Do not re-ask a paraphrase of the same question.
+
+DIMINISHING RETURNS
+If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
 
 BEFORE ANY FINAL GUESS
-Internally execute: CANDIDATE → CONSTRAINT CHECK → ALTERNATIVES → DISCRIMINATOR → GUESS.
-Check: Does the candidate satisfy every established constraint? What other credible candidates still satisfy them? If more than one remains and questions remain, what question best separates them? Is the evidence strong enough to justify ending the search given the remaining question budget?
-
-Do not guess merely because one candidate feels plausible.`;
+Answer internally: What is my leading candidate? What is the strongest remaining alternative? Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
+If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.`;
 
 /**
  * A Racer turn plus the provenance of the call that produced it.
@@ -311,14 +338,14 @@ export function buildRacerTurnMessage(
       ? `You may request a clue this turn: action "clue". You have ${state.clue_credits_available} clue request(s) available. It costs no question and no guess, and the Composer will answer it in words rather than yes/no.\n\nBeing allowed to ask is not a reason to ask. Spend one only when you judge that a clue would materially help — when the transcript has stopped narrowing, or you are choosing between hypotheses that your own questions cannot separate. If your next question would make good progress on its own, ask it instead. An unspent credit is not wasted; it keeps accumulating.`
       : "You cannot request a clue this turn.",
     "",
-    // V2.7 — THE TRAILING STRATEGY BLOCK. Position remains last
+    // RG #3 — THE TRAILING STRATEGY BLOCK. Position remains last
     // before the instruction to act, so a growing transcript never pushes the
     // strategy away from the point of decision.
     //
     // Included on the final turn too. The final-guess gate governs that moment,
     // an unconditional block keeps the guarantee below unconditional as well —
-    // a branch here would mean `racer/2.7.0` was true of some turns and not
-    // others, which is precisely the ambiguity the version is meant to remove.
+    // a branch here would mean RACER_PROMPT_VERSION was true of some turns and
+    // not others, which is precisely the ambiguity the version is meant to remove.
     CORE_RACER_RULES,
     "",
     forceFinal ? "Make your final move." : "Take your turn.",
@@ -359,7 +386,7 @@ export function buildGuessIntentMessage(
 }
 
 /**
- * THE GUARANTEE BEHIND `racer/2.7.0`.
+ * THE GUARANTEE BEHIND `RACER_PROMPT_VERSION`.
  *
  * `prompt_version` is written into corpus.game_turns and will be queried as
  * proof that a turn was played under the canonical guidance. A constant stamped
@@ -495,18 +522,19 @@ export async function resolveGuessIntent(
   // the game's provider, not a default. A flagged question must not be re-read
   // by a different model than the one that wrote it, or the resolution would
   // describe an intent its author never had.
-  // V2.7 — THE SAME CANONICAL BLOCK, AND THE SAME GUARD.
+  // RG #3 — THE SAME CANONICAL BLOCK, AND THE SAME GUARD.
   //
   // This path can AUTHOR the question the human actually sees:
   // `continue_questioning` returns a revised_question that replaces the
-  // original in question_text. Without this, `racer/2.7.0` would describe only
-  // the first attempted question and not the one presented — a claim that is
-  // true of a draft and false of the record. §32 measured 10 of ~20 turns
-  // flagged in a single game, so the gap was material, not theoretical.
+  // original in question_text. Without this, RACER_PROMPT_VERSION would
+  // describe only the first attempted question and not the one presented — a
+  // claim that is true of a draft and false of the record. §32 measured 10 of
+  // ~20 turns flagged in a single game, so the gap was material, not
+  // theoretical.
   //
   // The guidance is honestly applicable here rather than merely pasted in: a
-  // revision is question authoring, and the candidate-enumeration prohibition
-  // directly applies to the question whose form triggered the flag.
+  // revision is question authoring, and the partition-before-enumeration
+  // discipline directly applies to the question whose form triggered the flag.
   const content = buildGuessIntentMessage(state, flaggedQuestion);
   assertGuidanceApplied(content);
 

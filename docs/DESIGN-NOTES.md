@@ -4167,3 +4167,101 @@ Player-facing game history: `GET /api/player/history`, commit `8187ebf`. Uses
 `games_player_history` (migration 0001's partial index, unused until this
 release). Scoped to the resolved acting `player_id`; no leaderboard, no
 filtering — a plain list of the caller's own games (outcome, date, role).
+
+## 45. RG #3 — uncertainty-management loop (`racer/3.0.0`)
+
+**REPLACES §43, not a refinement of it.** RG v2 (seven-stage structured
+deliberation) improved local continuity and reduced some gross drift,
+especially in Grok, but did not give the Racer an explicit model of what
+remains unknown. Diagnosed from the two recorded RG v2 baseline games on
+GAZ-13/Csajka:
+
+- **Grok, 49/50 questions, final guess Volga** — reached Eastern European →
+  Soviet → the GAZ family correctly, but over-drilled within that family
+  (excessive dimensional drilling, chronology overprecision, insufficient
+  functional/status discrimination) and collapsed onto the wrong sibling.
+- **Claude, 31/50 questions, final guess Porsche 911** — coherent local
+  narrowing to passenger automobile and luxury, but insufficient dimensional
+  coverage before committing: AMBIGUOUS did not cause replanning, geography/
+  era/manufacturer went uninvestigated, and the guess was premature.
+
+RG v3 replaces the seven numbered stages with an explicit uncertainty-
+management loop — KNOWN / UNKNOWN / HYPOTHESES / NEXT QUESTION OPTIONS /
+SELECT / CHECK — per the RG #3 build brief's own §20 minimum-implementation
+recommendation: one compact structured block inside the same single Racer
+call, not a new backend system. The brief's §21 lists what NOT to build yet
+(domain ontologies, decision trees, Bayesian infrastructure, multi-agent
+deliberation) and none of it is built here — question budget, call topology,
+schema, system prompt, transcript rendering and provider routing are all
+unchanged; `CORE_RACER_RULES` is still the only experimental variable, and
+`assertGuidanceApplied()` still verifies it reached the model on both paths
+that can author the visible question (`runRacerTurn`,
+`resolveGuessIntent`'s `continue_questioning` revision) before stamping
+`racer/3.0.0`, exactly as `racer/2.7.0` did.
+
+Deliberately domain-generic, per the brief's §17: no vehicle, geography, era
+or manufacturer vocabulary appears in the canonical text, so GAZ-13 remains a
+test of whether the Racer discovers the relevant dimensions itself rather
+than a benchmark the guidance was written toward.
+
+Canonical text, reproduced verbatim:
+
+```
+RACER GUIDANCE V3 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+
+Before producing each question, build this structured state internally. Emit only one player-facing question after it.
+
+KNOWN
+List every constraint established so far — YES, NO, and AMBIGUOUS/soft — as durable facts that do not expire when new information arrives. Confirmed positives and negatives act as hard filters, not suggestions: no later candidate, hypothesis, or question may violate one of them, however familiar or statistically salient it feels.
+
+UNKNOWN
+Identify the major dimensions of the target that remain unresolved. Discover these dimensions from the target's apparent domain rather than a fixed checklist — a vehicle, a person, and a piece of software do not share the same important dimensions. Ask which unresolved dimension, if answered, would most change what you still need to ask.
+
+HYPOTHESES
+Identify the leading candidate family or families still consistent with KNOWN, and the strongest credible alternative. Keep this a small, live set, not an exhaustive list and not a single premature favorite.
+
+NEXT QUESTION OPTIONS
+Generate two to four candidate next questions spanning different unresolved dimensions.
+
+SELECT
+Choose the option expected to divide the surviving hypothesis space most usefully. Prefer a question that discriminates between your leading hypotheses over one that only confirms the leader. Partition before you enumerate: a broad split across a dimension — region, era, function, class — beats naming siblings one at a time, country after country, brand after brand, candidate after candidate.
+
+CHECK — reject and regenerate the question if any of these fail
+Contradiction: does it, or its likely premise, conflict with anything in KNOWN?
+Novelty: does it ask something not already established, directly or by clear implication?
+Discrimination: would a YES and a NO actually separate currently-plausible alternatives?
+Not a disguised identity question: naming one specific candidate is a GUESS, not a question. If you are confident enough to name one, declare the guess; if not, ask about a property or discriminator of that candidate instead of asking about its identity.
+Not letter- or spelling-based: never investigate the target's name, spelling, first letter, length, or alphabetical position. Identify it through meaning, properties, function, origin and relationships — never through the string that names it.
+
+EVIDENCE-RESPONSE BEHAVIOR
+YES: This is not license to spray further candidates within the branch you just confirmed. Use it to select the next most useful UNKNOWN dimension.
+NO: Update the parent hypothesis, not only the one candidate it ruled out. After two or three related NOs on the same branch, treat that as a signal rather than a coincidence — stop, ask whether you are inside the wrong parent category or the wrong assumption entirely, and move up a level before trying more siblings.
+AMBIGUOUS: This is informative failure, not a weak YES or a weak NO. It means your question conflated two distinct things a truthful answerer could not separate. Work out what those two things are, then ask a cleaner question that isolates one of them. Do not re-ask a paraphrase of the same question.
+
+DIMINISHING RETURNS
+If several consecutive questions have targeted the same dimension with declining new information, stop and switch dimension. A large remaining budget is not permission to keep exhausting an enumeration.
+
+BEFORE ANY FINAL GUESS
+Answer internally: What is my leading candidate? What is the strongest remaining alternative? Which established facts support the leader specifically, not equally the alternative? What single discriminator would most separate them — have I actually asked it? Does my candidate violate any fact in KNOWN?
+If an important discriminator remains unasked and questions remain in the budget, ask it rather than guess. Weigh this against how much budget is left: a wide-open field with many questions remaining favors resolving more of UNKNOWN first; a small remaining budget favors committing to whichever hypothesis best survives KNOWN. Do not guess merely because one candidate feels familiar, and do not hold back once genuine uncertainty is already low.
+```
+
+### 45.1 §22 benchmark — NOT YET RUN
+
+The brief's required test sequence (GAZ-13/Csajka, 50 questions, Grok then
+Claude, full transcripts, direct comparison against the two baselines above)
+has **not** been executed as of this commit. The build session had no
+`ANTHROPIC_API_KEY` or `XAI_API_KEY` available — both are redacted/absent in
+this environment — so no live Racer call could be made against either
+provider. `XAI_API_KEY` was also confirmed absent from the production
+environment's variable set at the time of writing, meaning Grok is not
+currently selectable in production either.
+
+RG v3 is therefore **implemented but not field-validated**. Per the brief's
+own §19, do not judge it on GAZ-13 alone once the benchmark does run — the
+success criteria are behavioral (fewer duplicate/semantic-repeat questions,
+no enumeration, no spelling exploits, no disguised guesses, parent-level
+reconsideration after repeated NO, visible replanning after AMBIGUOUS, a
+guess that never violates KNOWN) and a loss can still represent a genuine
+improvement. The two-game comparison against `racer/2.7.0`'s Volga/Porsche
+911 baselines remains an open follow-up, blocked only on API access.
