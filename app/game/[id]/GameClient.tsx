@@ -45,6 +45,14 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [ambiguousMode, setAmbiguousMode] = useState(false);
   const [explanation, setExplanation] = useState("");
+  // V2.6.x — an answer is staged here on tap, not sent. It only reaches
+  // sendTurn (and therefore the Racer) when the player explicitly confirms.
+  // Before this, YES/NO called sendTurn directly on the first tap — the
+  // Racer's next question or guess could be generated against an answer the
+  // player never actually meant to lock in. AMBIGUOUS already had this shape
+  // (explanation textarea, then an explicit send) via ambiguousMode; this
+  // gives YES/NO the same shape rather than inventing a different one.
+  const [stagedAnswer, setStagedAnswer] = useState<"YES" | "NO" | null>(null);
   const [correcting, setCorrecting] = useState<number | null>(null);
   const [correctionExplanation, setCorrectionExplanation] = useState("");
   // Mirrors `ambiguousMode` on the main answer path: Ambiguous reveals the
@@ -132,6 +140,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         setBusy(false);
         setAmbiguousMode(false);
         setExplanation("");
+        setStagedAnswer(null);
       }
     },
     [game.game_id]
@@ -514,17 +523,40 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
               <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
             </div>
 
-            {!ambiguousMode ? (
+            {stagedAnswer ? (
+              <div className="flex flex-col gap-2 sm:pl-11">
+                <p className="text-xs text-[var(--ink-soft)]">
+                  Ez a válaszod erre a kérdésre. Amíg nem küldöd el, még
+                  módosíthatod — az AI csak a küldés után látja.
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void sendTurn(stagedAnswer)}
+                    disabled={busy}
+                    className="min-h-12 flex-1 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40 sm:flex-none"
+                  >
+                    {ANSWER_HU[stagedAnswer]} küldése
+                  </button>
+                  <button
+                    onClick={() => setStagedAnswer(null)}
+                    disabled={busy}
+                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
+                  >
+                    Mégsem
+                  </button>
+                </div>
+              </div>
+            ) : !ambiguousMode ? (
               <div className="flex flex-wrap gap-2 sm:pl-11">
                 <button
-                  onClick={() => void sendTurn("YES")}
+                  onClick={() => setStagedAnswer("YES")}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
                   IGEN
                 </button>
                 <button
-                  onClick={() => void sendTurn("NO")}
+                  onClick={() => setStagedAnswer("NO")}
                   disabled={busy}
                   className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
                 >
