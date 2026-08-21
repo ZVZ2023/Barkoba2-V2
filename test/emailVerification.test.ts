@@ -141,21 +141,165 @@ test("verificationTokenHash is deterministic and distinguishes different tokens"
   assert.notEqual(h1, await verificationTokenHash(generateVerificationToken()));
 });
 
-test("sendVerificationEmail is a stub: it never touches the network and never requires RESEND_API_KEY", async () => {
+// ---------------------------------------------------------------------------
+// sendVerificationEmail — real Resend integration.
+//
+// The Resend SDK calls the ambient global `fetch` (confirmed by reading
+// node_modules/resend/dist/index.mjs: no fetch import, no undici dependency),
+// so intercepting it here is a faithful test of the real request, not a
+// simulation of one.
+// ---------------------------------------------------------------------------
+
+interface FetchCall {
+  url: string;
+  init?: RequestInit;
+}
+
+function mockFetch(handler: (call: FetchCall) => Response | Promise<Response>) {
   const originalFetch = globalThis.fetch;
-  let fetchCalled = false;
-  globalThis.fetch = (...args: unknown[]) => {
-    fetchCalled = true;
-    return originalFetch(...(args as Parameters<typeof fetch>));
+  const calls: FetchCall[] = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const call = { url: String(input), init };
+    calls.push(call);
+    return handler(call);
+  }) as typeof fetch;
+  return {
+    calls,
+    restore: () => {
+      globalThis.fetch = originalFetch;
+    },
   };
+}
+
+const EMAIL_ENV_VARS = [
+  "RESEND_API_KEY",
+  "SITE_URL",
+  "VERCEL_URL",
+  "VERCEL_PROJECT_PRODUCTION_URL",
+] as const;
+let savedEmailEnv: Record<string, string | undefined>;
+
+beforeEach(() => {
+  savedEmailEnv = Object.fromEntries(EMAIL_ENV_VARS.map((k) => [k, process.env[k]]));
+  for (const k of EMAIL_ENV_VARS) delete process.env[k];
+});
+
+afterEach(() => {
+  for (const k of EMAIL_ENV_VARS) {
+    if (savedEmailEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedEmailEnv[k];
+  }
+});
+
+test("sendVerificationEmail reports sent:false and never calls fetch when RESEND_API_KEY is unset", async () => {
+  const mock = mockFetch(() => {
+    throw new Error("must not be called");
+  });
   try {
-    delete process.env.RESEND_API_KEY;
+    process.env.SITE_URL = "https://barkoba.example";
+    const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
+    assert.equal(result.sent, false);
+    assert.equal(
+      result.verificationUrl,
+      "https://barkoba.example/api/account/verify-email?token=sometoken"
+    );
+    assert.equal(mock.calls.length, 0);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("sendVerificationEmail reports sent:false and never calls fetch when no site origin is resolvable", async () => {
+  const mock = mockFetch(() => {
+    throw new Error("must not be called");
+  });
+  try {
+    process.env.RESEND_API_KEY = "re_test_key";
+    const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
+    assert.equal(result.sent, false);
+    assert.equal(result.verificationUrl, "/api/account/verify-email?token=sometoken");
+    assert.equal(mock.calls.length, 0);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("sendVerificationEmail calls Resend with the right request and reports the provider id on success", async () => {
+  const mock = mockFetch(
+    () =>
+      new Response(JSON.stringify({ id: "email-id-123" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+  );
+  try {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.SITE_URL = "https://barkoba.example/";
+    const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
+
+    assert.equal(result.sent, true);
+    assert.equal(result.providerMessageId, "email-id-123");
+    assert.equal(
+      result.verificationUrl,
+      "https://barkoba.example/api/account/verify-email?token=sometoken"
+    );
+
+    assert.equal(mock.calls.length, 1);
+    const call = mock.calls[0]!;
+    assert.equal(call.url, "https://api.resend.com/emails");
+    assert.equal(call.init?.method, "POST");
+    const headers = new Headers(call.init?.headers);
+    assert.equal(headers.get("authorization"), "Bearer re_test_key");
+    const body = JSON.parse(String(call.init?.body));
+    assert.deepEqual(body.to, ["zsolt@example.com"]);
+    assert.match(body.html, /sometoken/);
+    assert.match(
+      body.html,
+      /https:\/\/barkoba\.example\/api\/account\/verify-email\?token=sometoken/
+    );
+  } finally {
+    mock.restore();
+  }
+});
+
+test("sendVerificationEmail reports sent:false, not a throw, when Resend refuses the send", async () => {
+  const mock = mockFetch(
+    () =>
+      new Response(
+        JSON.stringify({ name: "validation_error", message: "Invalid `to` field" }),
+        { status: 422, headers: { "Content-Type": "application/json" } }
+      )
+  );
+  try {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.SITE_URL = "https://barkoba.example";
+    const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
+    assert.equal(result.sent, false);
+    assert.equal(result.providerMessageId, undefined);
+  } finally {
+    mock.restore();
+  }
+});
+
+test("sendVerificationEmail falls back to VERCEL_PROJECT_PRODUCTION_URL when SITE_URL is unset", async () => {
+  const mock = mockFetch(
+    () =>
+      new Response(JSON.stringify({ id: "email-id-456" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      })
+  );
+  try {
+    process.env.RESEND_API_KEY = "re_test_key";
+    process.env.VERCEL_PROJECT_PRODUCTION_URL = "barkoba.vercel.app";
     const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
     assert.equal(result.sent, true);
-    assert.match(result.debugVerificationPath, /^\/api\/account\/verify-email\?token=sometoken$/);
-    assert.equal(fetchCalled, false, "the stub must not call fetch");
+    assert.equal(
+      result.verificationUrl,
+      "https://barkoba.vercel.app/api/account/verify-email?token=sometoken"
+    );
   } finally {
-    globalThis.fetch = originalFetch;
+    mock.restore();
   }
 });
 

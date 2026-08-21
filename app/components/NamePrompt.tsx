@@ -7,9 +7,12 @@ import { MAX_PLAYER_NAME_LENGTH } from "@/lib/playerIdentity";
  * "What should we call you?" - asked once, after the player has chosen a role
  * and before game setup.
  *
- * NOT registration: no email, no password, no account, nothing recoverable on
- * another device. It gives the existing anonymous Player a human-friendly label
- * and nothing more.
+ * NOT registration: this prompt alone collects no email, sets no password,
+ * creates no account, and produces nothing recoverable on another device — it
+ * gives the existing anonymous Player a human-friendly label and nothing
+ * more. Registration itself (ClaimPrompt.tsx) now does collect a verified
+ * email (V2.6.x); that is a separate, later, opt-in flow this component
+ * neither triggers nor depends on.
  *
  * Skip is a first-class answer, styled at the same weight as continuing. A
  * quiet grey "skip" beside a bright primary button is a dark pattern, and this

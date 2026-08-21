@@ -1,17 +1,21 @@
+import { Resend } from "resend";
+import { env } from "./env";
+
 // ---------------------------------------------------------------------------
 // V2.6.x — email verification for registration.
 //
 // Same shape as lib/recoveryCode.ts: a high-entropy raw token is generated,
-// the RAW value is what travels (in the verification link, and — once wired
-// — in the email itself); only its SHA-256 hash is ever stored, in
+// the RAW value is what travels (in the verification link, and now in the
+// email itself); only its SHA-256 hash is ever stored, in
 // accounts.players.email_verification_token (migration 0010). A database
 // compromise must not itself be enough to verify, or spoof-verify, an
 // address.
 //
-// sendVerificationEmail() IS A STUB. It logs what it would have sent and
-// returns immediately. No network call happens in this file, and no
-// RESEND_API_KEY is read here.
-//   // TODO: wire to Resend once RESEND_API_KEY exists
+// sendVerificationEmail() calls Resend. It fails CLOSED, never open: an
+// unconfigured RESEND_API_KEY or an unresolvable site origin logs loudly and
+// returns sent:false — it never throws in a way that would abort the
+// registration this is a secondary effect of, and it never pretends to have
+// sent something it did not.
 // ---------------------------------------------------------------------------
 
 /** Twenty-four hours to click a link, matching this codebase's other TTLs. */
@@ -42,27 +46,64 @@ export function looksLikeEmail(raw: string): boolean {
 
 export interface SendVerificationEmailResult {
   sent: boolean;
-  /** Present only in this stub, so tests and manual checks can see the link without a real inbox. */
-  debugVerificationPath: string;
+  /** The absolute link that was (or, on failure, would have been) sent. */
+  verificationUrl: string;
+  /** Resend's message id. Present only when sent is true. */
+  providerMessageId?: string;
 }
 
 /**
- * STUB. Logs what would be sent and returns; no provider is called.
+ * Sends the verification email via Resend.
  *
- * The signature is deliberately final: (email, rawToken) in, a result out.
- * Wiring Resend means replacing this function's body only — nothing that
- * calls it needs to change.
- *
- * // TODO: wire to Resend once RESEND_API_KEY exists
+ * The signature is (email, rawToken) in, a result out — unchanged from the
+ * stub this replaced, so nothing that calls it needed to change.
  */
 export async function sendVerificationEmail(
   email: string,
   token: string
 ): Promise<SendVerificationEmailResult> {
-  const debugVerificationPath = `/api/account/verify-email?token=${token}`;
-  // eslint-disable-next-line no-console
-  console.log(
-    `[barkoba] STUB sendVerificationEmail: would send to ${email} — link: ${debugVerificationPath}`
-  );
-  return { sent: true, debugVerificationPath };
+  const path = `/api/account/verify-email?token=${token}`;
+  const origin = env.siteUrl();
+  const verificationUrl = origin ? `${origin}${path}` : path;
+
+  const apiKey = env.resendApiKey();
+  if (!apiKey) {
+    // Same fail-closed shape as every other optional integration in this
+    // codebase (XAI_API_KEY, ENTITLEMENT_GRANT_SECRET): unconfigured means
+    // "did not happen", reported honestly, never "happened anyway".
+    // eslint-disable-next-line no-console
+    console.error(
+      "[barkoba] sendVerificationEmail: RESEND_API_KEY is not set; no email was sent."
+    );
+    return { sent: false, verificationUrl };
+  }
+  if (!origin) {
+    // A link with no origin is not a link a player received by email could
+    // ever follow. Refusing to send it is more honest than sending a
+    // relative path that would render as literally unclickable text.
+    // eslint-disable-next-line no-console
+    console.error(
+      "[barkoba] sendVerificationEmail: no SITE_URL and no Vercel deployment URL available; refusing to send an unresolvable link."
+    );
+    return { sent: false, verificationUrl };
+  }
+
+  const resend = new Resend(apiKey);
+  const { data, error } = await resend.emails.send({
+    from: env.resendFromEmail(),
+    to: [email],
+    subject: "Erősítsd meg az e-mail címed — Barkóba",
+    html:
+      `<p>Üdv a Barkóbában!</p>` +
+      `<p>Erősítsd meg az e-mail címed az alábbi linkre kattintva. A link 24 óráig érvényes.</p>` +
+      `<p><a href="${verificationUrl}">${verificationUrl}</a></p>`,
+  });
+
+  if (error) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] sendVerificationEmail: Resend refused the send:", error);
+    return { sent: false, verificationUrl };
+  }
+
+  return { sent: true, verificationUrl, providerMessageId: data?.id };
 }

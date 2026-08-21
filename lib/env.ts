@@ -246,4 +246,44 @@ export const env = {
    * and question budget stay byte-identical across providers.
    */
   xaiMaxTokensRacer: () => optionalInt("XAI_MAX_TOKENS_RACER", 2048),
+
+  // --- V2.6.x: registration email verification (Resend) --------------------
+  //
+  // OPTIONAL, NOT required() — mirrors xaiApiKey. An unconfigured deployment
+  // must keep registering accounts normally: sendVerificationEmail() reports
+  // sent:false and registration proceeds regardless; see the caller in
+  // app/api/account/register/route.ts.
+  resendApiKey: () => process.env.RESEND_API_KEY || null,
+
+  /**
+   * The From header for the verification email. Defaults to Resend's own
+   * sandbox sender, which only reaches the Resend account's own verified
+   * address — enough to prove the wiring works end to end, not enough for
+   * real players until a verified sending domain is configured here.
+   */
+  resendFromEmail: () => process.env.RESEND_FROM_EMAIL || "Barkóba <onboarding@resend.dev>",
+
+  // --- V2.6.x: profile photo upload (Vercel Blob) ---------------------------
+  blobReadWriteToken: () => process.env.BLOB_READ_WRITE_TOKEN || null,
+
+  /**
+   * The absolute origin this deployment is reachable at. Needed only for a
+   * link that leaves the browser entirely (an email) — unlike the DICS
+   * return_url in app/api/entitlement/intent/route.ts, which stays relative
+   * on purpose because the browser is already on this site when it's used.
+   *
+   * Falls back to Vercel's own deployment-URL variables, which need no
+   * manual setup on Vercel. SITE_URL only needs to be set explicitly to
+   * override them — e.g. to prefer a custom domain over the raw
+   * *.vercel.app one.
+   */
+  siteUrl: (): string | null => {
+    const explicit = process.env.SITE_URL;
+    if (explicit) return explicit.replace(/\/+$/, "");
+    const productionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+    if (productionUrl) return `https://${productionUrl}`;
+    const deploymentUrl = process.env.VERCEL_URL;
+    if (deploymentUrl) return `https://${deploymentUrl}`;
+    return null;
+  },
 };

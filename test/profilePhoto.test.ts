@@ -1,5 +1,6 @@
 import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
+import { MockAgent, setGlobalDispatcher, getGlobalDispatcher } from "undici";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import { createAccountSession } from "../lib/accountSession";
 import { registerPlayerAccount, getPlayerAccount, setAccountPhotoUrl } from "../lib/playerAccounts";
@@ -8,10 +9,17 @@ import { PLAYER_HEADER } from "../lib/playerIdentity";
 import { POST as uploadPhoto } from "../app/api/account/photo/route";
 
 // ---------------------------------------------------------------------------
-// V2.6.x — profile photo upload: validation, the stub, setAccountPhotoUrl,
-// and POST /api/account/photo. This route uses only req.headers and
-// req.formData(), so — unlike register/route.ts — it is fully directly
-// testable, and every layer here is behavioral, not structural.
+// V2.6.x — profile photo upload: validation, the real Vercel Blob
+// integration, setAccountPhotoUrl, and POST /api/account/photo. This route
+// uses only req.headers and req.formData(), so — unlike register/route.ts —
+// it is fully directly testable, and every layer here is behavioral, not
+// structural.
+//
+// @vercel/blob calls `fetch` imported FROM UNDICI, not the ambient global —
+// confirmed by reading node_modules/@vercel/blob/dist/chunk-YYMLUMXS.js
+// ("import { fetch } from 'undici'"). Reassigning globalThis.fetch therefore
+// would not intercept it; undici's own MockAgent, the mechanism it documents
+// for exactly this case, is what actually sits in the request path.
 // ---------------------------------------------------------------------------
 
 interface AccountRow {
@@ -111,6 +119,43 @@ afterEach(() => {
   __setSqlClientForTests(null);
 });
 
+const BLOB_ENV_VARS = ["BLOB_READ_WRITE_TOKEN", "VERCEL_BLOB_RETRIES"] as const;
+let savedBlobEnv: Record<string, string | undefined>;
+let originalDispatcher: ReturnType<typeof getGlobalDispatcher>;
+let mockAgent: MockAgent;
+
+beforeEach(() => {
+  savedBlobEnv = Object.fromEntries(BLOB_ENV_VARS.map((k) => [k, process.env[k]]));
+  for (const k of BLOB_ENV_VARS) delete process.env[k];
+  // No retries: a mocked failure response must be observed once, immediately,
+  // not after undici's own backoff/retry loop for a real transient error.
+  process.env.VERCEL_BLOB_RETRIES = "0";
+
+  originalDispatcher = getGlobalDispatcher();
+  mockAgent = new MockAgent();
+  mockAgent.disableNetConnect();
+  setGlobalDispatcher(mockAgent);
+});
+
+afterEach(async () => {
+  for (const k of BLOB_ENV_VARS) {
+    if (savedBlobEnv[k] === undefined) delete process.env[k];
+    else process.env[k] = savedBlobEnv[k];
+  }
+  setGlobalDispatcher(originalDispatcher);
+  await mockAgent.close();
+});
+
+/** Intercepts the one PUT @vercel/blob's put() issues for a plain (non-multipart) upload. */
+function mockBlobPut(reply: { statusCode: number; body: Record<string, unknown> }) {
+  mockAgent
+    .get("https://vercel.com")
+    .intercept({ path: /^\/api\/blob\/.*/, method: "PUT" })
+    .reply(reply.statusCode, reply.body, {
+      headers: { "content-type": "application/json" },
+    });
+}
+
 function photoFile(overrides: { name?: string; type?: string; bytes?: number } = {}): File {
   const bytes = overrides.bytes ?? 1024;
   return new File([new Uint8Array(bytes)], overrides.name ?? "photo.jpg", {
@@ -138,21 +183,45 @@ test("isPhotoSizeAllowed enforces a positive size within the 5 MB cap", () => {
   assert.equal(isPhotoSizeAllowed(NaN), false);
 });
 
-test("uploadProfilePhoto is a stub: no network call, returns a placeholder URL", async () => {
-  const originalFetch = globalThis.fetch;
-  let fetchCalled = false;
-  globalThis.fetch = (...args: unknown[]) => {
-    fetchCalled = true;
-    return originalFetch(...(args as Parameters<typeof fetch>));
-  };
-  try {
-    delete process.env.BLOB_READ_WRITE_TOKEN;
-    const result = await uploadProfilePhoto(photoFile());
-    assert.match(result.url, /^stub:\/\/profile-photo\//);
-    assert.equal(fetchCalled, false, "the stub must not call fetch");
-  } finally {
-    globalThis.fetch = originalFetch;
-  }
+test("uploadProfilePhoto throws, without touching the network, when BLOB_READ_WRITE_TOKEN is unset", async () => {
+  await assert.rejects(
+    () => uploadProfilePhoto(photoFile()),
+    /BLOB_READ_WRITE_TOKEN is not set/
+  );
+  // MockAgent.disableNetConnect() means any real attempt would itself throw
+  // a distinct "connect ECONNREFUSED"-style error — the assertion above
+  // failing on OUR message, not undici's, is what proves no call was made.
+});
+
+test("uploadProfilePhoto calls Vercel Blob and returns its public URL", async () => {
+  mockBlobPut({
+    statusCode: 200,
+    body: {
+      url: "https://example.public.blob.vercel-storage.com/profile-photos/abc.jpg",
+      downloadUrl:
+        "https://example.public.blob.vercel-storage.com/profile-photos/abc.jpg?download=1",
+      pathname: "profile-photos/abc.jpg",
+      contentType: "image/jpeg",
+      contentDisposition: 'attachment; filename="abc.jpg"',
+      etag: "\"etag123\"",
+    },
+  });
+
+  process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
+  const result = await uploadProfilePhoto(photoFile());
+
+  assert.equal(result.url, "https://example.public.blob.vercel-storage.com/profile-photos/abc.jpg");
+  assert.equal(result.pathname, "profile-photos/abc.jpg");
+});
+
+test("uploadProfilePhoto rejects, rather than swallowing the failure, when Vercel Blob refuses the upload", async () => {
+  mockBlobPut({
+    statusCode: 403,
+    body: { error: { code: "forbidden", message: "Invalid token" } },
+  });
+
+  process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
+  await assert.rejects(() => uploadProfilePhoto(photoFile()));
 });
 
 // ---------------------------------------------------------------------------
@@ -226,6 +295,20 @@ test("photo upload refuses a file over 5 MB", async () => {
 });
 
 test("photo upload succeeds for a valid file and persists the URL to exactly this account", async () => {
+  mockBlobPut({
+    statusCode: 200,
+    body: {
+      url: "https://example.public.blob.vercel-storage.com/profile-photos/route-test.jpg",
+      downloadUrl:
+        "https://example.public.blob.vercel-storage.com/profile-photos/route-test.jpg?download=1",
+      pathname: "profile-photos/route-test.jpg",
+      contentType: "image/jpeg",
+      contentDisposition: 'attachment; filename="route-test.jpg"',
+      etag: "\"etag456\"",
+    },
+  });
+  process.env.BLOB_READ_WRITE_TOKEN = "vercel_blob_rw_teststore_testsecret";
+
   const playerId = "6".repeat(32);
   const other = "7".repeat(32);
   const token = await registeredSession(playerId);
@@ -236,7 +319,10 @@ test("photo upload succeeds for a valid file and persists the URL to exactly thi
   const response = await uploadPhoto(uploadRequest(token, form));
   assert.equal(response.status, 200);
   const body = await response.json();
-  assert.match(body.photo_url, /^stub:\/\/profile-photo\//);
+  assert.equal(
+    body.photo_url,
+    "https://example.public.blob.vercel-storage.com/profile-photos/route-test.jpg"
+  );
 
   assert.equal((await getPlayerAccount(playerId))?.photo_url, body.photo_url);
   assert.equal((await getPlayerAccount(other))?.photo_url, null, "another account's photo must be untouched");

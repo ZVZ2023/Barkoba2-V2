@@ -4126,16 +4126,23 @@ display name Module 1 already collects. `accounts.players` gains `email`,
 remain out of scope — only what an account collects at registration changes,
 not how it authenticates afterward; the recovery-code login stays.
 
-Implementation is BLOCKED as of this entry: it requires a Resend account/API
-key (email delivery) and Vercel Blob enabled on the project (photo storage),
-neither of which exists in any environment yet. No schema migration, code, or
-the still-contradictory "no email invented" code comments (`NamePrompt.tsx`,
-`app/contact/page.tsx`) have been touched — updating them belongs to the
-implementation pass, once unblocked, not this doc entry. Provider choices
-(Resend, Vercel Blob) were proposed and accepted without objection, pending
-one open product question: whether profile photos are visible to other
-players or account-owner-only, which decides whether a moderation surface is
-also needed.
+**DONE.** `RESEND_API_KEY` and `BLOB_READ_WRITE_TOKEN` are set in Vercel
+production. Migration 0010 shipped (`email`, `email_verified_at`,
+`email_verification_token`, `email_verification_expires_at`, `photo_url` on
+`accounts.players`). `lib/emailVerification.ts` calls Resend;
+`lib/photoUpload.ts` calls Vercel Blob's `put()`; both fail closed on a
+misconfigured or refusing provider rather than pretending to have succeeded.
+`NamePrompt.tsx`'s "no email invented" comment — ambiguous once registration
+itself started collecting one — has been tightened to scope the claim to that
+component alone. (`app/contact/page.tsx`'s "no email invented" comment is
+unrelated — Barkóba's own support contact channel, still genuinely absent —
+and was left as written.)
+
+Open product question, still unresolved: whether profile photos are visible
+to other players or account-owner-only, which decides whether a moderation
+surface is also needed. Not blocking — the upload path works regardless —
+but worth a decision before photos are surfaced anywhere players see each
+other.
 
 ### 44.2 Purchase/pricing design — RATIFIED AS-IS, no change
 
