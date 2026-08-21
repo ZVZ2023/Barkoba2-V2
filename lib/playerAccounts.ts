@@ -101,3 +101,28 @@ export async function setAccountDisplayName(
        AND disabled_at IS NULL
   `;
 }
+
+/**
+ * Replace the account's recovery credential in place. Touches exactly this
+ * one column: player_id, display_name, created_at and registered_at are
+ * untouched, and the ledger and unlimited_play tables are not referenced by
+ * this query at all. The old code stops working the instant this commits —
+ * recovery_key IS the lookup key, so overwriting it is the invalidation.
+ *
+ * Returns false (rather than throwing) for a disabled or already-vanished
+ * account, so the route can answer honestly without a second lookup.
+ */
+export async function rotateRecoveryKey(
+  playerId: string,
+  newRecoveryKey: string
+): Promise<boolean> {
+  const sql = requireSql();
+  const rows = await sql`
+    UPDATE accounts.players
+       SET recovery_key = ${newRecoveryKey}
+     WHERE player_id = ${playerId}
+       AND disabled_at IS NULL
+     RETURNING player_id
+  `;
+  return rows.length === 1;
+}

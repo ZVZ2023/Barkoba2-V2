@@ -10,12 +10,19 @@ import {
 import { resolveActingPlayer, resolveActingPlayerId } from "../lib/actingPlayer";
 import { getBalance } from "../lib/entitlements";
 import { issuePlayerCookie, PLAYER_HEADER } from "../lib/playerIdentity";
-import { getPlayerAccount, migrateLegacyPlayer, registerPlayerAccount } from "../lib/playerAccounts";
+import {
+  getPlayerAccount,
+  getPlayerAccountByRecoveryKey,
+  migrateLegacyPlayer,
+  registerPlayerAccount,
+} from "../lib/playerAccounts";
 import { claimPlayer, type DurablePlayer } from "../lib/playerStore";
 import { POST as createPurchaseIntent } from "../app/api/entitlement/intent/route";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 import { GET as readAccountDiagnostic } from "../app/api/account/diagnostic/route";
 import { POST as resetIdentity } from "../app/api/account/reset-identity/route";
+import { POST as rotateRecoveryCode } from "../app/api/account/rotate-recovery-code/route";
+import { recoveryKey } from "../lib/recoveryCode";
 
 process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
 
@@ -65,6 +72,15 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     };
     accounts.set(playerId, row);
     return Promise.resolve([row]);
+  }
+
+  if (/UPDATE accounts\.players/.test(query) && /recovery_key =/.test(query)) {
+    const newKey = String(v[0]);
+    const playerId = String(v[1]);
+    const row = accounts.get(playerId);
+    if (!row || row.disabled_at) return Promise.resolve([]);
+    row.recovery_key = newKey;
+    return Promise.resolve([{ player_id: playerId }]);
   }
 
   if (/FROM accounts\.players/.test(query) && /recovery_key =/.test(query)) {
@@ -379,6 +395,96 @@ test("TASK 6H: the next request gets a distinct fresh guest identity, and it can
   // The old account is a separate row, entirely undisturbed by the new one.
   assert.deepEqual(accounts.get(oldPlayerId), oldAccountBefore);
   assert.equal(accounts.size, 2);
+});
+
+test("recovery code rotation: the old code stops working and the new one logs in", async () => {
+  const playerId = "6".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "old-code-hash".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+  const oldHash = accounts.get(playerId)!.recovery_key;
+  const token = await createAccountSession(playerId);
+
+  const response = await rotateRecoveryCode(
+    new Request("https://barkoba.test/api/account/rotate-recovery-code", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get("cache-control"), "private, no-store");
+  const body = await response.json();
+  assert.equal(body.rotated, true);
+  assert.match(body.recovery_code, /^BARKOBA-([0-9A-HJKMNP-TV-Z]{4}-){5}[0-9A-HJKMNP-TV-Z]{4}$/);
+
+  const newHash = await recoveryKey(body.recovery_code);
+  assert.notEqual(newHash, oldHash);
+  assert.equal(await getPlayerAccountByRecoveryKey(oldHash), null, "the old code must stop working");
+  const viaNewCode = await getPlayerAccountByRecoveryKey(newHash);
+  assert.equal(viaNewCode?.player_id, playerId, "the new code must log in immediately");
+});
+
+test("recovery code rotation leaves player_id, display_name, timestamps, ledger and unlimited_play byte-for-byte unchanged", async () => {
+  const playerId = "7".repeat(32);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "another-code-hash".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+  unlimited.add(playerId);
+  ledger.push({ player_id: playerId, amount: 10, grant_key: "initial_complimentary" });
+  const ledgerBefore = structuredClone(ledger);
+  const before = await getPlayerAccount(playerId);
+  const token = await createAccountSession(playerId);
+
+  const response = await rotateRecoveryCode(
+    new Request("https://barkoba.test/api/account/rotate-recovery-code", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  assert.equal(response.status, 200);
+
+  const after = await getPlayerAccount(playerId);
+  assert.equal(after?.player_id, before?.player_id);
+  assert.equal(after?.display_name, before?.display_name);
+  assert.equal(after?.created_at, before?.created_at);
+  assert.equal(after?.registered_at, before?.registered_at);
+  assert.notEqual(after?.recovery_key, before?.recovery_key, "only the credential itself should change");
+  assert.deepEqual(ledger, ledgerBefore, "the ledger must not be touched");
+  assert.equal(unlimited.has(playerId), true, "the unlimited grant must survive rotation");
+  assert.equal(await resolveAccountSession(token), playerId, "the current session must remain valid");
+});
+
+test("recovery code rotation refuses a caller without an active session", async () => {
+  const guestResponse = await rotateRecoveryCode(
+    new Request("https://barkoba.test/api/account/rotate-recovery-code", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: "8".repeat(32) },
+    })
+  );
+  assert.equal(guestResponse.status, 401);
+
+  const playerId = "9".repeat(30) + "aa";
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "yet-another-code-hash".padEnd(64, "0"),
+    displayName: "Zsolt",
+  });
+  const registeredNoSessionResponse = await rotateRecoveryCode(
+    new Request("https://barkoba.test/api/account/rotate-recovery-code", {
+      method: "POST",
+      headers: { [PLAYER_HEADER]: playerId },
+    })
+  );
+  assert.equal(
+    registeredNoSessionResponse.status,
+    401,
+    "a registered-but-not-logged-in browser must not be able to rotate the credential it doesn't hold"
+  );
+  assert.equal(accounts.get(playerId)!.recovery_key, "yet-another-code-hash".padEnd(64, "0"));
 });
 
 test("registration preserves player_id, ledger rows, balance and ownership markers", async () => {
