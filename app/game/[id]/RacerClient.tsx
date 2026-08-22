@@ -477,7 +477,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                 </dd>
               </div>
             )}
-            <ClaimPrompt />
+            <ClaimPrompt hideAccountManagement />
 
             <div>
               <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">

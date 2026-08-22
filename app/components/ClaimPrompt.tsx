@@ -19,7 +19,21 @@ type State =
   | { step: "code"; code: string }
   | { step: "protected" };
 
-export default function ClaimPrompt() {
+interface Props {
+  /**
+   * V2.6.x — suppress the already-authenticated view (recovery-code rotation
+   * + AccountProfile's email/photo editor) on the game-result screen. An
+   * authenticated player has nothing to DO here — registration is already
+   * done, recovery is already done — so this branch is standing "Profil"
+   * management with no connection to the game that just ended, and it
+   * duplicates the header's own "Profil" button (AccountControl.tsx) exactly.
+   * The offer/existing/code branches are unaffected: those are things a
+   * player who just finished a game legitimately has to do right here.
+   */
+  hideAccountManagement?: boolean;
+}
+
+export default function ClaimPrompt({ hideAccountManagement = false }: Props = {}) {
   const [state, setState] = useState<State>({ step: "loading" });
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -156,6 +170,8 @@ export default function ClaimPrompt() {
   }
 
   if (state.step === "protected") {
+    if (hideAccountManagement) return null;
+
     if (rotatedCode) {
       return (
         <div className={`${box} border-[var(--blue)]/40 bg-[var(--blue)]/6`}>
