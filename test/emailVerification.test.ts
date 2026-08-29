@@ -25,7 +25,7 @@ import {
 import { POST as updateEmail } from "../app/api/account/email/route";
 import { GET as readProfile } from "../app/api/account/profile/route";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
-import { createAccountSession } from "../lib/accountSession";
+import { createAccountSession, resolveAccountSession } from "../lib/accountSession";
 import { PLAYER_HEADER } from "../lib/playerIdentity";
 
 // ---------------------------------------------------------------------------
@@ -1003,6 +1003,192 @@ test("the eager +5 grant stays separate from an earlier anonymous grant on the S
       mine.reduce((n, r) => n + r.amount, 0),
       5,
       "1 (anonymous) - 1 (spent) + 5 (verified) = 5"
+    );
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+// ---------------------------------------------------------------------------
+// V2.7.0.4 production-test fix — POST /api/account/verify-email now
+// authenticates the VERIFYING browser, not just the ledger. Every scenario
+// below calls the route with headers modeling a specific browser's actual
+// cookie state — never assuming an account session already exists, since
+// that assumption is exactly what broke cross-device/cross-browser
+// verification in production.
+// ---------------------------------------------------------------------------
+
+function sessionCookieFrom(res: Response): string | null {
+  const header = res.headers.get("set-cookie") ?? "";
+  return header.match(/bk_account_session=([^;]+)/)?.[1] ?? null;
+}
+
+async function registerVerifiableAccount(playerId: string, email: string) {
+  const rawToken = generateVerificationToken();
+  const hash = await verificationTokenHash(rawToken);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: playerId.slice(0, 32).padEnd(64, "0"),
+    displayName: "Zsolt",
+    email,
+    emailVerificationTokenHash: hash,
+    emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
+  });
+  return rawToken;
+}
+
+test("A. same-browser verification (registration's own device cookie present) still authenticates and grants", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "1a".padEnd(32, "0");
+    const rawToken = await registerVerifiableAccount(playerId, "same-browser@example.com");
+
+    const res = await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [PLAYER_HEADER]: playerId },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+    assert.equal(res.status, 200);
+    const cookie = sessionCookieFrom(res);
+    assert.ok(cookie, "same-browser verification must still establish a session");
+    assert.equal(await resolveAccountSession(cookie), playerId);
+    assert.equal(accounts.size, 1, "no second account/player was created");
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+test("B. CROSS-BROWSER: verification with NO original session/guest cookie still authenticates player A", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "1b".padEnd(32, "0");
+    const rawToken = await registerVerifiableAccount(playerId, "cross-browser@example.com");
+
+    // The verifying request carries NEITHER an account session NOR any
+    // bk_player header at all — a genuinely fresh browser (iPhone Safari,
+    // a different device), exactly the reported production scenario.
+    const res = await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+    assert.equal(res.status, 200);
+    const body = await res.json();
+    assert.equal(body.verified, true);
+
+    const cookie = sessionCookieFrom(res);
+    assert.ok(cookie, "verification from a brand-new browser must still establish a session");
+    const resolvedPlayerId = await resolveAccountSession(cookie);
+    assert.equal(resolvedPlayerId, playerId, "the session must resolve to the SAME registered player A");
+    assert.equal(accounts.size, 1, "no second player/account was created for the verifying browser");
+
+    // The now-authenticated browser reads its own real balance.
+    const status = await readEntitlement(
+      new Request("https://barkoba.test/api/player/entitlement", {
+        headers: { cookie: `bk_account_session=${cookie}` },
+      }) as Parameters<typeof readEntitlement>[0]
+    );
+    const statusBody = await status.json();
+    assert.equal(statusBody.play_state, "has_balance");
+    assert.equal(statusBody.balance, 5);
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+test("C. verification from a browser carrying an UNRELATED guest identity does not merge or transfer it", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerA = "1c".padEnd(32, "0");
+    const guestB = "9c".padEnd(32, "0");
+    const rawToken = await registerVerifiableAccount(playerA, "unrelated-guest@example.com");
+
+    // B has its own, unrelated history/credits — never registered, never
+    // connected to A in any way.
+    ledger.push({ player_id: guestB, amount: 3, grant_key: "anonymous_first_game" });
+
+    const res = await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", [PLAYER_HEADER]: guestB },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+    assert.equal(res.status, 200);
+
+    const cookie = sessionCookieFrom(res);
+    assert.equal(await resolveAccountSession(cookie), playerA, "the session authenticates A, not B");
+
+    // B's own cookie/identity must be left completely alone — the fake
+    // records this as "no bk_player cookie set in the response", since B
+    // does not equal the verified player_id.
+    const setCookieHeader = res.headers.get("set-cookie") ?? "";
+    assert.doesNotMatch(setCookieHeader, /bk_player=/, "an unrelated guest's device cookie must not be rewritten");
+
+    // B's own ledger rows are untouched and never attached to A.
+    assert.equal(
+      ledger.filter((r) => r.player_id === guestB).length,
+      1,
+      "B's own history is untouched"
+    );
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerA && r.grant_key === "anonymous_first_game").length,
+      0,
+      "none of B's credits were transferred onto A"
+    );
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerA).reduce((n, r) => n + r.amount, 0),
+      5,
+      "A's balance is exactly its OWN +5 grant, nothing from B"
+    );
+    assert.equal(accounts.size, 1, "B never became a second account");
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+test("D. repeat verification (any browser) re-authenticates without duplicating the grant or the account", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "1d".padEnd(32, "0");
+    const rawToken = await registerVerifiableAccount(playerId, "repeat-cross-browser@example.com");
+
+    const post = () =>
+      confirmVerification(
+        new Request("https://barkoba.test/api/account/verify-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: rawToken }),
+        })
+      );
+
+    const first = await post();
+    const firstCookie = sessionCookieFrom(first);
+    assert.ok(firstCookie);
+    assert.equal(await resolveAccountSession(firstCookie), playerId);
+
+    // A SECOND browser (still no original cookies) clicks the same link.
+    const second = await post();
+    assert.equal(second.status, 200);
+    const secondBody = await second.json();
+    assert.equal(secondBody.already_verified, true);
+    const secondCookie = sessionCookieFrom(second);
+    assert.ok(secondCookie, "a repeat/second-browser click must still authenticate that browser");
+    assert.equal(await resolveAccountSession(secondCookie), playerId, "still the SAME existing account");
+
+    assert.equal(accounts.size, 1, "no second account was ever created");
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerId && r.grant_key === "initial_complimentary").length,
+      1,
+      "the +5 grant was not duplicated by the second authentication"
+    );
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerId).reduce((n, r) => n + r.amount, 0),
+      5
     );
   } finally {
     delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;

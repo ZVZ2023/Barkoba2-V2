@@ -6,6 +6,19 @@ import {
 } from "@/lib/playerAccounts";
 import { verificationTokenHash } from "@/lib/emailVerification";
 import { ensureInitialComplimentary } from "@/lib/entitlements";
+import {
+  ACCOUNT_SESSION_COOKIE,
+  accountSessionCookieOptions,
+  createAccountSession,
+} from "@/lib/accountSession";
+import {
+  PLAYER_COOKIE,
+  PLAYER_NAME_COOKIE,
+  issuePlayerCookie,
+  issuePlayerNameCookie,
+  playerCookieOptions,
+  playerIdFromHeaders,
+} from "@/lib/playerIdentity";
 
 export const dynamic = "force-dynamic";
 
@@ -64,7 +77,63 @@ export const dynamic = "force-dynamic";
  * idempotency (accounts.entitlement_ledger's UNIQUE (player_id, grant_key))
  * makes a second call from there a guaranteed no-op, not a second grant, so
  * this is a genuine belt-and-braces fallback, not a duplicated risk.
+ *
+ * V2.7.0.4 PRODUCTION-TEST FIX — POST NOW ESTABLISHES THE ACCOUNT SESSION,
+ * NOT JUST THE LEDGER. Every version until now assumed the browser doing
+ * the verifying was the SAME one that registered — which already holds
+ * ACCOUNT_SESSION_COOKIE from registration, so authentication "just
+ * worked" without this route ever touching a cookie. Cross-browser/cross-
+ * device verification (open the email on a different browser or a
+ * different device than registration — the exact case a device-bound
+ * guest cookie can never survive) broke that assumption: the verifying
+ * browser had no session, verification correctly updated the account, and
+ * the player landed back on an unauthenticated homepage despite having
+ * just done everything right. The token IS the credential here (same
+ * reasoning the file's original header already states) — successful
+ * verification is exactly as strong a proof of account ownership as a
+ * recovery code, so POST now issues a session the SAME way
+ * app/api/account/recovery-confirm/route.ts and app/api/account/login/route.ts
+ * already do: createAccountSession() + ACCOUNT_SESSION_COOKIE, rotating
+ * bk_player ONLY if it currently already names this SAME player_id (never
+ * merging an unrelated guest's identity/history/credits into the verified
+ * account), refreshing bk_player_name. Issued on BOTH the fresh-
+ * verification and the already-verified paths — a repeat click, from any
+ * browser, is a safe way to (re-)authenticate, never a way to grant twice
+ * or create a second identity.
  */
+
+/**
+ * Reused by both success branches below (fresh and already-verified) — the
+ * exact session-issuance sequence recovery-confirm and login already use.
+ * Not a new auth mechanism: the same three cookies, the same conditional
+ * bk_player rotation, called from a third place instead of duplicated.
+ */
+async function respondAuthenticated(
+  req: Request,
+  playerId: string,
+  displayName: string | null,
+  body: Record<string, unknown>
+): Promise<NextResponse> {
+  const sessionToken = await createAccountSession(playerId);
+  const secure = new URL(req.url).protocol === "https:";
+  const res = NextResponse.json(body);
+  res.cookies.set(ACCOUNT_SESSION_COOKIE, sessionToken, accountSessionCookieOptions(secure));
+
+  // Preserve an unrelated local guest without merging it. Only rotate when
+  // this browser still carries the account's OWN pre-session device
+  // cookie — identical logic to POST /api/account/login and
+  // POST /api/account/recovery-confirm.
+  if (playerIdFromHeaders(req.headers) === playerId) {
+    const freshGuest = await issuePlayerCookie();
+    res.cookies.set(PLAYER_COOKIE, freshGuest.value, playerCookieOptions(secure));
+  }
+  res.cookies.set(
+    PLAYER_NAME_COOKIE,
+    await issuePlayerNameCookie(playerId, displayName ?? ""),
+    playerCookieOptions(secure)
+  );
+  return res;
+}
 
 type ResolveResult =
   | { ok: true; account: PlayerAccount }
@@ -166,7 +235,15 @@ export async function POST(req: Request) {
     const { account } = resolved;
 
     if (account.email_verified_at !== null) {
-      return NextResponse.json({ verified: true, already_verified: true, email: account.email });
+      // Already verified by an earlier request — still authenticates THIS
+      // browser. A repeat click, from any device, is a safe way to log in;
+      // it must never re-grant or create a second identity, and it does
+      // not: no ledger call happens on this branch at all.
+      return respondAuthenticated(req, account.player_id, account.display_name, {
+        verified: true,
+        already_verified: true,
+        email: account.email,
+      });
     }
 
     if (
@@ -186,7 +263,11 @@ export async function POST(req: Request) {
     // into a reported failure.
     await ensureInitialComplimentary(account.player_id);
 
-    return NextResponse.json({ verified: true, already_verified: false, email: account.email });
+    return respondAuthenticated(req, account.player_id, account.display_name, {
+      verified: true,
+      already_verified: false,
+      email: account.email,
+    });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] email verification failed:", err);
