@@ -20,6 +20,17 @@ import { readFileSync } from "node:fs";
 // No rendering harness exists in this codebase for React components, so this
 // proves the wiring from source, matching the convention already used by
 // composerAuthority.test.ts and guessCheckpoint.test.ts.
+//
+// V2.7.0 human-test fix — ResultPanel.tsx and RacerClient.tsx no longer
+// embed <ClaimPrompt /> at all (replaced by the much smaller
+// PostGameRegisterCTA, which links to the dedicated /register page). That
+// makes hideAccountManagement moot for those two files specifically — there
+// is no account management there to suppress any more — but the prop itself
+// is unchanged and still gates ClaimPrompt's "protected" branch everywhere
+// ClaimPrompt IS still embedded (the /register page, via postGameOffer).
+// The tests below were updated to check the stronger, current invariant
+// rather than deleted, since "no registration/account mechanics on the
+// result page" is exactly what this file exists to pin.
 // ---------------------------------------------------------------------------
 
 const CLAIM_PROMPT = readFileSync("app/components/ClaimPrompt.tsx", "utf8");
@@ -47,9 +58,10 @@ test("only the protected (already-authenticated) branch checks the flag", () => 
   // confirming the suppression actually reaches the offending content.
   assert.match(protectedBranch, /<AccountProfile \/>/);
 
-  // "existing" and "code" are explicit `if (state.step === ...)` branches;
-  // "offer" is the unconditional fallback after them — all three must survive.
-  for (const otherBranch of ['"existing"', '"code"']) {
+  // "existing" and "pending_verification" are explicit `if (state.step ===
+  // ...)` branches; "offer" is the unconditional fallback after them — all
+  // three must survive.
+  for (const otherBranch of ['"existing"', '"pending_verification"']) {
     const at = CLAIM_PROMPT.indexOf(`state.step === ${otherBranch}`);
     assert.ok(at >= 0, `${otherBranch} branch must still exist`);
   }
@@ -61,13 +73,51 @@ test("only the protected (already-authenticated) branch checks the flag", () => 
   assert.doesNotMatch(
     renderBody.replace(protectedBranch, ""),
     /hideAccountManagement/,
-    "the flag must not gate the offer/existing/code branches, or the loading state"
+    "the flag must not gate the offer/existing/pending_verification branches, or the loading state"
   );
 });
 
-test("both finished-game result screens suppress account management", () => {
-  assert.match(RESULT_PANEL, /<ClaimPrompt hideAccountManagement postGameOffer \/>/);
-  assert.match(RACER_CLIENT, /<ClaimPrompt hideAccountManagement postGameOffer \/>/);
+test("both finished-game result screens embed no registration/account mechanics at all", () => {
+  // V2.7.0 human-test fix — stronger than the old hideAccountManagement
+  // suppression: the result screens no longer render ClaimPrompt (or any of
+  // its offer/existing/pending_verification/protected branches) in any form.
+  // They render only the small teaser CTA, which links to /register instead.
+  assert.doesNotMatch(RESULT_PANEL, /ClaimPrompt/);
+  assert.doesNotMatch(RACER_CLIENT, /ClaimPrompt/);
+  assert.match(RESULT_PANEL, /<PostGameRegisterCTA \/>/);
+  assert.match(RACER_CLIENT, /<PostGameRegisterCTA \/>/);
+
+  // The dedicated page is where the real (still shared, still reused)
+  // registration experience actually lives.
+  const registerClient = readFileSync("app/register/RegisterClient.tsx", "utf8");
+  assert.match(registerClient, /<ClaimPrompt postGameOffer \/>/);
+});
+
+test("the pending-verification screen exposes no recovery/profile/account mechanics", () => {
+  // V2.7.0 human-test fix — the newcomer journey requirement that motivated
+  // this whole file's original fix now applies to a second moment too: right
+  // after submitting name+email, not just on the result screen. Isolate the
+  // pending_verification branch and prove it carries none of the things a
+  // newcomer must not see yet.
+  const start = CLAIM_PROMPT.indexOf('if (state.step === "pending_verification")');
+  const end = CLAIM_PROMPT.indexOf('if (state.step === "protected")');
+  const pendingBranch = CLAIM_PROMPT.slice(start, end);
+  assert.ok(start >= 0 && end > start, "pending_verification branch must exist");
+
+  for (const forbidden of [
+    /kód/i, // recovery code, in any Hungarian phrasing (kódot, kódod, ...)
+    /ProfilePhotoPrompt/,
+    /AccountProfile/,
+    /jelszó/i, // password
+    /cookie/i,
+    /player_id|playerId/,
+  ]) {
+    assert.doesNotMatch(pendingBranch, forbidden, `pending_verification leaks ${forbidden}`);
+  }
+
+  // What it SHOULD say: email sent, check inbox, watch the video slot.
+  assert.match(pendingBranch, /Elküldtük a megerősítő e-mailt/);
+  assert.match(pendingBranch, /WelcomeVideoSlot/);
 });
 
 test("the header Profil button and the purchase gateway are unaffected — full ClaimPrompt, no suppression", () => {

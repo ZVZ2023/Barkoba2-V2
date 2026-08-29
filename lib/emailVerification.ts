@@ -62,7 +62,10 @@ export async function sendVerificationEmail(
   email: string,
   token: string
 ): Promise<SendVerificationEmailResult> {
-  const path = `/api/account/verify-email?token=${token}`;
+  // V2.7.x — the human-facing PAGE, not the raw JSON API it calls. See
+  // app/verify-email/ and app/api/account/verify-email/route.ts's own
+  // updated header comment.
+  const path = `/verify-email?token=${token}`;
   const origin = env.siteUrl();
   const verificationUrl = origin ? `${origin}${path}` : path;
 

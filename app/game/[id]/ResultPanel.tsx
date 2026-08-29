@@ -1,6 +1,6 @@
 "use client";
 
-import ClaimPrompt from "@/app/components/ClaimPrompt";
+import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import type { GameRecord } from "@/lib/types";
 
 // This component is quarantined from secretStore by scripts/check-isolation.mjs.
@@ -97,7 +97,7 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
           </div>
         )}
 
-        <ClaimPrompt hideAccountManagement postGameOffer />
+        <PostGameRegisterCTA />
 
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Felhasznált kérdés</dt>

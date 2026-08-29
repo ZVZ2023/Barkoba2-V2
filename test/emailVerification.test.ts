@@ -6,11 +6,13 @@ import {
   registerPlayerAccount,
   getPlayerAccount,
   getPlayerAccountByEmail,
+  getPlayerAccountByRecoveryKey,
   getPlayerAccountByVerificationTokenHash,
   markEmailVerified,
   setAccountEmail,
   EmailAlreadyRegisteredError,
 } from "../lib/playerAccounts";
+import { recoveryKey as hashRecoveryCode } from "../lib/recoveryCode";
 import {
   EMAIL_VERIFICATION_TTL_SECONDS,
   generateVerificationToken,
@@ -18,7 +20,10 @@ import {
   sendVerificationEmail,
   verificationTokenHash,
 } from "../lib/emailVerification";
-import { GET as verifyEmail } from "../app/api/account/verify-email/route";
+import {
+  GET as verifyEmailStatus,
+  POST as confirmVerification,
+} from "../app/api/account/verify-email/route";
 import { POST as updateEmail } from "../app/api/account/email/route";
 import { GET as readProfile } from "../app/api/account/profile/route";
 import { createAccountSession } from "../lib/accountSession";
@@ -114,6 +119,21 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     const row = accounts.get(playerId);
     if (!row || row.disabled_at) return Promise.resolve([]);
     if (!row.email_verified_at) row.email_verified_at = new Date().toISOString();
+    return Promise.resolve([{ player_id: playerId }]);
+  }
+
+  // markEmailVerifiedAndRotateRecoveryKey — the verify-email landing page's
+  // atomic write. Models the real query's WHERE ... AND email_verified_at IS
+  // NULL guard exactly: an already-verified row must NOT match, which is
+  // what makes a repeat hit (or the loser of a concurrent race) report
+  // already_verified rather than silently rotating a second code.
+  if (/UPDATE accounts\.players/.test(query) && /email_verified_at = now\(\)/.test(query)) {
+    const newRecoveryKey = String(v[0]);
+    const playerId = String(v[1]);
+    const row = accounts.get(playerId);
+    if (!row || row.disabled_at || row.email_verified_at) return Promise.resolve([]);
+    row.email_verified_at = new Date().toISOString();
+    row.recovery_key = newRecoveryKey;
     return Promise.resolve([{ player_id: playerId }]);
   }
 
@@ -262,7 +282,7 @@ test("sendVerificationEmail reports sent:false and never calls fetch when RESEND
     assert.equal(result.sent, false);
     assert.equal(
       result.verificationUrl,
-      "https://barkoba.example/api/account/verify-email?token=sometoken"
+      "https://barkoba.example/verify-email?token=sometoken"
     );
     assert.equal(mock.calls.length, 0);
   } finally {
@@ -278,7 +298,7 @@ test("sendVerificationEmail reports sent:false and never calls fetch when no sit
     process.env.RESEND_API_KEY = "re_test_key";
     const result = await sendVerificationEmail("zsolt@example.com", "sometoken");
     assert.equal(result.sent, false);
-    assert.equal(result.verificationUrl, "/api/account/verify-email?token=sometoken");
+    assert.equal(result.verificationUrl, "/verify-email?token=sometoken");
     assert.equal(mock.calls.length, 0);
   } finally {
     mock.restore();
@@ -302,7 +322,7 @@ test("sendVerificationEmail calls Resend with the right request and reports the 
     assert.equal(result.providerMessageId, "email-id-123");
     assert.equal(
       result.verificationUrl,
-      "https://barkoba.example/api/account/verify-email?token=sometoken"
+      "https://barkoba.example/verify-email?token=sometoken"
     );
 
     assert.equal(mock.calls.length, 1);
@@ -316,7 +336,7 @@ test("sendVerificationEmail calls Resend with the right request and reports the 
     assert.match(body.html, /sometoken/);
     assert.match(
       body.html,
-      /https:\/\/barkoba\.example\/api\/account\/verify-email\?token=sometoken/
+      /https:\/\/barkoba\.example\/verify-email\?token=sometoken/
     );
   } finally {
     mock.restore();
@@ -357,7 +377,7 @@ test("sendVerificationEmail falls back to VERCEL_PROJECT_PRODUCTION_URL when SIT
     assert.equal(result.sent, true);
     assert.equal(
       result.verificationUrl,
-      "https://barkoba.vercel.app/api/account/verify-email?token=sometoken"
+      "https://barkoba.vercel.app/verify-email?token=sometoken"
     );
   } finally {
     mock.restore();
@@ -536,30 +556,34 @@ test("markEmailVerified never touches the token or its expiry", async () => {
 });
 
 // ---------------------------------------------------------------------------
-// GET /api/account/verify-email
+// GET /api/account/verify-email — READ-ONLY STATUS CHECK
+//
+// V2.7.x — split from a mutating GET specifically because email security
+// scanners and link-prefetch systems fetch a link's URL automatically. When
+// GET itself verified and rotated, a scanner could consume the newcomer's
+// one-time recovery code before they ever saw the page. GET now only reads;
+// see the POST block below for the actual mutating action.
 // ---------------------------------------------------------------------------
 
-test("verify-email refuses a missing token", async () => {
-  const response = await verifyEmail(
+test("verify-email GET refuses a missing token, without mutating anything", async () => {
+  const response = await verifyEmailStatus(
     new Request("https://barkoba.test/api/account/verify-email")
   );
   assert.equal(response.status, 400);
   const body = await response.json();
-  assert.equal(body.verified, false);
-  assert.equal(body.error, "missing_token");
+  assert.equal(body.status, "invalid");
 });
 
-test("verify-email refuses an unknown token", async () => {
-  const response = await verifyEmail(
+test("verify-email GET refuses an unknown token", async () => {
+  const response = await verifyEmailStatus(
     new Request("https://barkoba.test/api/account/verify-email?token=nope")
   );
   assert.equal(response.status, 404);
   const body = await response.json();
-  assert.equal(body.verified, false);
-  assert.equal(body.error, "invalid_token");
+  assert.equal(body.status, "invalid");
 });
 
-test("verify-email refuses an expired token and does not mark it verified", async () => {
+test("verify-email GET reports expired for an unverified token past its TTL, without mutating anything", async () => {
   const playerId = "7".repeat(32);
   const rawToken = generateVerificationToken();
   const hash = await verificationTokenHash(rawToken);
@@ -573,8 +597,123 @@ test("verify-email refuses an expired token and does not mark it verified", asyn
     emailVerificationExpiresAt: alreadyExpired,
   });
 
-  const response = await verifyEmail(
+  const response = await verifyEmailStatus(
     new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
+  );
+  assert.equal(response.status, 410);
+  const body = await response.json();
+  assert.equal(body.status, "expired");
+  assert.equal(accounts.get(playerId)!.email_verified_at, null);
+});
+
+test("verify-email GET reports pending for a fresh, unverified token — and never mutates, however many times it is called", async () => {
+  const playerId = "9".repeat(32);
+  const rawToken = generateVerificationToken();
+  const hash = await verificationTokenHash(rawToken);
+  const originalRecoveryKey = "9".repeat(64);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: originalRecoveryKey,
+    displayName: "Zsolt",
+    email: "zsolt@example.com",
+    emailVerificationTokenHash: hash,
+    emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
+  });
+
+  // Simulates page load, a status re-check, AND a scanner/prefetcher hitting
+  // the same URL — five reads in a row, none of them a click.
+  for (let i = 0; i < 5; i += 1) {
+    const response = await verifyEmailStatus(
+      new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
+    );
+    assert.equal(response.status, 200);
+    const body = await response.json();
+    assert.equal(body.status, "pending");
+    assert.equal(body.email, "zsolt@example.com");
+    // No verified/already_verified/recovery_code field ever appears on a
+    // status response — GET is not the mutating contract's shape at all.
+    assert.equal(body.recovery_code, undefined);
+    assert.equal(body.verified, undefined);
+  }
+
+  assert.equal(accounts.get(playerId)!.email_verified_at, null, "GET must never verify");
+  assert.equal(
+    accounts.get(playerId)!.recovery_key,
+    originalRecoveryKey,
+    "GET must never rotate the recovery key"
+  );
+});
+
+test("verify-email GET reports already_verified once verified, without a code, and independent of the token's own TTL", async () => {
+  const playerId = "a".repeat(32);
+  const rawToken = generateVerificationToken();
+  const hash = await verificationTokenHash(rawToken);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "a".repeat(64),
+    displayName: "Zsolt",
+    email: "zsolt@example.com",
+    emailVerificationTokenHash: hash,
+    // Already past its TTL — must still read as already_verified, not
+    // expired, because the account is already verified.
+    emailVerificationExpiresAt: new Date(Date.now() - 1000).toISOString(),
+  });
+  accounts.get(playerId)!.email_verified_at = new Date().toISOString();
+
+  const response = await verifyEmailStatus(
+    new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.status, "already_verified");
+  assert.equal(body.recovery_code, undefined);
+});
+
+// ---------------------------------------------------------------------------
+// POST /api/account/verify-email — the ONLY mutating path
+// ---------------------------------------------------------------------------
+
+test("verify-email POST refuses a missing or unknown token, same shapes as before", async () => {
+  const missing = await confirmVerification(
+    new Request("https://barkoba.test/api/account/verify-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({}),
+    })
+  );
+  assert.equal(missing.status, 400);
+  assert.equal((await missing.json()).error, "missing_token");
+
+  const unknown = await confirmVerification(
+    new Request("https://barkoba.test/api/account/verify-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: "nope" }),
+    })
+  );
+  assert.equal(unknown.status, 404);
+  assert.equal((await unknown.json()).error, "invalid_token");
+});
+
+test("verify-email POST refuses an expired, unverified token and does not mark it verified", async () => {
+  const playerId = "b".repeat(32);
+  const rawToken = generateVerificationToken();
+  const hash = await verificationTokenHash(rawToken);
+  await registerPlayerAccount({
+    playerId,
+    recoveryKey: "b".repeat(64),
+    displayName: "Zsolt",
+    email: "zsolt@example.com",
+    emailVerificationTokenHash: hash,
+    emailVerificationExpiresAt: new Date(Date.now() - 1000).toISOString(),
+  });
+
+  const response = await confirmVerification(
+    new Request("https://barkoba.test/api/account/verify-email", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: rawToken }),
+    })
   );
   assert.equal(response.status, 410);
   const body = await response.json();
@@ -583,7 +722,7 @@ test("verify-email refuses an expired token and does not mark it verified", asyn
   assert.equal(accounts.get(playerId)!.email_verified_at, null);
 });
 
-test("verify-email marks the email verified for a valid token, and a second visit is a harmless no-op", async () => {
+test("verify-email POST verifies, rotates the recovery key exactly once, and returns the one-time code — repeats and races are safe", async () => {
   const playerId = "8".repeat(32);
   const rawToken = generateVerificationToken();
   const hash = await verificationTokenHash(rawToken);
@@ -596,25 +735,68 @@ test("verify-email marks the email verified for a valid token, and a second visi
     emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
   });
 
-  const first = await verifyEmail(
+  const post = () =>
+    confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+
+  // A read-only status GET immediately before the click must not disturb
+  // anything the click is about to do.
+  await verifyEmailStatus(
     new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
   );
+
+  const first = await post();
   assert.equal(first.status, 200);
   const firstBody = await first.json();
   assert.equal(firstBody.verified, true);
   assert.equal(firstBody.email, "zsolt@example.com");
+  // V2.7.x — the first click is the newcomer's one opportunity to capture a
+  // recovery code, generated fresh (ClaimPrompt no longer shows the one from
+  // registration).
+  assert.equal(firstBody.already_verified, false);
+  assert.equal(typeof firstBody.recovery_code, "string");
+  assert.ok(firstBody.recovery_code.length > 0);
   const firstTimestamp = accounts.get(playerId)!.email_verified_at;
   assert.ok(firstTimestamp);
+  const rotatedKey = accounts.get(playerId)!.recovery_key;
+  assert.notEqual(rotatedKey, "8".repeat(64), "the registration-time key must have been rotated");
+  const viaReturnedCode = await getPlayerAccountByRecoveryKey(
+    await hashRecoveryCode(firstBody.recovery_code)
+  );
+  assert.equal(
+    viaReturnedCode?.player_id,
+    playerId,
+    "the returned code must actually work through the ordinary recovery lookup"
+  );
 
-  const second = await verifyEmail(
+  // A status GET after the click reports already_verified, still no code.
+  const statusAfter = await verifyEmailStatus(
     new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
   );
+  assert.equal((await statusAfter.json()).status, "already_verified");
+
+  // A repeat/racing POST for the SAME token — must not verify "again", must
+  // not rotate again, must not hand out a second code.
+  const second = await post();
   assert.equal(second.status, 200);
-  assert.equal((await second.json()).verified, true);
+  const secondBody = await second.json();
+  assert.equal(secondBody.verified, true);
+  assert.equal(secondBody.already_verified, true);
+  assert.equal(secondBody.recovery_code, undefined);
   assert.equal(
     accounts.get(playerId)!.email_verified_at,
     firstTimestamp,
-    "a second visit must not move the recorded verification moment"
+    "a second POST must not move the recorded verification moment"
+  );
+  assert.equal(
+    accounts.get(playerId)!.recovery_key,
+    rotatedKey,
+    "a second POST must not rotate the recovery key again"
   );
 });
 

@@ -1,6 +1,6 @@
 "use client";
 
-import ClaimPrompt from "@/app/components/ClaimPrompt";
+import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
 import { questionNumbers } from "@/lib/questionNumbers";
@@ -477,7 +477,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
                 </dd>
               </div>
             )}
-            <ClaimPrompt hideAccountManagement postGameOffer />
+            <PostGameRegisterCTA />
 
             <div>
               <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">

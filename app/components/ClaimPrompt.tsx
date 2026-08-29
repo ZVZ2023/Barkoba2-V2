@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import RecoverPrompt from "./RecoverPrompt";
-import ProfilePhotoPrompt from "./ProfilePhotoPrompt";
 import AccountProfile from "./AccountProfile";
+import WelcomeVideoSlot from "./WelcomeVideoSlot";
 import { MAX_PLAYER_NAME_LENGTH } from "@/lib/playerIdentity";
 
 /**
@@ -17,7 +17,7 @@ type State =
   | { step: "loading" }
   | { step: "offer" }
   | { step: "existing" }
-  | { step: "code"; code: string }
+  | { step: "pending_verification" }
   | { step: "protected" };
 
 interface Props {
@@ -28,25 +28,27 @@ interface Props {
    * done, recovery is already done — so this branch is standing "Profil"
    * management with no connection to the game that just ended, and it
    * duplicates the header's own "Profil" button (AccountControl.tsx) exactly.
-   * The offer/existing/code branches are unaffected: those are things a
-   * player who just finished a game legitimately has to do right here.
+   * The offer/existing/pending_verification branches are unaffected: those
+   * are things a player who just finished a game legitimately has to do
+   * right here.
    */
   hideAccountManagement?: boolean;
   /**
-   * V2.7.0 human-test fix — the "offer" step's copy, ONLY. Set true at the
-   * two call sites that render immediately after a player's own first game
-   * (ResultPanel.tsx, RacerClient.tsx), where "you just played for the first
-   * time" is always true in the normal flow: a never-registered guest gets
-   * exactly one complimentary game (ENTITLEMENT_ANONYMOUS_GRANT), so reaching
-   * this screen at all means this was it.
+   * V2.7.0 human-test fix — the "offer" step's copy, ONLY. True on the
+   * dedicated /register page (app/register/RegisterClient.tsx), which is
+   * where every post-game "Szeretnél még 5 játékot?" CTA now sends a
+   * newcomer (see app/components/PostGameRegisterCTA.tsx) — "you just played
+   * for the first time" is always true in that normal flow: a
+   * never-registered guest gets exactly one complimentary game
+   * (ENTITLEMENT_ANONYMOUS_GRANT), so arriving at registration at all means
+   * this was it.
    *
    * Left false (default) everywhere else ClaimPrompt is reused —
    * Entitlement.tsx's CreditGateway, AccountControl.tsx, PurchaseClient.tsx —
    * because those are reachable from account/purchase menus at ANY time, not
-   * only right after a first game, and "Most játszottál először Barkóbát"
-   * would be false there. Only the offer step's TEXT branches on this; the
-   * name/email fields, validation, and registration call are unchanged and
-   * shared either way.
+   * only right after a first game. Only the offer step's TEXT branches on
+   * this; the name/email fields, validation, and registration call are
+   * unchanged and shared either way.
    */
   postGameOffer?: boolean;
 }
@@ -54,7 +56,6 @@ interface Props {
 export default function ClaimPrompt({ hideAccountManagement = false, postGameOffer = false }: Props = {}) {
   const [state, setState] = useState<State>({ step: "loading" });
   const [busy, setBusy] = useState(false);
-  const [copied, setCopied] = useState(false);
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
@@ -107,9 +108,14 @@ export default function ClaimPrompt({ hideAccountManagement = false, postGameOff
         setRegisterError(data.message || "A regisztráció most nem sikerült.");
         return;
       }
-      if (data.recovery_code) setState({ step: "code", code: data.recovery_code });
-      else if (data.authenticated) window.location.reload();
-      else setState({ step: "offer" });
+      // V2.7.0 human-test fix — a fresh registration NEVER lands on the
+      // recovery-code/profile-photo screen any more, here or anywhere else
+      // ClaimPrompt is reused. Both capabilities already have a home on the
+      // "protected" (Profil) branch below — "Új helyreállító kód
+      // generálása" and AccountProfile's photo upload — reachable once the
+      // player is verified and logged in, which is exactly what this screen
+      // exists to get them to next.
+      setState({ step: "pending_verification" });
     } catch {
       setRegisterError("Hálózati hiba — próbáld újra.");
     } finally {
@@ -158,38 +164,20 @@ export default function ClaimPrompt({ hideAccountManagement = false, postGameOff
 
   const box = "flex flex-col gap-3 rounded-md border p-4";
 
-  if (state.step === "code") {
+  if (state.step === "pending_verification") {
     return (
-      <div className={`${box} border-[var(--blue)]/40 bg-[var(--blue)]/6`}>
-        <p className="text-sm font-semibold text-[var(--blue)]">Mentsd el ezt a kódot.</p>
-        <p className="break-all rounded-md border border-[var(--blue)]/30 bg-white/80 px-3 py-2 font-mono text-sm tracking-wide text-[var(--ink)]">
-          {state.code}
+      <div className={`${box} border-[var(--green)]/25 bg-white/50`}>
+        <p className="text-sm font-semibold text-[var(--ink)]">Már majdnem kész!</p>
+        <p className="text-sm text-[var(--ink)]">Elküldtük a megerősítő e-mailt.</p>
+        <p className="text-xs text-[var(--ink-soft)]">
+          Kattints a linkre az e-mailben, majd gyere vissza ide — utána azonnal
+          megkapod az 5 további VERSENYT.
         </p>
         <p className="text-xs text-[var(--ink-soft)]">
-          Ezzel a kóddal tudod visszaszerezni ezt a játékost másik böngészőben vagy
-          eszközön. Csak most mutatjuk meg: nálunk nem marad meg, és később nem tudjuk
-          újra megmutatni. Ha elveszik, ez a játékos nem szerezhető vissza.
+          Amíg megérkezik, nézd meg ezt a kb. 30 másodperces videót arról, mi is
+          a Barkóba.
         </p>
-        <div className="flex gap-2">
-          <button
-            onClick={() => {
-              void navigator.clipboard?.writeText(state.code);
-              setCopied(true);
-            }}
-            className="min-h-11 flex-1 rounded-md bg-[var(--blue)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
-          >
-            {copied ? "Másolva" : "Másolom"}
-          </button>
-          <button
-            onClick={() => window.location.reload()}
-            className="min-h-11 flex-1 rounded-md border border-[var(--ink)]/30 px-4 py-2.5 text-sm font-medium text-[var(--ink)]"
-          >
-            Elmentettem
-          </button>
-        </div>
-        <div className="border-t border-[var(--ink)]/10 pt-3">
-          <ProfilePhotoPrompt />
-        </div>
+        <WelcomeVideoSlot />
       </div>
     );
   }
