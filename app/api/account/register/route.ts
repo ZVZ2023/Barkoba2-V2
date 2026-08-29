@@ -13,6 +13,7 @@ import {
   issuePlayerCookie,
   playerCookieOptions,
   readPlayerName,
+  sanitizePlayerName,
 } from "@/lib/playerIdentity";
 import { generateRecoveryCode, recoveryKey } from "@/lib/recoveryCode";
 import {
@@ -34,9 +35,17 @@ function unavailable() {
 
 export async function GET(req: Request) {
   const context = await resolveActingPlayer(req.headers);
+  // V2.7 — surfaced so the registration form can prefill a name the player
+  // already gave NamePrompt, rather than making them retype it. Read-only;
+  // this route still never writes the cookie.
+  const nameState =
+    context.kind !== "none"
+      ? await readPlayerName(context.playerId, cookies().get(PLAYER_NAME_COOKIE)?.value)
+      : { asked: false, name: null };
   return NextResponse.json({
     authenticated: context.kind === "account",
     registered: context.kind === "account" || context.kind === "registered",
+    name: nameState.name,
   });
 }
 
@@ -58,9 +67,9 @@ export async function POST(req: Request) {
   }
   if (context.kind !== "guest") return unavailable();
 
-  let body: { email?: string } = {};
+  let body: { email?: string; name?: string } = {};
   try {
-    body = (await req.json()) as { email?: string };
+    body = (await req.json()) as { email?: string; name?: string };
   } catch {
     body = {};
   }
@@ -72,12 +81,28 @@ export async function POST(req: Request) {
     );
   }
 
+  // V2.7 — a playing name is required AT REGISTRATION, unlike NamePrompt's
+  // separate, deliberately skippable pre-game nicety (see that component's
+  // own doc comment — this route neither triggers nor depends on it). The
+  // request body is authoritative; a name already sitting in bk_player_name
+  // from an earlier NamePrompt answer is honoured only as a fallback, so a
+  // player who already gave one is not made to retype it, but registration
+  // itself never proceeds on an unnamed player.
+  const jar = cookies();
+  const nameState = await readPlayerName(context.playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
+  const displayName =
+    sanitizePlayerName(typeof body.name === "string" ? body.name : "") || nameState.name || "";
+  if (!displayName) {
+    return NextResponse.json(
+      { error: "missing_name", message: "Adj meg egy nevet, amivel szólíthatunk." },
+      { status: 400 }
+    );
+  }
+
   const playerId = context.playerId;
   let recoveryCode: string | undefined;
 
   try {
-    const jar = cookies();
-    const nameState = await readPlayerName(playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
     recoveryCode = generateRecoveryCode();
     const verificationToken = generateVerificationToken();
     const verificationExpiresAt = new Date(
@@ -87,7 +112,7 @@ export async function POST(req: Request) {
     await registerPlayerAccount({
       playerId,
       recoveryKey: await recoveryKey(recoveryCode),
-      displayName: nameState.name,
+      displayName,
       email,
       emailVerificationTokenHash: await verificationTokenHash(verificationToken),
       emailVerificationExpiresAt: verificationExpiresAt,

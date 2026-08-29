@@ -92,6 +92,14 @@ export async function GET() {
       xai_model: env.xaiModelRacer(),
       xai_max_tokens: env.xaiMaxTokensRacer(),
     },
+    // V2.7 — capacity telemetry (daily call usage, budget distribution) is
+    // deliberately NOT here. Unlike every block above — which exists so an
+    // external field tester can confirm DEPLOYMENT CONFIGURATION before
+    // spending a game — daily call volume and its proximity to the global
+    // spend ceiling is operational/business data: it reveals rough scale and
+    // would let anyone time a push toward RACER_DAILY_CALL_CEILING. No
+    // concrete reason for public access, so it lives behind an admin-gated
+    // surface instead — see app/api/admin/capacity/route.ts.
     served_at: new Date().toISOString(),
   });
 }

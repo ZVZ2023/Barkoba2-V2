@@ -6,7 +6,12 @@ import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
 import { createJoinCode } from "@/lib/joinCode";
 import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
-import { canStartGame, consumeForGame, ensureInitialComplimentary } from "@/lib/entitlements";
+import {
+  canStartGame,
+  consumeForGame,
+  ensureAnonymousComplimentary,
+  ensureInitialComplimentary,
+} from "@/lib/entitlements";
 import type { ConsumeOutcome } from "@/lib/entitlements";
 
 /**
@@ -236,8 +241,12 @@ export async function POST(req: NextRequest) {
   // -------------------------------------------------------------------------
   void reconcileOpportunistically(getGame).catch(() => undefined);
 
-  // V2.4 — the optional first-contact complimentary allowance. Never throws;
-  // if it fails the gate below simply sees the real balance.
+  // V2.7 — the pre-registration allowance for a true anonymous guest, and
+  // V2.4's post-verification allowance for a registered account. Mutually
+  // exclusive by construction (see lib/entitlements.ts) and both optional:
+  // neither throws, and if either does nothing the gate below simply sees
+  // the real balance.
+  await ensureAnonymousComplimentary(playerId);
   await ensureInitialComplimentary(playerId);
 
   // Advisory pre-check, so a player with no balance is refused before an

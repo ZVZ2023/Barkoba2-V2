@@ -18,6 +18,7 @@ import {
 } from "../lib/playerAccounts";
 import { claimPlayer, type DurablePlayer } from "../lib/playerStore";
 import { POST as createPurchaseIntent } from "../app/api/entitlement/intent/route";
+import { __resetDicsCatalogCacheForTests } from "../lib/dicsCatalog";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 import { GET as readAccountDiagnostic } from "../app/api/account/diagnostic/route";
 import { POST as resetIdentity } from "../app/api/account/reset-identity/route";
@@ -33,6 +34,12 @@ interface AccountRow {
   created_at: string;
   registered_at: string;
   disabled_at: null;
+  // V2.7 — added only so the purchase-intent test below can represent a
+  // verified account; every other test in this file is unaffected by the
+  // default. This fake predates email verification and has no INSERT/UPDATE
+  // path for it, matching how it never modeled email at all — set directly
+  // on the Map where a test needs a verified row.
+  email_verified_at: string | null;
 }
 
 interface SessionRow {
@@ -69,6 +76,7 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
       created_at: String(v[3]),
       registered_at: new Date().toISOString(),
       disabled_at: null,
+      email_verified_at: null,
     };
     accounts.set(playerId, row);
     return Promise.resolve([row]);
@@ -156,7 +164,19 @@ const SAVED = {
   database: process.env.DATABASE_URL,
   corpus: process.env.CORPUS_ENABLED,
   storefront: process.env.DICS_STOREFRONT_URL,
+  manifest: process.env.DICS_MANIFEST_URL,
   entitlements: process.env.ENTITLEMENTS_ENABLED,
+};
+const realFetch = globalThis.fetch;
+
+/** A minimal but shape-valid stand-in for DICS's own manifest response. */
+const FAKE_MANIFEST = {
+  offers: {
+    standard_flavors: [
+      { key: "vanilla", name: "Vanilla", payment_link: "https://buy.stripe.com/fake-scoop" },
+    ],
+    custom_flavor: { payment_link: "https://buy.stripe.com/fake-custom" },
+  },
 };
 
 beforeEach(() => {
@@ -168,17 +188,25 @@ beforeEach(() => {
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
   process.env.DICS_STOREFRONT_URL = "https://dics.example/store";
+  process.env.DICS_MANIFEST_URL = "https://dics.example/manifest.json";
+  __resetDicsCatalogCacheForTests();
+  globalThis.fetch = (async () =>
+    new Response(JSON.stringify(FAKE_MANIFEST), { status: 200 })) as typeof fetch;
   __setSqlClientForTests(fakeSql);
 });
 
 afterEach(() => {
   __setSqlClientForTests(null);
+  globalThis.fetch = realFetch;
+  __resetDicsCatalogCacheForTests();
   if (SAVED.database === undefined) delete process.env.DATABASE_URL;
   else process.env.DATABASE_URL = SAVED.database;
   if (SAVED.corpus === undefined) delete process.env.CORPUS_ENABLED;
   else process.env.CORPUS_ENABLED = SAVED.corpus;
   if (SAVED.storefront === undefined) delete process.env.DICS_STOREFRONT_URL;
   else process.env.DICS_STOREFRONT_URL = SAVED.storefront;
+  if (SAVED.manifest === undefined) delete process.env.DICS_MANIFEST_URL;
+  else process.env.DICS_MANIFEST_URL = SAVED.manifest;
   if (SAVED.entitlements === undefined) delete process.env.ENTITLEMENTS_ENABLED;
   else process.env.ENTITLEMENTS_ENABLED = SAVED.entitlements;
 });
@@ -599,17 +627,82 @@ test("guest purchase intent is refused and an authenticated account can mint one
     recoveryKey: "5".repeat(64),
     displayName: null,
   });
+  // V2.7 — intent now also requires a verified email; this test is about
+  // account ownership, not verification, so mark it verified directly rather
+  // than modeling the real registration email flow here.
+  accounts.get(playerId)!.email_verified_at = new Date().toISOString();
   const token = await createAccountSession(playerId);
   const accountResponse = await createPurchaseIntent(
     new Request("https://barkoba.test/api/entitlement/intent", {
       method: "POST",
-      headers: { cookie: `bk_account_session=${token}` },
+      headers: { cookie: `bk_account_session=${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ package_id: "dics_scoop", flavor_key: "vanilla" }),
     }) as Parameters<typeof createPurchaseIntent>[0]
   );
   assert.equal(accountResponse.status, 200);
   const body = await accountResponse.json();
   assert.match(body.purchase_ref, /^[0-9A-HJKMNP-TV-Z]{16}$/);
-  assert.match(body.purchase_url, /^https:\/\/dics\.example\/store\?purchase_ref=/);
+  // V2.7.x — purchase_url now points DIRECTLY at DICS's own published Stripe
+  // Payment Link for the selected package/flavor, not at DICS's storefront
+  // page. See lib/dicsCatalog.ts and docs/DESIGN-NOTES.md §51.8.
+  assert.match(body.purchase_url, /^https:\/\/buy\.stripe\.com\/fake-scoop\?/);
+  assert.match(body.purchase_url, /client_reference_id=/);
+});
+
+test("purchase intent refuses an unknown package_id", async () => {
+  const playerId = "7".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "6".repeat(64), displayName: null });
+  accounts.get(playerId)!.email_verified_at = new Date().toISOString();
+  const token = await createAccountSession(playerId);
+  const res = await createPurchaseIntent(
+    new Request("https://barkoba.test/api/entitlement/intent", {
+      method: "POST",
+      headers: { cookie: `bk_account_session=${token}`, "content-type": "application/json" },
+      body: JSON.stringify({ package_id: "not_a_real_package" }),
+    }) as Parameters<typeof createPurchaseIntent>[0]
+  );
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, "invalid_package");
+});
+
+test("two purchase intents for the same flavor carry their own distinct correlation reference", async () => {
+  // The reconciliation/grant path (app/api/entitlement/grant/route.ts,
+  // lib/purchaseRef.ts) identifies a purchase by client_reference_id alone.
+  // If two intents ever produced URLs sharing one client_reference_id, a
+  // webhook for the SECOND purchase would resolve — and grant credits
+  // against — the FIRST purchase's reference. This proves that cannot
+  // happen: each call mints its own reference, and the Stripe URL carries
+  // that exact value, not a shared or stale one.
+  const playerId = "d".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "e".repeat(64), displayName: null });
+  accounts.get(playerId)!.email_verified_at = new Date().toISOString();
+  const token = await createAccountSession(playerId);
+
+  const mint = () =>
+    createPurchaseIntent(
+      new Request("https://barkoba.test/api/entitlement/intent", {
+        method: "POST",
+        headers: { cookie: `bk_account_session=${token}`, "content-type": "application/json" },
+        body: JSON.stringify({ package_id: "dics_scoop", flavor_key: "vanilla" }),
+      }) as Parameters<typeof createPurchaseIntent>[0]
+    );
+
+  const [firstRes, secondRes] = [await mint(), await mint()];
+  const first = await firstRes.json();
+  const second = await secondRes.json();
+
+  assert.equal(firstRes.status, 200);
+  assert.equal(secondRes.status, 200);
+  assert.notEqual(first.purchase_ref, second.purchase_ref);
+
+  const firstClientRef = new URL(first.purchase_url).searchParams.get("client_reference_id");
+  const secondClientRef = new URL(second.purchase_url).searchParams.get("client_reference_id");
+
+  // The URL's client_reference_id is exactly this response's own purchase_ref
+  // — not merely present, and not the OTHER intent's reference.
+  assert.equal(firstClientRef, first.purchase_ref);
+  assert.equal(secondClientRef, second.purchase_ref);
+  assert.notEqual(firstClientRef, secondClientRef);
 });
 
 test("purchase ownership and non-merging are structural at both API and database layers", () => {

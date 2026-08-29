@@ -335,6 +335,26 @@ test("one RACE costs one Play Credit at every question budget", async () => {
   }
 });
 
+test("PINNED: a 100-question AI game consumes exactly 1 Play Credit, never 5", async () => {
+  // A dedicated, explicitly-named regression guard, separate from the
+  // parameterized loop above. Pre-V2.4.1 tiering charged 100Q at 5 credits
+  // (20->1 / 35->2 / 50->3 / 100->5); this pins the flat V2.7 rule so a
+  // future change to PLAY_CREDIT_COST or consumeForGame's cost derivation
+  // cannot silently reintroduce it for the most expensive tier specifically.
+  //
+  // A grant of exactly 3 is deliberate: under the OLD 5-credit tier this
+  // charge would be REFUSED outright (insufficient_balance, 3 < 5) rather
+  // than merely charging the wrong amount, so a regression here fails loudly
+  // on the `result` assertion, not silently on a balance a reader might not
+  // check.
+  const player = "pinned-100q-flat-rule";
+  await grantComplimentary(player, 3);
+
+  const result = await consumeForGame(player, randomUUID(), 100);
+  assert.deepEqual(result, { ok: true, reason: "consumed" });
+  assert.equal(await getBalance(player), 2, "a 100Q game must cost exactly 1 credit");
+});
+
 test("a non-tier budget is still exactly one RACE", () => {
   assert.equal(playCreditCostForBudget(1), 1);
   assert.equal(playCreditCostForBudget(25), 1);

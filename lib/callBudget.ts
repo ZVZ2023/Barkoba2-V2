@@ -83,3 +83,31 @@ export async function consumeModelCall(
     return { allowed: false, used: -1, ceiling, failedClosed: true };
   }
 }
+
+// ---------------------------------------------------------------------------
+// V2.7 — capacity observability. A READ, never a reservation: this must
+// never increment the counter it reports on, or observing usage would itself
+// consume budget. Same counter, same key, same ceiling as consumeModelCall
+// above — deliberately not a second source of truth.
+// ---------------------------------------------------------------------------
+
+export interface CallBudgetSnapshot {
+  kind: ModelCallKind;
+  used: number;
+  ceiling: number;
+  /** used / ceiling. 0 when the ceiling is misconfigured to 0. -1 on read failure. */
+  utilization: number;
+}
+
+/** Today's usage against the ceiling, for the given call kind. Never throws. */
+export async function peekModelCallUsage(kind: ModelCallKind): Promise<CallBudgetSnapshot> {
+  const ceiling = ceilingFor(kind);
+  try {
+    const used = (await getKV().get<number>(counterKey(kind, new Date()))) ?? 0;
+    return { kind, used, ceiling, utilization: ceiling > 0 ? used / ceiling : 0 };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] ${kind} call budget peek failed:`, err);
+    return { kind, used: -1, ceiling, utilization: -1 };
+  }
+}

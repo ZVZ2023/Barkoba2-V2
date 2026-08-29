@@ -87,22 +87,83 @@ test("3. intent REFUSES every caller without an authenticated account session", 
   assert.ok(check > 0 && mint > check, "account session must be verified before minting");
 });
 
-test("3d. an account intent hands the browser to DICS with the opaque reference", () => {
-  assert.match(INTENT_ROUTE, /dicsStorefrontUrl\(\)/);
-  assert.match(INTENT_ROUTE, /url\.searchParams\.set\("purchase_ref", purchaseRef\)/);
+test("3d. an account intent resolves a package straight to a DICS-published Stripe Payment Link", () => {
+  // V2.7.x — REVERSES THE EARLIER VERSION OF THIS TEST, deliberately. Until
+  // now purchase_url sent the browser to DICS's own storefront page
+  // (dicsStorefrontUrl()) and the player picked a package there. The player
+  // now picks a package in Barkóba's own /purchase page; the browser goes
+  // straight to Stripe's hosted checkout and never renders DICS's storefront
+  // HTML. See lib/dicsCatalog.ts and docs/DESIGN-NOTES.md §51.8.
+  assert.doesNotMatch(INTENT_ROUTE, /dicsStorefrontUrl\(\)/);
+  assert.match(INTENT_ROUTE, /resolveDicsPaymentLink\(/);
+  assert.match(INTENT_ROUTE, /withPurchaseRef\(paymentLink, purchaseRef\)/);
   assert.match(INTENT_ROUTE, /purchase_url:\s*purchaseUrl/);
+  assert.match(INTENT_ROUTE, /knownPackageIds\(\)\.includes\(packageId\)/);
 
   const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
-  assert.match(ui, /window\.location\.assign\(data\.purchase_url\)/);
   assert.doesNotMatch(ui, /<code>\{ref\}<\/code>/, "the journey must not stop at a displayed ref");
+});
+
+test("3d2. package selection and the resulting Stripe link never travel through DICS's storefront page", () => {
+  const catalog = readFileSync("lib/dicsCatalog.ts", "utf8");
+  // Only DICS's own published manifest is read; the storefront HTML page
+  // itself is never fetched or rendered by this path.
+  assert.match(catalog, /dicsManifestUrl\(\)/);
+  assert.doesNotMatch(catalog, /dicsStorefrontUrl/);
+  // Every resolved link is validated as a genuine Stripe Payment Link before
+  // being trusted — the manifest is external content, not a secret Barkóba
+  // controls.
+  assert.match(catalog, /hostname === "buy\.stripe\.com"/);
 });
 
 test("3b. the gateway exposes both registration and login", () => {
   const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
   assert.match(ui, /import ClaimPrompt from "\.\/ClaimPrompt"/);
   assert.match(ui, /import RecoverPrompt from "\.\/RecoverPrompt"/);
-  assert.match(ui, /\/api\/account\/session/);
+  // V2.7 — was /api/account/session (authenticated only); now
+  // /api/account/profile in one round trip, so the same check that confirms
+  // an account session also reads email_verified for the gate below.
+  assert.match(ui, /\/api\/account\/profile/);
   assert.doesNotMatch(ui, /claimPlayer|generateRecoveryCode|recovery_key/);
+});
+
+// --- V2.7 — verified before purchase, not merely registered ----------------
+
+test("3e. intent REFUSES an account whose email is not yet verified", () => {
+  assert.match(INTENT_ROUTE, /getPlayerAccount\(context\.playerId\)/);
+  assert.match(INTENT_ROUTE, /account\.email_verified_at === null/);
+  assert.match(INTENT_ROUTE, /email_verification_required/);
+  assert.match(INTENT_ROUTE, /status: 409/);
+  // The verification check runs after the account check but before minting —
+  // an unverified account must never reach createPurchaseRef.
+  const accountCheck = INTENT_ROUTE.indexOf('context.kind !== "account"');
+  const verifyCheck = INTENT_ROUTE.indexOf("email_verified_at === null");
+  const mint = INTENT_ROUTE.lastIndexOf("createPurchaseRef(");
+  assert.ok(accountCheck > 0 && verifyCheck > accountCheck && mint > verifyCheck);
+});
+
+test("3f. the gateway distinguishes 'no account' from 'unverified account' as separate steps", () => {
+  const ui = readFileSync("app/components/Entitlement.tsx", "utf8");
+  assert.match(ui, /"need_account"/);
+  assert.match(ui, /"need_verification"/);
+  assert.match(ui, /if \(!data\.email_verified\)/);
+
+  // V2.7.x — the OTHER half of this same distinction, reached AFTER a
+  // package is picked rather than before, now lives in the purchase page
+  // that actually calls /api/entitlement/intent. See docs/DESIGN-NOTES.md
+  // §51.8.
+  const purchase = readFileSync("app/purchase/PurchaseClient.tsx", "utf8");
+  assert.match(purchase, /"need_account"/);
+  assert.match(purchase, /"need_verification"/);
+  assert.match(purchase, /data\?\.error === "email_verification_required"/);
+  assert.match(purchase, /if \(!data\.email_verified\)/);
+});
+
+test("3g. CreditGateway is reachable proactively from the account menu, not only at zero balance", () => {
+  const control = readFileSync("app/components/AccountControl.tsx", "utf8");
+  assert.match(control, /import \{ CreditGateway \} from "\.\/Entitlement"/);
+  const authBranch = control.slice(control.indexOf("{authenticated ? ("), control.indexOf(") : ("));
+  assert.match(authBranch, /<CreditGateway \/>/);
 });
 
 test("3c. no recovery code is surfaced anywhere in the purchase journey", () => {

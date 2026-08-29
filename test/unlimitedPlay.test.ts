@@ -5,6 +5,7 @@ import { readFileSync } from "node:fs";
 import {
   canStartGame,
   consumeForGame,
+  ensureAnonymousComplimentary,
   ensureInitialComplimentary,
   hasUnlimitedPlay,
   inspectUnlimitedPlay,
@@ -291,6 +292,79 @@ test("ensureInitialComplimentary grants once the account's email is verified", a
   assert.deepEqual(
     ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind, amount: r.amount })),
     [{ player_id: ORDINARY, kind: "complimentary_grant", amount: 10 }]
+  );
+});
+
+// ---------------------------------------------------------------------------
+// V2.7 — the PRE-registration pool. Separate grant_key, separate gate
+// (account existence, not email verification), and deliberately additive
+// with ensureInitialComplimentary rather than a substitute for it.
+// ---------------------------------------------------------------------------
+
+test("ensureAnonymousComplimentary grants once to a true guest — no account row at all", async () => {
+  const guest = "g".repeat(32);
+  await ensureAnonymousComplimentary(guest);
+  assert.deepEqual(
+    ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind, amount: r.amount })),
+    [{ player_id: guest, kind: "complimentary_grant", amount: 1 }]
+  );
+});
+
+test("ensureAnonymousComplimentary refuses once any account row exists, verified or not", async () => {
+  // Unverified account: the pre-registration pool is still closed, because an
+  // account exists — this is ensureInitialComplimentary's gate to enforce,
+  // not this one's.
+  emailVerifiedAt.set(ORDINARY, null);
+  await ensureAnonymousComplimentary(ORDINARY);
+  assert.deepEqual(ledgerWrites(), []);
+});
+
+test("ensureAnonymousComplimentary never accrues for an unlimited-play identity", async () => {
+  await ensureAnonymousComplimentary(UNLIMITED);
+  assert.deepEqual(ledgerWrites(), []);
+});
+
+test("ensureAnonymousComplimentary is a no-op with the gate off, and costs no query", async () => {
+  process.env.ENTITLEMENTS_ENABLED = "false";
+  const guest = "g".repeat(32);
+  await ensureAnonymousComplimentary(guest);
+  assert.deepEqual(ledgerWrites(), []);
+  assert.equal(
+    calls.some((c) => /accounts\.players/.test(c.sql)),
+    false,
+    "a disabled gate must not pay for an account lookup it cannot act on"
+  );
+});
+
+test("the anonymous and post-verification pools are additive, not the same grant", async () => {
+  // The same player_id, across the guest-to-registered transition this
+  // codebase's "attach, never replace" identity model guarantees. Both
+  // grants must land, under their own grant_key, neither overwriting nor
+  // blocking the other.
+  const player = "p".repeat(32);
+
+  await ensureAnonymousComplimentary(player);
+  assert.deepEqual(
+    ledgerWrites().map((r) => r.kind),
+    ["complimentary_grant"],
+    "the anonymous credit must land while the player is still a guest"
+  );
+
+  // The player registers and verifies. Same player_id; now accounts.players
+  // has a row for it, so the anonymous pool above is closed for good.
+  emailVerifiedAt.set(player, new Date().toISOString());
+
+  await ensureAnonymousComplimentary(player);
+  assert.equal(ledgerWrites().length, 1, "the anonymous grant_key must not repeat");
+
+  await ensureInitialComplimentary(player);
+  assert.deepEqual(
+    ledgerWrites().map((r) => ({ kind: r.kind, amount: r.amount })),
+    [
+      { kind: "complimentary_grant", amount: 1 },
+      { kind: "complimentary_grant", amount: 10 },
+    ],
+    "both pools must be visible on the same player_id, neither having erased the other"
   );
 });
 

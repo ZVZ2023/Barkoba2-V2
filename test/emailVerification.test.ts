@@ -659,6 +659,46 @@ test("register/route.ts surfaces a duplicate email as its own distinct outcome",
 });
 
 // ---------------------------------------------------------------------------
+// V2.7 — a playing name is required at registration, not merely optional
+// pass-through from NamePrompt's separate, freely skippable cookie.
+// ---------------------------------------------------------------------------
+
+test("register/route.ts refuses registration with no name from either the body or the cookie", () => {
+  const source = readFileSync("app/api/account/register/route.ts", "utf8");
+  assert.match(source, /missing_name/);
+  assert.match(source, /sanitizePlayerName\(typeof body\.name === "string" \? body\.name : ""\)/);
+  // Body name wins; the cookie is a fallback, not the only source — checked
+  // via the `||` chain, and the refusal must happen before any account is
+  // ever created.
+  assert.match(
+    source,
+    /const displayName =\s*\n\s*sanitizePlayerName\([^)]*\) \|\| nameState\.name \|\| "";/
+  );
+  const missingNameAt = source.indexOf("missing_name");
+  const registerCallAt = source.indexOf("await registerPlayerAccount({");
+  assert.ok(missingNameAt > 0 && registerCallAt > missingNameAt);
+});
+
+test("register/route.ts's GET handler exposes the current name so the form can prefill it", () => {
+  const source = readFileSync("app/api/account/register/route.ts", "utf8");
+  const getHandler = source.slice(
+    source.indexOf("export async function GET"),
+    source.indexOf("export async function POST")
+  );
+  assert.match(getHandler, /readPlayerName/);
+  assert.match(getHandler, /name: nameState\.name/);
+});
+
+test("ClaimPrompt's registration form collects and requires a name alongside email", () => {
+  const source = readFileSync("app/components/ClaimPrompt.tsx", "utf8");
+  assert.match(source, /body: JSON\.stringify\(\{ email: email\.trim\(\), name: name\.trim\(\) \}\)/);
+  assert.match(source, /disabled=\{busy \|\| !email\.trim\(\) \|\| !name\.trim\(\)\}/);
+  // Prefilled from the GET response, but still just a starting value — the
+  // player can still clear and change it.
+  assert.match(source, /if \(typeof data\.name === "string" && data\.name\) setName\(data\.name\);/);
+});
+
+// ---------------------------------------------------------------------------
 // setAccountEmail — the reachable-any-time add/change path.
 // ---------------------------------------------------------------------------
 

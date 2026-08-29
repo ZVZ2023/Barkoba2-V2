@@ -732,6 +732,43 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
 }
 
 // ---------------------------------------------------------------------------
+// V2.7 — capacity observability: which question budgets players are actually
+// choosing, over the same UTC calendar day lib/callBudget.ts's daily ceiling
+// resets against. Aggregate only — no player_id, no target, no transcript.
+//
+// NEVER THROWS, matching every other function in this module.
+// ---------------------------------------------------------------------------
+
+export interface QuestionBudgetCount {
+  max_questions: number;
+  count: number;
+}
+
+export async function questionBudgetDistributionToday(): Promise<QuestionBudgetCount[] | null> {
+  if (!isCorpusConfigured()) return null;
+  const sql = getSql();
+  if (!sql) return null;
+
+  try {
+    const rows = await sql`
+      SELECT max_questions, COUNT(*)::int AS count
+        FROM corpus.games
+       WHERE created_at >= date_trunc('day', timezone('UTC', now()))
+       GROUP BY max_questions
+       ORDER BY max_questions
+    `;
+    return rows.map((row) => ({
+      max_questions: Number(row.max_questions),
+      count: Number(row.count),
+    }));
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] corpus: question-budget distribution read failed:", err);
+    return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Opportunistic reconciliation.
 //
 // Two jobs, neither of which needs a scheduler and neither of which may ever

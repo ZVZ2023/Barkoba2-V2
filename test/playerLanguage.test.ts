@@ -26,6 +26,7 @@ const PLAYER_FACING_FILES = [
   "app/components/GameShell.tsx",
   "app/ComposerEntry.tsx",
   "app/RacerSetup.tsx",
+  "app/history/HistoryClient.tsx",
   "lib/ui/copy.ts",
 ] as const;
 

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import RecoverPrompt from "./RecoverPrompt";
 import ProfilePhotoPrompt from "./ProfilePhotoPrompt";
 import AccountProfile from "./AccountProfile";
+import { MAX_PLAYER_NAME_LENGTH } from "@/lib/playerIdentity";
 
 /**
  * Register the current guest in place, preserving its player_id and ownership.
@@ -40,6 +41,9 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
   const [resetBusy, setResetBusy] = useState(false);
   const [resetError, setResetError] = useState<string | null>(null);
   const [email, setEmail] = useState("");
+  // V2.7 — required at registration, unlike NamePrompt's separate, freely
+  // skippable pre-game nicety. See the register route's own doc comment.
+  const [name, setName] = useState("");
   const [registerError, setRegisterError] = useState<string | null>(null);
   const [rotateBusy, setRotateBusy] = useState(false);
   const [rotateError, setRotateError] = useState<string | null>(null);
@@ -56,6 +60,10 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
           setState({
             step: data.authenticated ? "protected" : data.registered ? "existing" : "offer",
           });
+          // Prefill from a name already given to NamePrompt, so registration
+          // does not make the player retype it. Still just a starting value —
+          // the field stays editable and empty is still possible to clear.
+          if (typeof data.name === "string" && data.name) setName(data.name);
         }
       } catch {
         // Identity unavailable or offline. Offering something that cannot work
@@ -75,7 +83,7 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
       const res = await fetch("/api/account/register", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim() }),
+        body: JSON.stringify({ email: email.trim(), name: name.trim() }),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -90,7 +98,7 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
     } finally {
       setBusy(false);
     }
-  }, [email]);
+  }, [email, name]);
 
   const resetIdentity = useCallback(async () => {
     setResetBusy(true);
@@ -245,9 +253,19 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
       </p>
       <p className="text-xs text-[var(--ink-soft)]">
         Ugyanez a játékos és VERSENY-egyenleg marad meg. A belépési kóddal másik
-        eszközön is bejelentkezhetsz. Jelszó nem kell, de egy megerősített
-        e-mail cím igen.
+        eszközön is bejelentkezhetsz. Jelszó nem kell, de egy név és egy
+        megerősített e-mail cím igen.
       </p>
+      <input
+        type="text"
+        autoComplete="nickname"
+        maxLength={MAX_PLAYER_NAME_LENGTH}
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+        placeholder="Hogy szólítsunk?"
+        disabled={busy}
+        className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
+      />
       <input
         type="email"
         inputMode="email"
@@ -260,7 +278,7 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
       />
       <button
         onClick={() => void register()}
-        disabled={busy || !email.trim()}
+        disabled={busy || !email.trim() || !name.trim()}
         className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
       >
         Regisztráció

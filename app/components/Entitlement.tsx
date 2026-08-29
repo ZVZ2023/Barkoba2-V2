@@ -125,54 +125,62 @@ export function BalanceBadge({ view }: { view: EntitlementView | null }) {
   );
 }
 
-type Step = "closed" | "checking" | "need_account" | "ready" | "intent" | "error";
+type Step =
+  | "closed"
+  | "checking"
+  | "need_account"
+  | "need_verification"
+  | "ready"
+  | "error";
 
 /**
  * The gateway a refused player is offered.
  *
- * ACCOUNT BEFORE PURCHASE. A guest can register in place, while a returning
- * player can log in with the existing recovery credential. Only the resulting
- * revocable server session may create purchase intent.
+ * ACCOUNT BEFORE PURCHASE, AND VERIFIED BEFORE PURCHASE. A guest can register
+ * in place, while a returning player can log in with the existing recovery
+ * credential — but purchased value must not attach to an address nobody has
+ * confirmed control of, so a registered-but-unverified account gets its own
+ * distinct step rather than being waved through as merely "ready".
  *
- * The server enforces the same rule independently: /api/entitlement/intent
- * refuses to mint a reference without an account session. This screen is the
- * courteous path to it, not the guarantee.
+ * The server enforces both rules independently: /api/entitlement/intent
+ * refuses to mint a reference without an account session, and separately
+ * refuses one for an unverified email. This screen is the courteous path to
+ * both, not the guarantee — reading /api/account/profile here is a courtesy
+ * check, not the authority.
+ *
+ * V2.7.x — "ready" now navigates to Barkóba's own /purchase page rather than
+ * minting a purchase intent itself. Package selection (which package, which
+ * cosmetic flavor) now happens there; this gateway's job stops at confirming
+ * the player is signed in and verified. See docs/DESIGN-NOTES.md §51.8.
  */
 export function CreditGateway() {
   const [step, setStep] = useState<Step>("closed");
   const [message, setMessage] = useState<string | null>(null);
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
 
   const checkAccount = useCallback(async () => {
     setStep("checking");
     try {
-      const res = await fetch("/api/account/session", { cache: "no-store" });
+      const res = await fetch("/api/account/profile", { cache: "no-store" });
+      if (res.status === 401) {
+        setStep("need_account");
+        return;
+      }
+      if (!res.ok) {
+        setStep("error");
+        setMessage("Most nem érjük el a játékosodat. Próbáld újra.");
+        return;
+      }
       const data = await res.json();
-      setStep(data?.authenticated ? "ready" : "need_account");
+      if (!data.email_verified) {
+        setPendingEmail(typeof data.email === "string" ? data.email : null);
+        setStep("need_verification");
+        return;
+      }
+      setStep("ready");
     } catch {
       setStep("error");
       setMessage("Most nem érjük el a játékosodat. Próbáld újra.");
-    }
-  }, []);
-
-  const createIntent = useCallback(async () => {
-    try {
-      const res = await fetch("/api/entitlement/intent", { method: "POST" });
-      const data = await res.json();
-      if (!res.ok) {
-        setStep(data?.error === "account_required" ? "need_account" : "error");
-        setMessage(data?.message ?? "Most nem sikerült elindítani a vásárlást.");
-        return;
-      }
-      if (typeof data.purchase_url !== "string" || !data.purchase_url.startsWith("https://")) {
-        setStep("error");
-        setMessage("A vásárlási oldal most nem érhető el.");
-        return;
-      }
-      setStep("intent");
-      window.location.assign(data.purchase_url);
-    } catch {
-      setStep("error");
-      setMessage("Hálózati hiba — próbáld újra.");
     }
   }, []);
 
@@ -208,25 +216,36 @@ export function CreditGateway() {
         </>
       )}
 
+      {step === "need_verification" && (
+        <>
+          <p className="text-sm font-medium">Erősítsd meg az e-mail címed</p>
+          <p className="text-sm text-neutral-700">
+            {pendingEmail
+              ? `Küldtünk egy megerősítő linket ide: ${pendingEmail}. Kattints rá, majd gyere vissza ide.`
+              : "Küldtünk egy megerősítő linket a regisztrációkor megadott címre. Kattints rá, majd gyere vissza ide."}
+            {" "}A vásárolt VERSENY csak megerősített címhez köthető biztonságosan.
+          </p>
+          <button
+            onClick={() => void checkAccount()}
+            className="min-h-11 self-start rounded-md border border-neutral-900/25 px-4 py-2 text-sm"
+          >
+            Megerősítettem — tovább
+          </button>
+        </>
+      )}
+
       {step === "ready" && (
         <>
           <p className="text-sm font-medium">A játékosod mentve van.</p>
           <p className="text-sm text-neutral-700">
             Most már biztonságosan szerezhetsz további VERSENYT.
           </p>
-          <button
-            onClick={() => void createIntent()}
-            className="min-h-11 self-start rounded-md bg-[#1e3a24] px-4 py-2 text-sm font-medium text-[#f6ece0]"
+          <a
+            href="/purchase"
+            className="inline-flex min-h-11 items-center self-start rounded-md bg-[#1e3a24] px-4 py-2 text-sm font-medium text-[#f6ece0]"
           >
             Tovább a vásárláshoz
-          </button>
-        </>
-      )}
-
-      {step === "intent" && (
-        <>
-          <p className="text-sm font-medium">Tovább a Digital Ice Cream Standhoz…</p>
-          <p className="text-sm text-neutral-700">A vásárlási azonosítód biztonságosan elkészült.</p>
+          </a>
         </>
       )}
 

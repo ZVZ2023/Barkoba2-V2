@@ -595,6 +595,58 @@ export async function canStartGame(
 }
 
 /**
+ * V2.7 — the PRE-registration allowance: one complimentary game for a true
+ * anonymous guest, before any account exists.
+ *
+ * TWO SEPARATE POOLS, TWO SEPARATE GRANT KEYS, DELIBERATELY. This grants to a
+ * GUEST — no accounts.players row at all — and does nothing once one exists.
+ * ensureInitialComplimentary grants the LARGER post-verification allowance,
+ * and already refuses a guest (no account, or an unverified one) by its own
+ * gate. Calling both at game creation is therefore safe and mutually
+ * exclusive by construction: whichever applies to this player_id fires,
+ * never both, and a player who registers after spending the anonymous
+ * credit still gets the full post-verification allowance on top — the same
+ * player_id, attached rather than replaced, simply becomes eligible for a
+ * different grant_key.
+ *
+ * DEVICE-BOUND, NOT IDENTITY-VERIFIED. The signed bk_player cookie (see
+ * lib/playerIdentity.ts) is the entire abuse-resistance here: clearing
+ * cookies (or a second browser/device) mints a fresh guest id and therefore
+ * a fresh anonymous credit. That is an accepted MVP trade, not an oversight
+ * — RACER_DAILY_CALL_CEILING remains the systemwide backstop against
+ * aggregate abuse, and a signed, unforgeable, long-lived cookie is
+ * meaningfully more resistant than nothing.
+ *
+ * NEVER THROWS, same contract as ensureInitialComplimentary.
+ */
+export async function ensureAnonymousComplimentary(playerId: string | null): Promise<void> {
+  if (!isEntitlementEnabled() || !playerId) return;
+  const amount = env.entitlementAnonymousGrant();
+  if (amount <= 0) return;
+
+  // Same reasoning as ensureInitialComplimentary: an unlimited identity must
+  // never accrue complimentary value it can neither spend nor lose.
+  if (await hasUnlimitedPlay(playerId)) return;
+
+  // The gate: a guest is exactly "no accounts.players row for this
+  // player_id yet". The moment one exists — verified or not — this pool is
+  // closed for that player_id; ensureInitialComplimentary owns what happens
+  // next for a registered identity.
+  const account = await getPlayerAccount(playerId);
+  if (account) return;
+
+  try {
+    await grantComplimentary(playerId, amount, {
+      grantKey: "anonymous_first_game",
+      note: "anonymous first contact",
+    });
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] anonymous complimentary grant failed for ${playerId}:`, err);
+  }
+}
+
+/**
  * The optional first-contact allowance.
  *
  * Quantity is configuration, not a decision taken here: unset means no

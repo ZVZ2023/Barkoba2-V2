@@ -263,6 +263,77 @@ test("1c. malformed or oversized purchase facts are refused before insertion", a
   assert.equal(purchaseRows().length, 0);
 });
 
+// --- 1d. fail-closed on every other malformed/unknown shape, behaviorally --
+//
+// V2.7 review: 1b3 and 1c already prove bad quantities and bad purchase_facts
+// are refused with zero ledger rows. The remaining shapes named in that
+// review — an unrecognized package_id (not merely a bad quantity for a
+// known one), missing required fields, an unparseable body, and the
+// explicitly-rejected legacy `credits` field — were previously only
+// confirmed structurally (grepping the route source for the error string),
+// never by actually driving the route and confirming nothing was granted.
+// -----------------------------------------------------------------------
+
+test("1d. an unrecognized package_id is refused, not merely a bad quantity for a known one", async () => {
+  const player = await claimedPlayer("r".repeat(32));
+  const ref = await createPurchaseRef(player);
+  const res = await callGrant({
+    purchase_ref: ref,
+    external_order_id: "order_1d_package",
+    package_id: "totally_bogus_package",
+    quantity: 1,
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, "unknown_package");
+  assert.equal(ledger.length, 0, "an unknown package must grant nothing");
+});
+
+test("1d2. missing purchase_ref or external_order_id is refused before any package check", async () => {
+  const noRef = await callGrant({
+    external_order_id: "order_1d2_a",
+    package_id: "dics_scoop",
+    quantity: 1,
+  });
+  const noOrderId = await callGrant({
+    purchase_ref: "ABCDEFGHJKMNPQRS",
+    package_id: "dics_scoop",
+    quantity: 1,
+  });
+  assert.equal(noRef.status, 400);
+  assert.equal(noRef.body.error, "missing_fields");
+  assert.equal(noOrderId.status, 400);
+  assert.equal(noOrderId.body.error, "missing_fields");
+  assert.equal(ledger.length, 0);
+});
+
+test("1d3. an unparseable JSON body is refused, not thrown", async () => {
+  const req = new Request("https://barkoba.test/api/entitlement/grant", {
+    method: "POST",
+    headers: AUTH,
+    body: "{not valid json",
+  }) as unknown as GrantRequest;
+  const res = await POST(req);
+  assert.equal(res.status, 400);
+  const body = (await res.json()) as Record<string, unknown>;
+  assert.equal(body.error, "invalid_body");
+  assert.equal(ledger.length, 0);
+});
+
+test("1d4. the legacy credits field is refused outright, not silently ignored", async () => {
+  const player = await claimedPlayer("s".repeat(32));
+  const ref = await createPurchaseRef(player);
+  const res = await callGrant({
+    purchase_ref: ref,
+    external_order_id: "order_1d4",
+    package_id: "dics_scoop",
+    quantity: 1,
+    credits: 999,
+  });
+  assert.equal(res.status, 400);
+  assert.equal(res.body.error, "credits_not_accepted");
+  assert.equal(ledger.length, 0, "a caller still pricing its own sale must grant nothing");
+});
+
 // --- 2. the identical retry is harmless AND deterministic -------------------
 
 test("2. an identical retry returns duplicate, grants nothing, and never 404s", async () => {

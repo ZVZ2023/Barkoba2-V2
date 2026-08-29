@@ -42,11 +42,33 @@ function optionalInt(name: string, fallback: number): number {
 export const env = {
   anthropicApiKey: () => required("ANTHROPIC_API_KEY"),
 
-  // Ordinary DICS storefront. The purchase reference is appended by the
-  // intent route; DICS then forwards it invisibly as Stripe client_reference_id.
+  // Ordinary DICS storefront. Kept for §41.7's own deployment checklist and
+  // as the non-Barkóba entry point DICS itself still serves; the V2.7
+  // purchase intent route no longer sends a player's browser here — see
+  // dicsManifestUrl() below and docs/DESIGN-NOTES.md §51.8.
   dicsStorefrontUrl: () =>
     process.env.DICS_STOREFRONT_URL ||
     "https://zvz2023.github.io/Lighthouse/digital-ice-cream/",
+
+  /**
+   * DICS's own machine-readable product catalogue (its "Agent Capability
+   * Manifest"). Published BY DICS, FOR exactly this kind of programmatic
+   * consumption — its own `recommend_flavor` capability says in so many
+   * words: "Present the match and the Payment Link URL; do not complete
+   * checkout." Reading it is not scraping a page DICS built for humans; it is
+   * using the interface DICS built for callers that are not a browser.
+   *
+   * lib/dicsCatalog.ts fetches this at request time rather than storing a
+   * snapshot in this repo, on purpose: DICS's own manifest explicitly warns
+   * against exactly that kind of drift elsewhere in the same document ("not
+   * republished here to avoid drift between two copies of the same
+   * contract"). A stale local copy of Stripe Payment Links is a
+   * purchase-path correctness bug waiting to happen; a live, fail-closed
+   * fetch is not.
+   */
+  dicsManifestUrl: () =>
+    process.env.DICS_MANIFEST_URL ||
+    "https://zvz2023.github.io/Lighthouse/digital-ice-cream/agent-capability-manifest.json",
 
   // Fast/cheap model for the repeated per-turn Racer loop.
   modelRacer: () => process.env.ANTHROPIC_MODEL_RACER || "claude-haiku-4-5-20251001",
@@ -172,6 +194,21 @@ export const env = {
   entitlementComplimentaryGrant: () => optionalInt("ENTITLEMENT_COMPLIMENTARY_GRANT", 10),
 
   /**
+   * V2.7 — the pre-registration allowance. Granted at most once per GUEST
+   * player_id, before any account exists — separate from, and in addition
+   * to, entitlementComplimentaryGrant above, which requires a verified
+   * account and never fires for a guest. See lib/entitlements.ts's
+   * ensureAnonymousComplimentary.
+   *
+   * Defaults to 1: one complimentary AI-involved game for an anonymous
+   * visitor, matching the V2.7 newcomer journey. Device-bound via the
+   * existing signed bk_player cookie — the same abuse-resistance every
+   * other guest-scoped mechanism in this codebase already relies on, not a
+   * new one invented for this.
+   */
+  entitlementAnonymousGrant: () => optionalInt("ENTITLEMENT_ANONYMOUS_GRANT", 1),
+
+  /**
    * Shared secret for the server-to-server grant endpoint.
    *
    * SERVER SIDE ONLY. No client-facing code path may read this, and no browser
@@ -203,6 +240,35 @@ export const env = {
    * the correct and harmless default.
    */
   benchmarkIngressSecret: () => process.env.BENCHMARK_INGRESS_SECRET || null,
+
+  // --- V2.7: admin/operator authorization ----------------------------------
+
+  /**
+   * The smallest possible admin allowlist: a comma-separated set of
+   * player_ids, hand-maintained here rather than in a database row.
+   *
+   * DELIBERATELY NOT accounts.unlimited_play. That grant means "may play
+   * free forever" — a completely different privilege that happened, so far,
+   * to be held by the same two people. Reusing it for "may read capacity
+   * telemetry" would mean a future unlimited-play grant to someone who
+   * should never see operational data silently also grants that, and
+   * revoking telemetry access would require touching a table whose actual
+   * job is entitlement exemption. See lib/admin.ts.
+   *
+   * DELIBERATELY NOT a new accounts.* role column or table either — an env
+   * var comparison, matching how rare and how operator-driven this check
+   * is, the same posture ENTITLEMENT_GRANT_SECRET and
+   * BENCHMARK_INGRESS_SECRET already take for their own rare, unrelated
+   * authorities. Unset means no admin access to anything gated on this,
+   * for anyone — it must never fall open.
+   */
+  adminPlayerIds: (): ReadonlySet<string> =>
+    new Set(
+      (process.env.ADMIN_PLAYER_IDS || "")
+        .split(",")
+        .map((id) => id.trim())
+        .filter(Boolean)
+    ),
 
   // --- V2.5-B3: xAI / Grok as a selectable Racer --------------------------
   //

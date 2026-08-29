@@ -4523,3 +4523,84 @@ BEFORE ANY FINAL GUESS
 Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.
 ```
 
+---
+
+## 51. V2.7.x kickoff — newcomer-to-paying-player journey (in progress)
+
+**Baseline audit first, per the kickoff brief's own instruction.** Before any code changed, the current HEAD was inspected against each goal. Two findings changed the shape of the work:
+
+- The flat "1 game = 1 Play Credit regardless of budget" rule the brief asked for **already existed** (`lib/questionBudget.ts`'s `PLAY_CREDIT_COST`, shipped as Task 5). Nothing to remove.
+- The brief's headline requirement — an anonymous visitor gets one complimentary game before registration — **did not**. `ensureInitialComplimentary` only ever grants to a *verified* account; a device-bound guest (which middleware assigns on literally the first request, per `lib/playerIdentity.ts`) has a real `player_id` and a real zero balance, so `canStartGame` correctly, and unhelpfully, refused every anonymous visitor with "elfogyott a VERSENY-egyenleged" — a balance that never existed being reported as spent. This was the actual first-priority gap, not a formality.
+
+### 51.1 Two complimentary pools, not one widened
+
+`lib/entitlements.ts` gained `ensureAnonymousComplimentary`, deliberately parallel to, and independent of, `ensureInitialComplimentary`:
+
+| | Gate | Amount | `grant_key` |
+|---|---|---|---|
+| Pre-registration (new) | no `accounts.players` row at all | `ENTITLEMENT_ANONYMOUS_GRANT` (default 1) | `anonymous_first_game` |
+| Post-verification (existing, §46) | verified account | `ENTITLEMENT_COMPLIMENTARY_GRANT` (default 10, `5` in production) | `initial_complimentary` |
+
+Mutually exclusive by construction (one requires the absence of an account row, the other requires a verified one) and additive across the guest→registered transition, because `player_id` is attached, never replaced, the same invariant every other identity mechanism here already relies on. A player who spends their anonymous credit and later registers still gets the full post-verification allowance too.
+
+Device-bound abuse resistance only, per the brief's own "do not over-engineer" instruction: the existing signed, HMAC'd `bk_player` cookie is the entire mechanism. Clearing cookies mints a fresh guest id and a fresh anonymous credit. `RACER_DAILY_CALL_CEILING` remains the systemwide backstop.
+
+### 51.2 Registration now requires a name, not only a validated email
+
+`ClaimPrompt`'s registration form collects a name alongside email; `register/route.ts` refuses with `missing_name` if neither the request body nor an already-answered `NamePrompt` cookie supplies one. Deliberately does NOT touch `NamePrompt.tsx` itself — that component's own doc comment states it is "NOT registration" and that skip is a first-class, equally-weighted answer for the pre-game nicety it is. This is a second, separate, required name collection at the moment an account is actually created, not a tightening of the freely-skippable one.
+
+### 51.3 Game history: the backend already existed
+
+`GET /api/player/history` → `listPlayerHistory` — correctly scoped, indexed (`games_player_history`, migration 0001), and already covered by its own test file (`test/playerHistory.test.ts`) — had simply never been wired to a page. `app/history/` is the entire fix: a page and a client component consuming the existing endpoint, reachable from `AccountControl`'s authenticated "Profil" menu. No route, corpus query, or migration changed. Role and outcome are rendered in the vocabulary `HumanClient.tsx` already established ("gondolkodó" / "kérdező"), not the internal `composer`/`racer` identifiers — `test/playerLanguage.test.ts`'s `PLAYER_FACING_FILES` list was extended to cover the new client component so it stays honest.
+
+### 51.4 Capacity observability is a read, never a reservation — and admin-gated, not public
+
+`lib/callBudget.ts` gained `peekModelCallUsage` — reads today's Racer/resolve call counters via `getKV().get`, the same keys `consumeModelCall` writes, and **never increments them**: observing usage must not itself spend budget. `lib/corpus/gameCorpus.ts` gained `questionBudgetDistributionToday`, a `GROUP BY max_questions` scoped to the same UTC calendar day the daily ceiling itself resets against. Both feed a `review_trigger: utilization >= 0.7` flag — informational only, matching the brief's explicit instruction that 1,400/70% is when capacity *policy gets revisited*, not when anything here restricts play. No 20/35Q cap was introduced.
+
+**Correction, on review.** This was first shipped inside `/api/version`'s existing public block, alongside the corpus/entitlement/racer config it already reports. That was wrong, and caught before commit: those existing blocks are safe precisely because they are *deployment configuration* — the whole reason `/api/version` is public is so an external field tester can confirm what's live before spending a game. Daily call volume against a hard global ceiling is a different kind of fact — aggregate *business/capacity* data that reveals roughly how many games Barkóba plays per day and how close it is to running out of budget for everyone. No concrete reason for public access survived that distinction.
+
+**Moved to `app/api/admin/capacity`**, gated on an active account session **and** admin-allowlist membership. "Authenticated" alone was rejected as the gate: any registered account — anyone who has played one game — could otherwise read it. `/api/version` reports nothing about capacity any more.
+
+**Second correction, on further review.** The first version of this gate reused `hasUnlimitedPlay()` — the same `accounts.unlimited_play` grant that exempts a developer/tester identity from spending Play Credits. Reasoned at the time as "the same trust boundary, not a new one," but that conflates two genuinely different privileges that only happened to be held by the same two people: unlimited play is entitlement exemption, and has nothing to do with who should see aggregate business telemetry. Reusing it would mean a future unlimited-play grant to someone who should never see capacity data silently also grants that, and revoking telemetry access would require touching a table whose actual job is something else.
+
+**Replaced with `lib/admin.ts`'s `isAdminPlayer()`** — a distinct, env-var-configured allowlist (`ADMIN_PLAYER_IDS`, comma-separated player_ids), matching the smallest-safe-option instruction over building any new `accounts.*` role column or table. Same posture `ENTITLEMENT_GRANT_SECRET` and `BENCHMARK_INGRESS_SECRET` already take for their own rare, operator-driven, unrelated authorities: unset means no admin access to anything gated on it, for anyone — it must never fall open. Still requires a real account session underneath (a signed guest cookie holding an allowlisted id is not sufficient), for the same revocability and audit-trail reasons ordinary login already has over a 400-day device cookie.
+
+### 51.5 Purchase flow: §41 preserved, Barkóba's own surfaces extended
+
+**§41.1's ratified decision is unchanged and untouched**: DICS remains the ordinary, unbranded storefront; Barkóba still never prices anything; the actual payment step still redirects off-site. Confirmed with the user before any purchase-flow code changed, given the kickoff brief's "Barkóba-native purchase experience" phrasing could otherwise have been read as calling that decision into question. Resolution: "native" means Barkóba owns the entry, balance, and return experience — all of which were already server-authoritative and already reasonably built (`Entitlement.tsx`, `PurchaseReturn.tsx`) — not that the payment step itself must stop redirecting.
+
+Two concrete gaps closed, both audited before being touched:
+
+- **Verified-before-purchase, not merely registered.** GOA2 says "a registered, verified account"; `/api/entitlement/intent` only ever checked for a live account session, never `email_verified_at`. Added as a second, independent server-side refusal (`email_verification_required`, 409) alongside the existing `account_required` one — same posture, same file, same "the server is the authority, the screen is the courtesy" comment this file already stated for the account check. `CreditGateway` gained a matching `need_verification` step, reading `/api/account/profile` (which already returns `email_verified`) instead of the narrower `/api/account/session`.
+- **No proactive purchase entry point.** `CreditGateway` was reachable only after being refused at zero balance (`SiteHeader`, `ComposerEntry`, `HumanSetup`, `RacerSetup` — all reactive). Added to `AccountControl`'s authenticated menu, alongside the new history link — same component, same server authority, a second door to it.
+
+**Correction to the brief:** `test_scoop_5` is not current. DESIGN-NOTES §40–41 record it as cancelled and superseded; the live catalogue is `dics_scoop` / `dics_custom` (`lib/playCreditPackages.ts`).
+
+### 51.6 Resend — operational, not code
+
+`RESEND_FROM_EMAIL` defaults to `"Barkóba <onboarding@resend.dev>"`, Resend's shared sandbox sender, which Resend itself restricts to delivering only to the Resend account owner's own address. This is why real users have not been receiving verification email. **No code change is possible here** — it requires the account owner to verify a sending domain in Resend's own dashboard and set `RESEND_FROM_EMAIL` to an address on it. `lib/emailVerification.ts` already reads that variable and needs no change once it is set.
+
+### 51.7 Human↔Human — audited, not touched
+
+Confirmed from code, reported as fact only, per the brief's explicit instruction not to change pricing here: `/hh/turn` makes zero model calls (every log entry it writes hardcodes `model_id`/`model_provider`/`prompt_version` to null, and the route's own header comment says so). `/resolve` has no branch on `composer_kind`/`racer_kind` anywhere — it runs the Adjudicator and Integrity Review unconditionally, so a Human↔Human game costs the same AI spend as any other at resolution, despite costing none during play, while being charged the same one Play Credit. Nothing about this changed.
+
+**Not yet done, deferred to the milestone review this section's own opening line refers to:** none identified as blocking; final package lineup/pricing, and any further purchase-flow decisions, remain explicitly out of scope for the kickoff per the brief itself.
+
+### 51.8 Correction, on a later product decision: §41.1's storefront-redirect presentation is superseded for Barkóba-originated purchases
+
+**§51.5 above recorded §41.1 as "unchanged and untouched," confirmed with the user before code changed.** A later, explicit product decision reopened exactly that point and reversed it — narrowly, at the presentation layer only. This entry records that reversal so there is no future ambiguity about which instruction governs.
+
+**What changed.** A Barkóba player choosing to buy more Play Credits no longer has their browser sent to DICS's own storefront page to browse and select an offer there. Barkóba now presents its own package-selection screen (`app/purchase/`), and the only place the player's browser leaves Barkóba for is Stripe's hosted checkout itself.
+
+**What did not change, and could not be changed without a separate architecture decision.** Every sentence in §41.1 about *what DICS sells and to whom* is still true: DICS still does not sell Play Credits, still has one catalogue for every customer regardless of origin, still owns its own prices and Stripe products, and Barkóba still prices nothing. §41.2–§41.7 (economic-class mapping, provenance capture, the money boundary, the `purchase_ref` TTL, the frozen reward mapping, the external deployment checklist) are all **untouched** — this section changes a redirect target, not the commercial architecture underneath it. §41.1's *narrower* claim — that the payment step necessarily means a visit to DICS's own storefront page — is what is superseded.
+
+**Why this was technically achievable without touching Stripe, the webhook adapter, or the ledger.** DICS itself publishes a versioned, machine-readable manifest (`agent-capability-manifest.json`) alongside its human storefront page, built explicitly for callers that are not a browser rendering that HTML. Its own `recommend_flavor` capability says, in the manifest's own words: *"Present the match and the Payment Link URL; do not complete checkout."* That is DICS endorsing exactly this usage — a caller reading the catalogue and handing a Payment Link to a human, without that human first visiting DICS's page. Barkóba's own storefront-redirect JS (`checkoutUrl()`) already did nothing more than append `client_reference_id`/`utm_source`/`utm_content` to a static Payment Link; `lib/dicsCatalog.ts` replicates that transform byte-for-byte after resolving the link from the same manifest DICS's own page reads.
+
+Had the manifest not existed, or had DICS's Payment Links been generated dynamically per storefront session rather than published statically per offer, this would have hit the brief's own stop condition — *"if the existing architecture technically requires visiting DICS itself... stop and report that constraint"* — and no workaround would have been attempted. It did not hit that condition, so implementation proceeded.
+
+**What is deliberately NOT re-hosted in Barkóba.** The manifest is fetched live at request time (`lib/dicsCatalog.ts`, 5-minute in-process cache), never snapshotted into this repo. DICS's own manifest warns against exactly that kind of duplication elsewhere in the same document ("not republished here to avoid drift between two copies of the same contract"); a stale local copy of Stripe Payment Links would be a silent purchase-path correctness bug. A manifest that cannot be fetched or no longer matches the expected shape fails the purchase closed (`purchase_unavailable`, 503) — it never falls back to guessing a URL, and never falls back to the old storefront redirect.
+
+**Package selection, restated for this surface.** Flavour remains purely cosmetic, exactly as §41.3's provenance-layering already established — every standard flavour still maps to the single `dics_scoop` economic class, and Barkóba's new picker is presentation only, sent as `flavor_key` and never priced. `dics_custom` needs no flavour at all. Neither DICS's two non-Play-Credit offers (the AI-companion gift, "AI chooses a flavour") is surfaced on Barkóba's purchase page — they have no `package_id` mapping in `lib/playCreditPackages.ts` and would be a dead end if offered here.
+
+**Governing instruction, verbatim, for the record:** *"LOCKED V2.7 UX: A Barkóba player must not be sent to the existing general-purpose DICS storefront to browse/select their purchase... Preserve the existing DICS/payment infrastructure underneath."* This section, `app/purchase/`, `app/api/entitlement/catalog/route.ts`, the resulting change to `app/api/entitlement/intent/route.ts`, and `lib/dicsCatalog.ts` are that instruction's implementation.
+

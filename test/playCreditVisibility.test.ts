@@ -142,6 +142,7 @@ test("Hungarian player-facing entitlement copy uses VERSENY, never RACE", () => 
     "app/components/ClaimPrompt.tsx",
     "app/components/Entitlement.tsx",
     "app/components/PurchaseReturn.tsx",
+    "app/purchase/PurchaseClient.tsx",
     "app/api/entitlement/intent/route.ts",
     "app/api/game/create/route.ts",
     "app/api/player/entitlement/route.ts",
