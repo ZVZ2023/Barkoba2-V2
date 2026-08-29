@@ -261,7 +261,15 @@ export async function POST(req: Request) {
     // failure here is logged there and falls back to the existing lazy
     // grant at next game-creation; it must not turn a real verification
     // into a reported failure.
-    await ensureInitialComplimentary(account.player_id);
+    //
+    // V2.7.0.7 — trustVerified: true. markEmailVerified() just committed on
+    // this exact player_id, in this exact request; without this flag,
+    // ensureInitialComplimentary() would re-fetch the account and re-check
+    // email_verified_at itself — a second, independent database round trip
+    // that production testing showed can observe NULL despite the write
+    // immediately above having already committed, silently skipping the
+    // grant. See EnsureInitialComplimentaryOptions in lib/entitlements.ts.
+    await ensureInitialComplimentary(account.player_id, { trustVerified: true });
 
     return respondAuthenticated(req, account.player_id, account.display_name, {
       verified: true,

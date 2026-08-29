@@ -296,6 +296,72 @@ test("ensureInitialComplimentary grants once the account's email is verified", a
 });
 
 // ---------------------------------------------------------------------------
+// V2.7.0.7 PRODUCTION FIX — { trustVerified: true } bypasses the internal
+// getPlayerAccount() re-read entirely. Two production human tests found that
+// re-read silently observing email_verified_at as still NULL immediately
+// after verify-email's POST had just committed it in the same request — a
+// deterministic architectural flaw in re-reading a fact the caller already
+// established, not an intermittent race. See lib/entitlements.ts's
+// EnsureInitialComplimentaryOptions doc for the full account.
+// ---------------------------------------------------------------------------
+
+test("trustVerified grants exactly once, WITHOUT ever consulting accounts.players", async () => {
+  // Deliberately no emailVerifiedAt entry at all for ORDINARY — modeling the
+  // exact production shape: no accounts.players row is readable as verified
+  // yet from this call's point of view, only the caller's own knowledge that
+  // markEmailVerified() just committed. The old code path would read this
+  // absence as "not verified" and silently skip; trustVerified must not
+  // consult accounts.players at all.
+  await ensureInitialComplimentary(ORDINARY, { trustVerified: true });
+  assert.deepEqual(
+    ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind, amount: r.amount })),
+    [{ player_id: ORDINARY, kind: "complimentary_grant", amount: 10 }],
+    "the grant must land even though accounts.players would have reported unverified"
+  );
+  assert.equal(
+    calls.some((c) => /FROM accounts\.players/.test(c.sql)),
+    false,
+    "trustVerified must skip the getPlayerAccount re-read entirely, not merely ignore its result"
+  );
+});
+
+// Idempotency under trustVerified (repeat verify-email POST must not grant
+// twice) is NOT re-proven here: this file's fakeSql applies every
+// complimentary_grant insert unconditionally, without modeling grant_key's
+// ON CONFLICT DO NOTHING at all (see its handler above), so a test against it
+// would prove nothing about the real guard. test/emailVerification.test.ts's
+// fake DOES model grant_key uniqueness faithfully (checked against the live
+// ledger array before insert), and "verify-email POST eagerly grants the +5
+// ledger row — repeat verification never duplicates it" there drives the
+// real POST handler — trustVerified included — through two full requests for
+// the same token and asserts exactly one initial_complimentary row survives.
+
+test("trustVerified still refuses an unlimited-play identity — the exemption check is untouched", async () => {
+  await ensureInitialComplimentary(UNLIMITED, { trustVerified: true });
+  assert.deepEqual(
+    ledgerWrites(),
+    [],
+    "trustVerified bypasses only the email re-read, never the unlimited-play exemption"
+  );
+});
+
+test("the lazy game-creation call site (no options) is unchanged: still skips when unverified, still grants when verified", async () => {
+  // NULL email_verified_at — must still be refused exactly as before.
+  emailVerifiedAt.set(ORDINARY, null);
+  await ensureInitialComplimentary(ORDINARY);
+  assert.deepEqual(ledgerWrites(), [], "unverified must still be refused with no options passed");
+
+  // Now verified — must still grant exactly as before.
+  emailVerifiedAt.set(ORDINARY, new Date().toISOString());
+  await ensureInitialComplimentary(ORDINARY);
+  assert.deepEqual(
+    ledgerWrites().map((r) => ({ player_id: r.player_id, kind: r.kind, amount: r.amount })),
+    [{ player_id: ORDINARY, kind: "complimentary_grant", amount: 10 }],
+    "verified must still grant with no options passed, byte-identical to the pre-fix lazy path"
+  );
+});
+
+// ---------------------------------------------------------------------------
 // V2.7 — the PRE-registration pool. Separate grant_key, separate gate
 // (account existence, not email verification), and deliberately additive
 // with ensureInitialComplimentary rather than a substitute for it.

@@ -662,6 +662,39 @@ export async function ensureAnonymousComplimentary(playerId: string | null): Pro
   }
 }
 
+export interface EnsureInitialComplimentaryOptions {
+  /**
+   * V2.7.0.7 PRODUCTION FIX — bypass the internal getPlayerAccount() re-read
+   * of email_verified_at, because the caller already knows verification just
+   * committed in THIS SAME REQUEST.
+   *
+   * ROOT CAUSE THIS CLOSES: called synchronously from verify-email's POST
+   * (app/api/account/verify-email/route.ts), immediately after its own
+   * `await markEmailVerified(playerId)`, this function used to unconditionally
+   * re-fetch the account via getPlayerAccount() and re-check
+   * email_verified_at — a SECOND, INDEPENDENT round trip against Neon's
+   * per-query HTTP driver. Two production human tests (different phones)
+   * reproduced a real journey where that re-read observed email_verified_at
+   * as still NULL despite markEmailVerified() having just committed it,
+   * silently skipping the grant with no exception, no log, and no visible
+   * failure anywhere in the response — this function's contract has always
+   * been Promise<void>, never inspected by its caller. Same general shape
+   * (a write followed by an independent re-read of the same data not
+   * observing it) as the documented V2.4.2.0 fetch-caching incident this
+   * database layer already carries a fix for, though a different specific
+   * mechanism. `trustVerified: true` removes the redundant read entirely on
+   * this path — there is nothing left to race.
+   *
+   * NOT a bypass of the email-verification requirement itself, only of the
+   * REDUNDANT CHECK of a fact the caller just established. The caller
+   * (verify-email POST) only ever sets this immediately after its own
+   * successful markEmailVerified() call on this exact playerId, on the
+   * fresh-verification branch only — never on the already-verified branch,
+   * which issues no grant call at all.
+   */
+  trustVerified?: boolean;
+}
+
 /**
  * The optional first-contact allowance.
  *
@@ -672,7 +705,10 @@ export async function ensureAnonymousComplimentary(playerId: string | null): Pro
  * NEVER THROWS: a failed complimentary grant must not break game creation. The
  * gate that follows will decide on the real balance.
  */
-export async function ensureInitialComplimentary(playerId: string | null): Promise<void> {
+export async function ensureInitialComplimentary(
+  playerId: string | null,
+  options: EnsureInitialComplimentaryOptions = {}
+): Promise<void> {
   if (!isEntitlementEnabled() || !playerId) return;
   const amount = env.entitlementComplimentaryGrant();
   if (amount <= 0) return;
@@ -704,8 +740,15 @@ export async function ensureInitialComplimentary(playerId: string | null): Promi
   // complimentary grant — accepted because the alternative (guests exempt,
   // accounts gated) would make registering the WORSE way to get a free
   // allowance, which is backwards.
-  const account = await getPlayerAccount(playerId);
-  if (!account || account.email_verified_at === null) return;
+  //
+  // SKIPPED ENTIRELY when options.trustVerified is set — see
+  // EnsureInitialComplimentaryOptions above. The game-creation lazy call site
+  // (app/api/game/create/route.ts) never sets it, so this re-read and its
+  // defensive behavior are byte-identical there to before this change.
+  if (!options.trustVerified) {
+    const account = await getPlayerAccount(playerId);
+    if (!account || account.email_verified_at === null) return;
+  }
 
   try {
     await grantComplimentary(playerId, amount, {
