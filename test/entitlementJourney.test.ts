@@ -164,6 +164,29 @@ test("3f. the gateway distinguishes 'no account' from 'unverified account' as se
   assert.match(purchase, /if \(!data\.email_verified\)/);
 });
 
+test("3h. /purchase's ready step explains the real cost in plain terms and reuses the existing video placeholder", () => {
+  // V2.7.x M3 — a friendly, non-technical line ("real cost, no unlimited free
+  // AI play, a purchase covers it and gives VERSENY back") plus the SAME
+  // WelcomeVideoSlot placeholder already used on the pending-verification
+  // screen (ClaimPrompt.tsx) — reused, not a second video mechanism.
+  const purchase = readFileSync("app/purchase/PurchaseClient.tsx", "utf8");
+  assert.match(purchase, /import WelcomeVideoSlot from "\.\.\/components\/WelcomeVideoSlot"/);
+
+  const readyStep = purchase.slice(
+    purchase.indexOf('step === "ready" && ('),
+    purchase.indexOf('step === "redirecting"') > purchase.indexOf('step === "ready" && (')
+      ? purchase.indexOf('{message &&')
+      : purchase.length
+  );
+  assert.match(readyStep, /<WelcomeVideoSlot \/>/);
+  assert.match(readyStep, /valódi\s+költséggel jár/);
+  assert.match(readyStep, /VERSENYT kapsz/);
+
+  // No new video mechanism: WelcomeVideoSlot itself is untouched, still the
+  // one placeholder component, no <video>/embed introduced anywhere here.
+  assert.doesNotMatch(purchase, /<video/);
+});
+
 test("3g. CreditGateway is reachable proactively from the account menu, not only at zero balance", () => {
   const control = readFileSync("app/components/AccountControl.tsx", "utf8");
   assert.match(control, /import \{ CreditGateway \} from "\.\/Entitlement"/);

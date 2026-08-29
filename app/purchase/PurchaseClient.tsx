@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import ClaimPrompt from "../components/ClaimPrompt";
 import RecoverPrompt from "../components/RecoverPrompt";
+import WelcomeVideoSlot from "../components/WelcomeVideoSlot";
 
 interface Props {
   versionLabel: string;
@@ -197,6 +198,16 @@ export default function PurchaseClient({ versionLabel }: Props) {
 
       {step === "ready" && (
         <div className="flex flex-col gap-6">
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/15 bg-white/50 p-4">
+            <p className="text-sm text-[var(--ink-soft)]">
+              A Barkóbát játszó mesterséges intelligencia működtetése valódi
+              költséggel jár, ezért nem tud korlátlanul, ingyen menni. Egy
+              Digital Ice Cream vásárlás ezt a költséget fedezi — cserébe
+              további VERSENYT kapsz, és a játék folytatódhat.
+            </p>
+            <WelcomeVideoSlot />
+          </div>
+
           <p className="text-sm text-[var(--ink-soft)]">
             Válassz csomagot. A fizetés Stripe biztonságos, hosztolt oldalán történik; a
             pontos mennyiséget (1–3) ott állíthatod be.
