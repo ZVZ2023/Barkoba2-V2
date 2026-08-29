@@ -21,6 +21,43 @@ function nullableString(value: unknown): string | null {
 }
 
 /**
+ * V2.7.0.10 PRODUCTION FIX — timestamptz columns, nullable variant.
+ *
+ * ROOT CAUSE THIS CLOSES: nullableString() assumed every column value the
+ * driver hands back is either a JS string or SQL NULL. That is true for
+ * every TEXT column here, but @neondatabase/serverless's default type
+ * parser (pg-types, the same one node-postgres uses) converts a non-null
+ * timestamptz into a native JS Date object, not a string — confirmed
+ * against production: Neon's own SQL Editor showed email_verified_at as a
+ * real, non-null timestamp for an account that /api/account/profile
+ * (via getPlayerAccount -> accountFromRow -> nullableString) nonetheless
+ * reported as unverified. `typeof value === "string"` is false for a Date,
+ * so a genuinely-verified account's email_verified_at was silently
+ * collapsed into null on every read through this file — invisible to the
+ * whole test suite because every fake SQL client here hands back
+ * `.toISOString()` strings directly, never a real Date instance.
+ *
+ * The one path that DID keep working — ensureInitialComplimentary's eager
+ * grant on verify-email's POST (lib/entitlements.ts, trustVerified: true)
+ * — works precisely because it was built to skip this exact re-read
+ * entirely, for an unrelated reason (a Neon read-after-write gap). Every
+ * OTHER caller of getPlayerAccount() (this file's own functions, plus
+ * /api/account/profile, /api/entitlement/intent, verify-email's
+ * already-verified branch, recovery-confirm's defensive re-check) went
+ * through the broken read and would misreport an already-verified account
+ * as needing verification again, deterministically, on every single call.
+ *
+ * Handles a Date (the real driver), a string (every test fake, and any
+ * future driver/config that already stringifies), or null/undefined —
+ * never anything else, so a truly malformed value still falls back to null
+ * rather than being coerced into a nonsense string.
+ */
+function nullableTimestamp(value: unknown): string | null {
+  if (value instanceof Date) return value.toISOString();
+  return typeof value === "string" ? value : null;
+}
+
+/**
  * V2.6.x — thrown when an email is already attached to a DIFFERENT account.
  * Migration 0011's unique index is what actually enforces this; this class
  * exists so callers (register, and the authenticated email-change route) can
@@ -45,9 +82,9 @@ function accountFromRow(row: Record<string, unknown> | undefined): PlayerAccount
     created_at: String(row.created_at),
     registered_at: String(row.registered_at),
     email: nullableString(row.email),
-    email_verified_at: nullableString(row.email_verified_at),
+    email_verified_at: nullableTimestamp(row.email_verified_at),
     email_verification_token: nullableString(row.email_verification_token),
-    email_verification_expires_at: nullableString(row.email_verification_expires_at),
+    email_verification_expires_at: nullableTimestamp(row.email_verification_expires_at),
     photo_url: nullableString(row.photo_url),
   };
 }

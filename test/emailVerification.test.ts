@@ -1687,6 +1687,56 @@ test("GET /api/account/profile reports email_verified:true once the address has 
   assert.equal(body.email_verified, true);
 });
 
+test("V2.7.0.10 — getPlayerAccount reports verified when the driver hands back a real Date object, not only a string", async () => {
+  // Production evidence: Neon's own SQL Editor showed email_verified_at as
+  // a genuine, non-null timestamp for an account that every JS-level read
+  // through this file nonetheless reported as unverified. Root cause: the
+  // real @neondatabase/serverless driver's default type parser returns a
+  // non-null timestamptz as a native JS Date, not a string — every OTHER
+  // fake SQL client in this test suite hands back `.toISOString()` strings
+  // directly from an in-memory Map, which is exactly why this was invisible
+  // to the whole suite until now. This test deliberately returns a real
+  // Date instance, matching the actual driver, not the usual fake shape.
+  const playerId = "d1".padEnd(32, "1");
+  const now = new Date();
+  const expires = new Date(Date.now() + 60_000);
+  function dateAwareFake(strings: TemplateStringsArray) {
+    const query = strings.join(" ");
+    if (/FROM accounts\.players/.test(query) && /player_id =/.test(query)) {
+      return Promise.resolve([
+        {
+          player_id: playerId,
+          recovery_key: "d".repeat(64),
+          display_name: "Zsófia",
+          created_at: now,
+          registered_at: now,
+          email: "zsofka2020@example.com",
+          email_verified_at: now, // a real Date, not a string
+          email_verification_token: null,
+          email_verification_expires_at: expires, // likewise
+          photo_url: null,
+        },
+      ]);
+    }
+    return Promise.resolve([]);
+  }
+  dateAwareFake.transaction = (q: Promise<Record<string, unknown>[]>[]) => Promise.all(q);
+
+  __setSqlClientForTests(dateAwareFake);
+  try {
+    const account = await getPlayerAccount(playerId);
+    assert.ok(account, "account must resolve at all");
+    assert.equal(
+      account!.email_verified_at,
+      now.toISOString(),
+      "a real Date must convert to its ISO string, never collapse to null"
+    );
+    assert.equal(account!.email_verification_expires_at, expires.toISOString());
+  } finally {
+    __setSqlClientForTests(null);
+  }
+});
+
 test("GET /api/account/profile reports email_verified:true for a verified account at ZERO ledger balance — verification status is never coupled to balance", async () => {
   // V2.7.0.9 regression — production evidence (2026-08-29) proved a verified,
   // zero-balance account's DB row was correct (email_verified_at non-null)
