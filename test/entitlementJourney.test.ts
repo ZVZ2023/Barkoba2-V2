@@ -187,6 +187,34 @@ test("3h. /purchase's ready step explains the real cost in plain terms and reuse
   assert.doesNotMatch(purchase, /<video/);
 });
 
+test("3i. /purchase re-checks account/verification status on bfcache restore, not only on first mount", () => {
+  // V2.7.0.9 regression — production evidence proved a verified, zero-balance
+  // account's DB row was correct while /purchase still showed the
+  // verification gate. Root cause: checkAccount() only ran from a
+  // mount-effect, and the browser's back/forward cache can restore this
+  // exact page — React state frozen from an EARLIER, genuinely-unverified
+  // visit — without re-running that effect at all. `pageshow`'s `persisted`
+  // flag is the documented signal for exactly this restoration; listening
+  // for it and re-running checkAccount() closes the gap without touching
+  // any server/session/auth code.
+  const purchase = readFileSync("app/purchase/PurchaseClient.tsx", "utf8");
+  assert.match(purchase, /addEventListener\("pageshow"/);
+  assert.match(purchase, /event\.persisted/);
+
+  // The pageshow handler must call checkAccount() again — not merely exist
+  // as inert instrumentation — and must not replace the ordinary mount-time
+  // check (both are needed: first-load freshness AND restore freshness).
+  const pageshowHandler = purchase.slice(
+    purchase.indexOf('const onPageShow ='),
+    purchase.indexOf('window.addEventListener("pageshow"')
+  );
+  assert.match(pageshowHandler, /void checkAccount\(\)/);
+  assert.match(purchase, /useEffect\(\(\) => \{\s*void checkAccount\(\);\s*\}, \[checkAccount\]\);/);
+
+  // Listener must be cleaned up, not leaked across remounts.
+  assert.match(purchase, /removeEventListener\("pageshow"/);
+});
+
 test("3g. CreditGateway is reachable proactively from the account menu, not only at zero balance", () => {
   const control = readFileSync("app/components/AccountControl.tsx", "utf8");
   assert.match(control, /import \{ CreditGateway \} from "\.\/Entitlement"/);

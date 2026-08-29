@@ -1686,3 +1686,46 @@ test("GET /api/account/profile reports email_verified:true once the address has 
   const body = await response.json();
   assert.equal(body.email_verified, true);
 });
+
+test("GET /api/account/profile reports email_verified:true for a verified account at ZERO ledger balance — verification status is never coupled to balance", async () => {
+  // V2.7.0.9 regression — production evidence (2026-08-29) proved a verified,
+  // zero-balance account's DB row was correct (email_verified_at non-null)
+  // while /purchase still showed the verification gate; the cause turned out
+  // to be purely client-side (stale bfcache-restored state — see
+  // app/purchase/PurchaseClient.tsx), not a server/data coupling. This pins
+  // the server half of that finding: the route that both CreditGateway and
+  // PurchaseClient trust for verification status must report the truth
+  // regardless of balance, at every point across a full grant-then-spend
+  // cycle — proving there is no accidental balance/verification coupling to
+  // regress into later.
+  const playerId = "9".repeat(32);
+  const token = await registeredSession(playerId, "zsofka2020@example.com");
+  await markEmailVerified(playerId);
+
+  // Before any grant: verified, balance genuinely zero.
+  const before = await readProfile(
+    new Request("https://barkoba.test/api/account/profile", {
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  assert.equal((await before.json()).email_verified, true);
+
+  // Simulate the +5 grant, then spending all of it back to zero.
+  ledger.push({ player_id: playerId, amount: 5, grant_key: "initial_complimentary" });
+  ledger.push({ player_id: playerId, amount: -5, grant_key: null });
+  assert.equal(
+    ledger.filter((r) => r.player_id === playerId).reduce((n, r) => n + r.amount, 0),
+    0,
+    "balance must genuinely be back to zero for this to be the reported scenario"
+  );
+
+  const after = await readProfile(
+    new Request("https://barkoba.test/api/account/profile", {
+      headers: { cookie: `bk_account_session=${token}` },
+    })
+  );
+  assert.equal(after.status, 200);
+  const afterBody = await after.json();
+  assert.equal(afterBody.email_verified, true, "zero balance must never make a verified account read as unverified");
+  assert.equal(afterBody.email, "zsofka2020@example.com");
+});

@@ -80,6 +80,28 @@ export default function PurchaseClient({ versionLabel }: Props) {
     void checkAccount();
   }, [checkAccount]);
 
+  // V2.7.0.9 human-test fix — the browser's back/forward cache (bfcache) can
+  // restore this exact page, with its React state frozen mid-air, instead of
+  // running a fresh page load: a player who reached /purchase once while
+  // still unverified, then later returned here via the phone's back gesture
+  // (rather than a fresh tap on "További VERSENY") after actually verifying
+  // and spending their +5, was shown the STALE "need_verification" panel
+  // captured before verification — never a fresh /api/account/profile read.
+  // Production DB evidence (2026-08-29, player 6a54e6...) confirmed the
+  // account really was verified at the moment the stale gate appeared, which
+  // rules out every server-side/session explanation: this is purely a
+  // client freshness gap. `pageshow`'s `persisted` flag is the standard,
+  // documented signal for exactly this restoration — see
+  // https://web.dev/articles/bfcache — and does not fire on an ordinary
+  // fresh load, so this never duplicates the mount-effect check above.
+  useEffect(() => {
+    const onPageShow = (event: PageTransitionEvent) => {
+      if (event.persisted) void checkAccount();
+    };
+    window.addEventListener("pageshow", onPageShow);
+    return () => window.removeEventListener("pageshow", onPageShow);
+  }, [checkAccount]);
+
   useEffect(() => {
     if (step !== "ready") return;
     let live = true;
