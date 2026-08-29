@@ -1432,7 +1432,12 @@ test("POST /api/account/email changes exactly the caller's own account and repor
   );
 });
 
-test("POST /api/account/email refuses an address already registered to a different account", async () => {
+test("POST /api/account/email refuses a colliding address with a GENERIC response — no account-existence wording, zero mutation", async () => {
+  // V2.7.x review — this used to say "email_already_registered" / "Ez az
+  // e-mail cím már regisztrálva van egy másik fiókhoz.", which lets an
+  // authenticated caller use this endpoint as an oracle for whether ANY
+  // address belongs to someone else. Reviewed and changed: the status may
+  // still distinguish success from refusal, but the body must not.
   const playerId = "6".repeat(32);
   const other = "7".repeat(32);
   const token = await registeredSession(playerId, "mine@example.com");
@@ -1452,8 +1457,186 @@ test("POST /api/account/email refuses an address already registered to a differe
   );
   assert.equal(response.status, 409);
   const body = await response.json();
-  assert.equal(body.error, "email_already_registered");
-  assert.equal((await getPlayerAccount(playerId))?.email, "mine@example.com", "the rejected change must not apply");
+  assert.equal(body.error, "email_unavailable");
+  assert.doesNotMatch(
+    JSON.stringify(body),
+    /already|regisztrálva|másik fiók/i,
+    "the response must not reveal that the address belongs to another account"
+  );
+
+  // Zero mutation on collision — neither account's row changed at all.
+  const mine = await getPlayerAccount(playerId);
+  assert.equal(mine?.email, "mine@example.com", "the rejected change must not apply");
+  assert.equal(mine?.email_verified_at, null);
+  const theirs = await getPlayerAccount(other);
+  assert.equal(theirs?.email, "taken@example.com", "the other account is untouched too");
+});
+
+test("POST /api/account/email: per-IP bucket eventually throttles, with the SAME generic response as success/collision paths", async () => {
+  const playerId = "8".repeat(32);
+  const token = await registeredSession(playerId, "limiter-ip@example.com");
+  const ip = "203.0.113.5";
+
+  let lastStatus = 0;
+  let lastBody: unknown;
+  for (let i = 0; i < 11; i += 1) {
+    const res = await updateEmail(
+      new Request("https://barkoba.test/api/account/email", {
+        method: "POST",
+        headers: {
+          cookie: `bk_account_session=${token}`,
+          "Content-Type": "application/json",
+          "x-forwarded-for": ip,
+        },
+        body: JSON.stringify({ email: `ip-limit-${i}@example.com` }),
+      })
+    );
+    lastStatus = res.status;
+    lastBody = await res.json();
+  }
+  assert.equal(lastStatus, 429);
+  assert.equal((lastBody as { error: string }).error, "rate_limited");
+  assert.doesNotMatch(
+    JSON.stringify(lastBody),
+    /already|regisztrálva|másik fiók|ip-limit-10/i,
+    "a rate-limited response must not echo the attempted address or hint at existence"
+  );
+});
+
+test("POST /api/account/email: per-target-email bucket throttles across ROTATING IPs for the SAME address", async () => {
+  const playerId = "9".repeat(32);
+  const token = await registeredSession(playerId, "limiter-target@example.com");
+  const targetEmail = "same-victim-target@example.com";
+
+  let lastStatus = 0;
+  for (let i = 0; i < 11; i += 1) {
+    const res = await updateEmail(
+      new Request("https://barkoba.test/api/account/email", {
+        method: "POST",
+        headers: {
+          cookie: `bk_account_session=${token}`,
+          "Content-Type": "application/json",
+          // A different IP every call — if only the IP bucket existed, this
+          // would never throttle, since no single IP is reused.
+          "x-forwarded-for": `198.51.100.${i}`,
+        },
+        body: JSON.stringify({ email: targetEmail }),
+      })
+    );
+    lastStatus = res.status;
+  }
+  assert.equal(lastStatus, 429, "the target-email bucket must throttle even though every call used a distinct IP");
+});
+
+test("lib/rateLimit.ts: the email-change target bucket hashes before keying, and never uses the raw address", () => {
+  const src = readFileSync("lib/rateLimit.ts", "utf8");
+  const fn = src.slice(
+    src.indexOf("export async function checkEmailChangeTargetRateLimit"),
+    src.length
+  );
+  assert.match(fn, /verificationTokenHash\(normalized\)/);
+  assert.match(fn, /ratelimit:email-change-target:\$\{hash\}/);
+  assert.doesNotMatch(fn, /email-change-target:\$\{normalized\}|email-change-target:\$\{email\}/);
+});
+
+test("end-to-end: correcting an unverified email invalidates the OLD link; the NEW link authenticates the SAME account and grants +5 exactly once, cross-browser", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  process.env.RESEND_API_KEY = "re_test_key";
+  process.env.SITE_URL = "https://barkoba.example";
+  const realFetchForThisTest = globalThis.fetch;
+  try {
+    const playerId = "aa".padEnd(32, "0");
+    const oldToken = await registerVerifiableAccount(playerId, "typo@exmaple.com");
+    const session = await createAccountSession(playerId);
+
+    // Capture the NEW token the way it actually leaves the system: in the
+    // real verification email's own link, exactly as Resend would receive
+    // it — not a token this test invents.
+    let capturedHtml = "";
+    globalThis.fetch = (async (_url: unknown, init?: { body?: string }) => {
+      const body = init?.body ? JSON.parse(init.body) : {};
+      capturedHtml = body.html ?? "";
+      return new Response(JSON.stringify({ id: "email-id-correction" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }) as typeof fetch;
+
+    // The player notices the typo and corrects it from the
+    // pending-verification screen's own affordance.
+    const correctRes = await updateEmail(
+      new Request("https://barkoba.test/api/account/email", {
+        method: "POST",
+        headers: { cookie: `bk_account_session=${session}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ email: "corrected@example.com" }),
+      })
+    );
+    assert.equal(correctRes.status, 200);
+    assert.equal((await correctRes.json()).email, "corrected@example.com");
+    assert.equal(accounts.get(playerId)!.email_verified_at, null, "still unverified after the correction");
+    assert.equal(
+      accounts.get(playerId)!.recovery_key,
+      playerId.slice(0, 32).padEnd(64, "0"),
+      "recovery_key untouched by an email correction"
+    );
+
+    // The OLD link (pre-correction token) must no longer resolve — scanner-
+    // safe GET, still read-only, still correctly reports it as gone.
+    const oldStatus = await verifyEmailStatus(
+      new Request(`https://barkoba.test/api/account/verify-email?token=${oldToken}`)
+    );
+    assert.equal(oldStatus.status, 404);
+    assert.equal((await oldStatus.json()).status, "invalid");
+
+    const newTokenMatch = capturedHtml.match(/token=([0-9a-f]+)/);
+    assert.ok(newTokenMatch, "the corrected address must have received its own real verification link");
+    const newToken = newTokenMatch![1]!;
+    assert.notEqual(newToken, oldToken, "the new token is not a reuse of the old one");
+
+    // GET on the new link is still read-only (no mutation from a status check).
+    const newStatus = await verifyEmailStatus(
+      new Request(`https://barkoba.test/api/account/verify-email?token=${newToken}`)
+    );
+    assert.equal((await newStatus.json()).status, "pending");
+    assert.equal(accounts.get(playerId)!.email_verified_at, null, "GET must not verify");
+
+    // Explicit POST, from a browser with NO prior session — the exact
+    // cross-browser scenario the previous review's fix covers, now proven
+    // for a CORRECTED address too.
+    const confirmRes = await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: newToken }),
+      })
+    );
+    assert.equal(confirmRes.status, 200);
+    const confirmBody = await confirmRes.json();
+    assert.equal(confirmBody.verified, true);
+    assert.equal(confirmBody.email, "corrected@example.com");
+
+    const cookieHeader = confirmRes.headers.get("set-cookie") ?? "";
+    const sessionMatch = cookieHeader.match(/bk_account_session=([^;]+)/);
+    assert.ok(sessionMatch, "verifying the corrected address must still establish a session");
+    assert.equal(
+      await resolveAccountSession(sessionMatch![1]!),
+      playerId,
+      "the SAME existing player_id, not a new account"
+    );
+
+    // Exactly one +5 grant, tied to this one player_id.
+    const grantRows = ledger.filter(
+      (r) => r.player_id === playerId && r.grant_key === "initial_complimentary"
+    );
+    assert.equal(grantRows.length, 1);
+    assert.equal(grantRows[0]!.amount, 5);
+    assert.equal(accounts.size, 1, "no second account was ever created by the correction");
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+    delete process.env.RESEND_API_KEY;
+    delete process.env.SITE_URL;
+    globalThis.fetch = realFetchForThisTest;
+  }
 });
 
 // ---------------------------------------------------------------------------

@@ -67,6 +67,14 @@ export default function ClaimPrompt({ hideAccountManagement = false, postGameOff
   const [rotateError, setRotateError] = useState<string | null>(null);
   const [rotatedCode, setRotatedCode] = useState<string | null>(null);
   const [rotateCopied, setRotateCopied] = useState(false);
+  // V2.7.x — "wrong email address" correction, pending_verification ONLY.
+  // See the correctEmail() callback below for why this reuses
+  // POST /api/account/email rather than a new endpoint.
+  const [correctEmailOpen, setCorrectEmailOpen] = useState(false);
+  const [correctedEmail, setCorrectedEmail] = useState("");
+  const [correctBusy, setCorrectBusy] = useState(false);
+  const [correctError, setCorrectError] = useState<string | null>(null);
+  const [correctSent, setCorrectSent] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -123,6 +131,43 @@ export default function ClaimPrompt({ hideAccountManagement = false, postGameOff
     }
   }, [email, name]);
 
+  /**
+   * V2.7.x — "Rossz e-mail-cím?" correction, reachable only while pending
+   * verification. Calls the SAME POST /api/account/email that
+   * AccountProfile.tsx's (verified-account) Profil form already uses — no
+   * new endpoint, no new mechanism. That route already: resets
+   * email_verified_at to null (the +5 grant stays gated exactly as before —
+   * unaffected either way, since it was already null), overwrites the OLD
+   * verification token's hash (the OLD link stops resolving), leaves
+   * player_id/recovery_key/ledger/history untouched, and now (per this same
+   * review) refuses a colliding address with no account-existence wording
+   * and is rate-limited on two independent buckets.
+   *
+   * Stays on THIS screen on success — no navigation into Profil, no
+   * exposure of anything beyond "we sent a new link".
+   */
+  const correctEmail = useCallback(async () => {
+    setCorrectBusy(true);
+    setCorrectError(null);
+    try {
+      const res = await fetch("/api/account/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: correctedEmail.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setCorrectError(data.message || "Ez most nem sikerült.");
+        return;
+      }
+      setCorrectSent(true);
+    } catch {
+      setCorrectError("Hálózati hiba — próbáld újra.");
+    } finally {
+      setCorrectBusy(false);
+    }
+  }, [correctedEmail]);
+
   const resetIdentity = useCallback(async () => {
     setResetBusy(true);
     setResetError(null);
@@ -178,6 +223,41 @@ export default function ClaimPrompt({ hideAccountManagement = false, postGameOff
           a Barkóba.
         </p>
         <WelcomeVideoSlot />
+
+        {correctSent ? (
+          <p className="text-xs text-[var(--green)]">
+            Új megerősítő e-mailt küldtünk a megadott címre.
+          </p>
+        ) : correctEmailOpen ? (
+          <div className="flex flex-col gap-2 border-t border-[var(--ink)]/10 pt-3">
+            <p className="text-xs text-[var(--ink)]">Add meg a helyes e-mail címet.</p>
+            <input
+              type="email"
+              inputMode="email"
+              autoComplete="email"
+              value={correctedEmail}
+              onChange={(e) => setCorrectedEmail(e.target.value)}
+              placeholder="te@pelda.hu"
+              disabled={correctBusy}
+              className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
+            />
+            <button
+              onClick={() => void correctEmail()}
+              disabled={correctBusy || !correctedEmail.trim()}
+              className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+            >
+              {correctBusy ? "Egy pillanat…" : "Módosítás"}
+            </button>
+            {correctError && <p className="text-xs text-[var(--red)]">{correctError}</p>}
+          </div>
+        ) : (
+          <button
+            onClick={() => setCorrectEmailOpen(true)}
+            className="self-start border-t border-[var(--ink)]/10 pt-3 text-xs text-[var(--ink-soft)] underline underline-offset-2"
+          >
+            Rossz e-mail-cím? Módosítás
+          </button>
+        )}
       </div>
     );
   }

@@ -120,6 +120,32 @@ test("the pending-verification screen exposes no recovery/profile/account mechan
   assert.match(pendingBranch, /WelcomeVideoSlot/);
 });
 
+test("the 'wrong email address' correction affordance exists ONLY in pending_verification, never in protected", () => {
+  // V2.7.x — the correction UI must be reachable exactly where the trapped
+  // newcomer actually is, and nowhere the already-verified/logged-in Profil
+  // surface would make it a confusing second, redundant email field.
+  const pendingStart = CLAIM_PROMPT.indexOf('if (state.step === "pending_verification")');
+  const pendingEnd = CLAIM_PROMPT.indexOf('if (state.step === "protected")');
+  const pendingBranch = CLAIM_PROMPT.slice(pendingStart, pendingEnd);
+  assert.match(pendingBranch, /Rossz e-mail-cím\?/);
+  // The fetch call itself lives in the correctEmail() callback, defined
+  // earlier in the component body (outside this render-only slice) — same
+  // convention as register()/rotateRecoveryCode() — so checked against the
+  // whole file instead of this slice.
+  assert.match(CLAIM_PROMPT, /fetch\("\/api\/account\/email"/);
+
+  const protectedStart = pendingEnd;
+  const protectedEnd = CLAIM_PROMPT.indexOf('if (state.step === "existing")');
+  const protectedBranch = CLAIM_PROMPT.slice(protectedStart, protectedEnd);
+  assert.doesNotMatch(protectedBranch, /Rossz e-mail-cím\?/);
+
+  // The offer/existing branches, and anything before the loading guard,
+  // must not carry it either — it is not a general-purpose affordance.
+  const renderBody = CLAIM_PROMPT.slice(CLAIM_PROMPT.indexOf('if (state.step === "loading")'));
+  const outsidePending = renderBody.replace(pendingBranch, "");
+  assert.doesNotMatch(outsidePending, /Rossz e-mail-cím\?/);
+});
+
 test("the header Profil button and the purchase gateway are unaffected — full ClaimPrompt, no suppression", () => {
   assert.match(ACCOUNT_CONTROL, /<ClaimPrompt \/>/);
   assert.doesNotMatch(ACCOUNT_CONTROL, /hideAccountManagement/);

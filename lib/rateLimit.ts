@@ -118,3 +118,48 @@ export async function checkRecoveryEmailTargetRateLimit(email: string): Promise<
 
   return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
 }
+
+/**
+ * V2.7.x — POST /api/account/email's per-IP bucket. A distinct endpoint from
+ * the recovery-request pair above (a different abuse shape: this one is
+ * reachable only with an authenticated session, changing an EXISTING
+ * account's own address, not requesting a link for an arbitrary target) —
+ * kept in its own bucket rather than sharing checkRecoveryEmailRateLimit's,
+ * so the two endpoints' traffic can never exhaust each other's budget.
+ */
+export async function checkEmailChangeRateLimit(ip: string): Promise<RateLimitResult> {
+  const limit = 10;
+  if (env.rateLimitDisabled()) return { allowed: true, limit, remaining: limit };
+
+  const hourBucket = new Date().toISOString().slice(0, 13);
+  const count = await getKV().incrWithExpiry(
+    `ratelimit:email-change:${ip}:${hourBucket}`,
+    60 * 60
+  );
+
+  return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
+}
+
+/**
+ * V2.7.x — POST /api/account/email's per-TARGET-email bucket, same shape and
+ * same reasoning as checkRecoveryEmailTargetRateLimit above: an attacker
+ * with (or repeatedly creating) an authenticated session could otherwise
+ * rotate IPs and keep attempting to move a specific victim address onto
+ * their own account, one probe at a time. Normalize-then-hash, own bucket —
+ * never shares a key with the recovery-request pair, so neither endpoint's
+ * traffic can be used to infer anything about the other's.
+ */
+export async function checkEmailChangeTargetRateLimit(email: string): Promise<RateLimitResult> {
+  const limit = 10;
+  if (env.rateLimitDisabled()) return { allowed: true, limit, remaining: limit };
+
+  const normalized = email.trim().toLowerCase();
+  const hash = await verificationTokenHash(normalized);
+  const hourBucket = new Date().toISOString().slice(0, 13);
+  const count = await getKV().incrWithExpiry(
+    `ratelimit:email-change-target:${hash}:${hourBucket}`,
+    60 * 60
+  );
+
+  return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
+}
