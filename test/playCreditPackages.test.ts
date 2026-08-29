@@ -225,6 +225,33 @@ test("the return leg grants nothing — it is display only", () => {
   assert.match(RETURN_SRC, /fetch\("\/api\/player\/entitlement"/);
 });
 
+test("V2.7.0.11 — 'credited' requires a real observed balance increase, never an unlimited-play shortcut", () => {
+  // Production incident: a real HUF 650 purchase's return redirect landed on
+  // a DIFFERENT browser identity (an external Stripe Payment Link
+  // misconfiguration, unrelated to this file) that happened to carry an
+  // unlimited-play developer session. The old credited() had
+  // `if (snapshot.unlimited) return true;`, which reported "A VERSENY
+  // megérkezett" for that identity regardless of whether any purchase
+  // evidence existed — the balance genuinely still read 0. Pin that the
+  // shortcut is gone and the ONLY signal is a real balance > 0, which
+  // /api/player/entitlement returns honestly even for an unlimited identity
+  // (see that route's own file — balance is never hidden there).
+  const creditedFn = RETURN_SRC.slice(
+    RETURN_SRC.indexOf("function credited("),
+    RETURN_SRC.indexOf("function credited(") + RETURN_SRC.slice(RETURN_SRC.indexOf("function credited(")).indexOf("\n}\n") + 3
+  );
+  assert.doesNotMatch(
+    creditedFn,
+    /if \(snapshot\.unlimited\)/,
+    "credited() must not short-circuit true for an unlimited identity"
+  );
+  assert.match(
+    creditedFn,
+    /typeof snapshot\.balance === "number" && snapshot\.balance > 0/,
+    "the sole credited signal must be a real, positive observed balance"
+  );
+});
+
 test("exactly ONE delayed re-check, and no polling loop", () => {
   const timers = RETURN_SRC.match(/setTimeout\(/g) ?? [];
   assert.equal(timers.length, 1, "one delayed check, not a loop");

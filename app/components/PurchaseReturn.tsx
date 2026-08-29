@@ -57,10 +57,28 @@ async function readBalance(): Promise<EntitlementSnapshot | null> {
   }
 }
 
-/** Has the purchase visibly landed? */
+/**
+ * Has the purchase visibly landed?
+ *
+ * V2.7.0.11 PRODUCTION FIX — a real HUF 650 purchase returned the browser to
+ * the wrong domain (an external Stripe Payment Link misconfiguration, not a
+ * bug in this file — see docs/DESIGN-NOTES.md and the incident report this
+ * commit closes), landing on a DIFFERENT session that happened to carry an
+ * unlimited-play developer identity. The old `if (snapshot.unlimited) return
+ * true;` shortcut then reported "A VERSENY megérkezett" unconditionally for
+ * THAT identity, with the visible balance still reading 0 — a false positive
+ * with zero entitlement evidence behind it, on the one screen whose entire
+ * job is to say "credited" ONLY when the balance actually moved.
+ *
+ * /api/player/entitlement always returns a real, honest `balance` for an
+ * unlimited identity too (see that route's own comment: "the balance is
+ * still returned, honestly... this endpoint's job is to report what is
+ * true, not to hide it") — so a GENUINE purchase, unlimited account or not,
+ * is still correctly detected below without the special case. Removing it
+ * costs nothing real: it only removes a claim this screen could not back up.
+ */
 function credited(snapshot: EntitlementSnapshot | null): boolean {
   if (!snapshot) return false;
-  if (snapshot.unlimited) return true;
   return typeof snapshot.balance === "number" && snapshot.balance > 0;
 }
 
