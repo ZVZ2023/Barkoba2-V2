@@ -97,7 +97,7 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
           </div>
         )}
 
-        <ClaimPrompt hideAccountManagement />
+        <ClaimPrompt hideAccountManagement postGameOffer />
 
         <div>
           <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">Felhasznált kérdés</dt>

@@ -32,7 +32,7 @@ test("ClaimPrompt accepts an opt-in hideAccountManagement prop, default false", 
   assert.match(CLAIM_PROMPT, /hideAccountManagement\?: boolean/);
   assert.match(
     CLAIM_PROMPT,
-    /export default function ClaimPrompt\(\{ hideAccountManagement = false \}: Props = \{\}\)/
+    /export default function ClaimPrompt\(\{ hideAccountManagement = false, postGameOffer = false \}: Props = \{\}\)/
   );
 });
 
@@ -66,8 +66,8 @@ test("only the protected (already-authenticated) branch checks the flag", () => 
 });
 
 test("both finished-game result screens suppress account management", () => {
-  assert.match(RESULT_PANEL, /<ClaimPrompt hideAccountManagement \/>/);
-  assert.match(RACER_CLIENT, /<ClaimPrompt hideAccountManagement \/>/);
+  assert.match(RESULT_PANEL, /<ClaimPrompt hideAccountManagement postGameOffer \/>/);
+  assert.match(RACER_CLIENT, /<ClaimPrompt hideAccountManagement postGameOffer \/>/);
 });
 
 test("the header Profil button and the purchase gateway are unaffected — full ClaimPrompt, no suppression", () => {

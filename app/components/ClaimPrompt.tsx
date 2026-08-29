@@ -32,9 +32,26 @@ interface Props {
    * player who just finished a game legitimately has to do right here.
    */
   hideAccountManagement?: boolean;
+  /**
+   * V2.7.0 human-test fix — the "offer" step's copy, ONLY. Set true at the
+   * two call sites that render immediately after a player's own first game
+   * (ResultPanel.tsx, RacerClient.tsx), where "you just played for the first
+   * time" is always true in the normal flow: a never-registered guest gets
+   * exactly one complimentary game (ENTITLEMENT_ANONYMOUS_GRANT), so reaching
+   * this screen at all means this was it.
+   *
+   * Left false (default) everywhere else ClaimPrompt is reused —
+   * Entitlement.tsx's CreditGateway, AccountControl.tsx, PurchaseClient.tsx —
+   * because those are reachable from account/purchase menus at ANY time, not
+   * only right after a first game, and "Most játszottál először Barkóbát"
+   * would be false there. Only the offer step's TEXT branches on this; the
+   * name/email fields, validation, and registration call are unchanged and
+   * shared either way.
+   */
+  postGameOffer?: boolean;
 }
 
-export default function ClaimPrompt({ hideAccountManagement = false }: Props = {}) {
+export default function ClaimPrompt({ hideAccountManagement = false, postGameOffer = false }: Props = {}) {
   const [state, setState] = useState<State>({ step: "loading" });
   const [busy, setBusy] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -248,14 +265,33 @@ export default function ClaimPrompt({ hideAccountManagement = false }: Props = {
 
   return (
     <div className={`${box} border-[var(--ink)]/15 bg-white/50`}>
-      <p className="text-sm font-medium text-[var(--ink)]">
-        Regisztrálsz játékosfiókot?
-      </p>
-      <p className="text-xs text-[var(--ink-soft)]">
-        Ugyanez a játékos és VERSENY-egyenleg marad meg. A belépési kóddal másik
-        eszközön is bejelentkezhetsz. Jelszó nem kell, de egy név és egy
-        megerősített e-mail cím igen.
-      </p>
+      {postGameOffer ? (
+        <>
+          <p className="text-sm font-medium text-[var(--ink)]">
+            Gratulálunk! Most játszottál először Barkóbát.
+          </p>
+          <p className="text-sm text-[var(--ink)]">Szeretnél még 5 játékot?</p>
+          <p className="text-xs text-[var(--ink-soft)]">
+            Regisztrálj egy általad választott játékosnévvel és egy megerősített
+            e-mail-címmel.
+          </p>
+          <p className="text-xs text-[var(--ink-soft)]">
+            Regisztrált játékosként további funkciók is elérhetővé válnak számodra
+            — például versenyek és játékelőzmények — ahogy ezek megjelennek.
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-[var(--ink)]">
+            Regisztrálsz játékosfiókot?
+          </p>
+          <p className="text-xs text-[var(--ink-soft)]">
+            Ugyanez a játékos és VERSENY-egyenleg marad meg. A belépési kóddal másik
+            eszközön is bejelentkezhetsz. Jelszó nem kell, de egy név és egy
+            megerősített e-mail cím igen.
+          </p>
+        </>
+      )}
       <input
         type="text"
         autoComplete="nickname"
