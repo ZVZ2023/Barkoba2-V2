@@ -42,6 +42,16 @@ export interface EntitlementStatus {
   expired: number;
   /** Durable marker for whether the lazy introductory allowance was ever written. */
   initial_complimentary_granted: boolean;
+  /**
+   * V2.7.x — durable marker for the SEPARATE pre-registration allowance
+   * (grant_key: "anonymous_first_game", see ensureAnonymousComplimentary).
+   * Kept alongside initial_complimentary_granted, never merged with it: a
+   * guest who has spent their one anonymous game and a verified account that
+   * has spent its five post-verification games are different facts, and
+   * conflating them is exactly what made the homepage badge tell an already-
+   * played guest "your first game awaits" — see resolvePlayState's callers.
+   */
+  anonymous_complimentary_granted: boolean;
 }
 
 export type PlayState =
@@ -256,7 +266,12 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
         BOOL_OR(grant_key = 'initial_complimentary')
           FILTER (WHERE kind = 'complimentary_grant'),
         false
-      )                                                                          AS initial_complimentary_granted
+      )                                                                          AS initial_complimentary_granted,
+      COALESCE(
+        BOOL_OR(grant_key = 'anonymous_first_game')
+          FILTER (WHERE kind = 'complimentary_grant'),
+        false
+      )                                                                          AS anonymous_complimentary_granted
     FROM accounts.entitlement_ledger
     WHERE player_id = ${playerId}
   `;
@@ -268,6 +283,7 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
     consumed: Number(r.consumed ?? 0),
     expired: Number(r.expired ?? 0),
     initial_complimentary_granted: r.initial_complimentary_granted === true,
+    anonymous_complimentary_granted: r.anonymous_complimentary_granted === true,
   };
 }
 

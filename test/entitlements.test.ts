@@ -68,6 +68,9 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
         initial_complimentary_granted: mine.some(
           (r) => r.kind === "complimentary_grant" && r.grant_key === "initial_complimentary"
         ),
+        anonymous_complimentary_granted: mine.some(
+          (r) => r.kind === "complimentary_grant" && r.grant_key === "anonymous_first_game"
+        ),
       },
     ]);
   }

@@ -1,11 +1,10 @@
 import { NextResponse } from "next/server";
 import {
   getPlayerAccountByVerificationTokenHash,
-  markEmailVerifiedAndRotateRecoveryKey,
+  markEmailVerified,
   type PlayerAccount,
 } from "@/lib/playerAccounts";
 import { verificationTokenHash } from "@/lib/emailVerification";
-import { generateRecoveryCode, recoveryKey } from "@/lib/recoveryCode";
 
 export const dynamic = "force-dynamic";
 
@@ -23,23 +22,30 @@ export const dynamic = "force-dynamic";
  * better UX than one generic refusal.
  *
  * V2.7.x — SPLIT INTO A READ-ONLY GET AND A MUTATING POST, deliberately.
- * The previous version verified and rotated the recovery key on the FIRST
- * GET — which meant page LOAD was the mutating action. That is a known real-
- * world failure mode: email security scanners and link-prefetch systems
- * fetch a link's URL automatically, and would become the first "caller"
- * before any human ever saw the page, consuming the one-time raw recovery
- * code before the player could.
- *
- * GET is now a pure status check — zero database writes, safe to call any
- * number of times (page load, a repeat status poll, a scanner). It answers
- * only "what would clicking the button do right now", never does it. POST
- * is the ONLY path that can verify an email or rotate a recovery key, and it
- * fires exclusively from an explicit button click in
+ * A previous version verified on the FIRST GET — which meant page LOAD was
+ * the mutating action. That is a known real-world failure mode: email
+ * security scanners and link-prefetch systems fetch a link's URL
+ * automatically, and would become the first "caller" before any human ever
+ * saw the page. GET remains a pure status check — zero database writes, safe
+ * to call any number of times. POST is the only path that verifies an email,
+ * and it fires exclusively from an explicit button click in
  * app/verify-email/VerifyEmailClient.tsx — never from an effect, a mount, a
- * preload, or navigation.
+ * preload, or navigation. This split is unrelated to, and predates, the
+ * paragraph below; it stays exactly as it was.
  *
- * Both share the same atomic guard, markEmailVerifiedAndRotateRecoveryKey's
- * `AND email_verified_at IS NULL` — POST is what CALLS it; GET never does.
+ * V2.7.x M2 — NO RECOVERY CODE IS GENERATED OR SHOWN HERE ANY MORE. An
+ * earlier version rotated in a fresh recovery code on first verification and
+ * displayed it as a "save this now" step, on the reasoning that ClaimPrompt
+ * no longer showed the one generated at registration. Production testing
+ * confirmed this reintroduced exactly the friction ClaimPrompt's own fix was
+ * for: a required stop between "verified" and "playing". Verification now
+ * calls the plain, already-idempotent markEmailVerified() and nothing else —
+ * no rotation, no code, no interruption. Recovery capability is NOT gone: it
+ * lives, unchanged, on the authenticated Profil surface (ClaimPrompt's
+ * "protected" branch → "Új helyreállító kód generálása", POST
+ * /api/account/rotate-recovery-code) as an opt-in action a player can take
+ * any time, on their own initiative — exactly where a backup credential
+ * belongs, not a mandatory step in the newcomer path.
  */
 
 type ResolveResult =
@@ -113,20 +119,14 @@ export async function GET(req: Request) {
 }
 
 /**
- * MUTATING. The ONLY path that may verify an email or rotate a recovery
- * key — fires exclusively from an explicit "Fiókom megerősítése" click, per
- * VerifyEmailClient.tsx.
+ * MUTATING. The only path that verifies an email — fires exclusively from an
+ * explicit "Fiókom megerősítése" click, per VerifyEmailClient.tsx.
  *
  * Re-validates everything from scratch (does not trust a prior GET) since a
- * POST can in principle arrive without one ever having happened. A fresh
- * verification (email_verified_at was NULL) rotates in and returns a NEW
- * recovery code — the newcomer's exactly-one opportunity to capture one,
- * since ClaimPrompt no longer shows the one generated at registration. A
- * repeat/racing POST (already verified, by an earlier request OR by
- * whichever concurrent request wins the atomic race in
- * markEmailVerifiedAndRotateRecoveryKey) is reported as already_verified,
- * WITHOUT a code — showing a second, different code would silently
- * invalidate the one the player may have already saved.
+ * POST can in principle arrive without one ever having happened.
+ * markEmailVerified() is idempotent by construction (COALESCE preserves the
+ * first timestamp), so a repeat/racing POST is a harmless no-op — it simply
+ * reports already_verified:true, same as a genuine repeat visit.
  */
 export async function POST(req: Request) {
   let body: { token?: unknown } = {};
@@ -161,25 +161,9 @@ export async function POST(req: Request) {
       );
     }
 
-    const newCode = generateRecoveryCode();
-    const marked = await markEmailVerifiedAndRotateRecoveryKey(
-      account.player_id,
-      await recoveryKey(newCode)
-    );
+    await markEmailVerified(account.player_id);
 
-    if (!marked) {
-      // Lost the race to a concurrent POST for the SAME token. The account is
-      // verified now, by whichever request won — this is the "already
-      // verified" case, not a failure, and no second code is shown.
-      return NextResponse.json({ verified: true, already_verified: true, email: account.email });
-    }
-
-    return NextResponse.json({
-      verified: true,
-      already_verified: false,
-      email: account.email,
-      recovery_code: newCode,
-    });
+    return NextResponse.json({ verified: true, already_verified: false, email: account.email });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error("[barkoba] email verification failed:", err);

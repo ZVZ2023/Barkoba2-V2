@@ -6,13 +6,11 @@ import {
   registerPlayerAccount,
   getPlayerAccount,
   getPlayerAccountByEmail,
-  getPlayerAccountByRecoveryKey,
   getPlayerAccountByVerificationTokenHash,
   markEmailVerified,
   setAccountEmail,
   EmailAlreadyRegisteredError,
 } from "../lib/playerAccounts";
-import { recoveryKey as hashRecoveryCode } from "../lib/recoveryCode";
 import {
   EMAIL_VERIFICATION_TTL_SECONDS,
   generateVerificationToken,
@@ -119,21 +117,6 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     const row = accounts.get(playerId);
     if (!row || row.disabled_at) return Promise.resolve([]);
     if (!row.email_verified_at) row.email_verified_at = new Date().toISOString();
-    return Promise.resolve([{ player_id: playerId }]);
-  }
-
-  // markEmailVerifiedAndRotateRecoveryKey — the verify-email landing page's
-  // atomic write. Models the real query's WHERE ... AND email_verified_at IS
-  // NULL guard exactly: an already-verified row must NOT match, which is
-  // what makes a repeat hit (or the loser of a concurrent race) report
-  // already_verified rather than silently rotating a second code.
-  if (/UPDATE accounts\.players/.test(query) && /email_verified_at = now\(\)/.test(query)) {
-    const newRecoveryKey = String(v[0]);
-    const playerId = String(v[1]);
-    const row = accounts.get(playerId);
-    if (!row || row.disabled_at || row.email_verified_at) return Promise.resolve([]);
-    row.email_verified_at = new Date().toISOString();
-    row.recovery_key = newRecoveryKey;
     return Promise.resolve([{ player_id: playerId }]);
   }
 
@@ -722,13 +705,21 @@ test("verify-email POST refuses an expired, unverified token and does not mark i
   assert.equal(accounts.get(playerId)!.email_verified_at, null);
 });
 
-test("verify-email POST verifies, rotates the recovery key exactly once, and returns the one-time code — repeats and races are safe", async () => {
+test("verify-email POST verifies without touching the recovery key or issuing any code — repeats and races are safe", async () => {
+  // V2.7.x M2 — production testing showed the recovery-code capture step
+  // reintroduced exactly the friction this onboarding pass exists to remove.
+  // Verification is now plain markEmailVerified(): no rotation, no code,
+  // ever, on any POST — see app/api/account/verify-email/route.ts's own
+  // header comment. Recovery capability lives on Profil instead, unchanged
+  // and untested here (test/accountOwnership.test.ts already covers
+  // rotate-recovery-code directly).
   const playerId = "8".repeat(32);
   const rawToken = generateVerificationToken();
   const hash = await verificationTokenHash(rawToken);
+  const registrationTimeKey = "8".repeat(64);
   await registerPlayerAccount({
     playerId,
-    recoveryKey: "8".repeat(64),
+    recoveryKey: registrationTimeKey,
     displayName: "Zsolt",
     email: "zsolt@example.com",
     emailVerificationTokenHash: hash,
@@ -755,33 +746,24 @@ test("verify-email POST verifies, rotates the recovery key exactly once, and ret
   const firstBody = await first.json();
   assert.equal(firstBody.verified, true);
   assert.equal(firstBody.email, "zsolt@example.com");
-  // V2.7.x — the first click is the newcomer's one opportunity to capture a
-  // recovery code, generated fresh (ClaimPrompt no longer shows the one from
-  // registration).
   assert.equal(firstBody.already_verified, false);
-  assert.equal(typeof firstBody.recovery_code, "string");
-  assert.ok(firstBody.recovery_code.length > 0);
+  assert.equal(firstBody.recovery_code, undefined, "no code is ever generated any more");
   const firstTimestamp = accounts.get(playerId)!.email_verified_at;
   assert.ok(firstTimestamp);
-  const rotatedKey = accounts.get(playerId)!.recovery_key;
-  assert.notEqual(rotatedKey, "8".repeat(64), "the registration-time key must have been rotated");
-  const viaReturnedCode = await getPlayerAccountByRecoveryKey(
-    await hashRecoveryCode(firstBody.recovery_code)
-  );
   assert.equal(
-    viaReturnedCode?.player_id,
-    playerId,
-    "the returned code must actually work through the ordinary recovery lookup"
+    accounts.get(playerId)!.recovery_key,
+    registrationTimeKey,
+    "verification must not touch the recovery key at all"
   );
 
-  // A status GET after the click reports already_verified, still no code.
+  // A status GET after the click reports already_verified.
   const statusAfter = await verifyEmailStatus(
     new Request(`https://barkoba.test/api/account/verify-email?token=${rawToken}`)
   );
   assert.equal((await statusAfter.json()).status, "already_verified");
 
-  // A repeat/racing POST for the SAME token — must not verify "again", must
-  // not rotate again, must not hand out a second code.
+  // A repeat/racing POST for the SAME token — must not verify "again" and
+  // must never issue a code.
   const second = await post();
   assert.equal(second.status, 200);
   const secondBody = await second.json();
@@ -795,8 +777,8 @@ test("verify-email POST verifies, rotates the recovery key exactly once, and ret
   );
   assert.equal(
     accounts.get(playerId)!.recovery_key,
-    rotatedKey,
-    "a second POST must not rotate the recovery key again"
+    registrationTimeKey,
+    "a second POST must still not touch the recovery key"
   );
 });
 

@@ -149,6 +149,9 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
       initial_complimentary_granted: rows.some(
         (r) => r.grant_key === "initial_complimentary"
       ),
+      anonymous_complimentary_granted: rows.some(
+        (r) => r.grant_key === "anonymous_first_game"
+      ),
     }]);
   }
 
@@ -234,6 +237,86 @@ test("an authenticated account's player_id drives the visible unlimited state", 
   assert.equal(body.unlimited, true);
   assert.equal(body.play_state, "unlimited");
   assert.equal(body.balance, 0);
+});
+
+// ---------------------------------------------------------------------------
+// V2.7.x M2 — the homepage badge must not tell an already-played guest "Az
+// első VERSENYED vár rád" (your first game awaits). resolvePlayState() itself
+// is untouched (see lib/entitlements.ts); what changed is WHICH pool's
+// (amount, already-granted) pair /api/player/entitlement feeds it, based on
+// the caller's actual identity kind and verification status.
+// ---------------------------------------------------------------------------
+
+test("a fresh guest (no ledger activity at all) still sees introductory_available", async () => {
+  const guestId = "c".repeat(32);
+  const response = await readEntitlement(
+    new Request("https://barkoba.test/api/player/entitlement", {
+      headers: { [PLAYER_HEADER]: guestId },
+    }) as Parameters<typeof readEntitlement>[0]
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.play_state, "introductory_available");
+});
+
+test("a guest who already spent the anonymous complimentary game reads exhausted, not introductory_available", async () => {
+  const guestId = "d".repeat(32);
+  ledger.push({ player_id: guestId, amount: 0, grant_key: "anonymous_first_game" });
+
+  const response = await readEntitlement(
+    new Request("https://barkoba.test/api/player/entitlement", {
+      headers: { [PLAYER_HEADER]: guestId },
+    }) as Parameters<typeof readEntitlement>[0]
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.balance, 0);
+  assert.equal(
+    body.play_state,
+    "exhausted",
+    "must not claim a first game still awaits one that was already played"
+  );
+});
+
+test("a registered but unverified account reads exhausted, not introductory_available, even with balance 0", async () => {
+  const playerId = "e".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "e".repeat(64), displayName: "Zsolt" });
+  // email_verified_at defaults to null on this fake, matching a genuinely
+  // unverified registration — no explicit set needed.
+  const token = await createAccountSession(playerId);
+
+  const response = await readEntitlement(
+    new Request("https://barkoba.test/api/player/entitlement", {
+      headers: { cookie: `bk_account_session=${token}` },
+    }) as Parameters<typeof readEntitlement>[0]
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(
+    body.play_state,
+    "exhausted",
+    "the post-verification pool is not available before email_verified_at is set"
+  );
+});
+
+test("a verified account with the post-verification grant not yet used still sees introductory_available", async () => {
+  const playerId = "f".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "f".repeat(64), displayName: "Zsolt" });
+  accounts.get(playerId)!.email_verified_at = new Date().toISOString();
+  const token = await createAccountSession(playerId);
+
+  const response = await readEntitlement(
+    new Request("https://barkoba.test/api/player/entitlement", {
+      headers: { cookie: `bk_account_session=${token}` },
+    }) as Parameters<typeof readEntitlement>[0]
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(
+    body.play_state,
+    "introductory_available",
+    "a verified account's OWN introductory grant must be unaffected by this fix"
+  );
 });
 
 test("TASK 6G diagnostic traces the same account through display and game admission", async () => {
@@ -727,7 +810,6 @@ test("purchase ownership and non-merging are structural at both API and database
 
 test("all ownership routes use the central account-aware resolver", () => {
   for (const path of [
-    "app/api/player/entitlement/route.ts",
     "app/api/game/join/route.ts",
     "app/api/game/[id]/view/route.ts",
     "app/api/game/[id]/resolve/route.ts",
@@ -744,6 +826,15 @@ test("all ownership routes use the central account-aware resolver", () => {
   const creation = readFileSync("app/api/game/create/route.ts", "utf8");
   assert.match(creation, /resolveActingPlayer\(req\.headers\)/);
   assert.doesNotMatch(creation, /playerIdFromHeaders|resolveActingPlayerId/);
+
+  // V2.7.x M2 — the entitlement route moved to the same broader resolver as
+  // game creation, for the same reason: it now needs to tell a guest's
+  // identity kind apart from an account's to pick the right introductory
+  // pool (see that route's own header comment), which the narrower
+  // resolveActingPlayerId() cannot express.
+  const balance = readFileSync("app/api/player/entitlement/route.ts", "utf8");
+  assert.match(balance, /resolveActingPlayer\(req\.headers\)/);
+  assert.doesNotMatch(balance, /playerIdFromHeaders/);
 });
 
 test("guest play fallback cannot authorize a registered account or purchase", () => {

@@ -246,48 +246,6 @@ export async function markEmailVerified(playerId: string): Promise<boolean> {
   return rows.length === 1;
 }
 
-/**
- * V2.7.x — the verification-link landing page's one atomic write: verify the
- * email AND rotate in a freshly generated recovery credential, but ONLY if
- * this call is the account's first verification.
- *
- * WHY ONE ATOMIC STATEMENT, NOT markEmailVerified() THEN rotateRecoveryKey().
- * The verification link may be opened more than once — repeat clicks, a
- * forwarded email, an email client's link-prescanner, or two tabs racing —
- * and the recovery code must be generated and shown AT MOST ONCE. Two
- * separate statements would leave a window between them where a second,
- * concurrent hit could read "not yet verified" and independently rotate a
- * SECOND code, silently invalidating the first one before its own caller
- * ever got to display it. `AND email_verified_at IS NULL` in the WHERE
- * clause is what makes only ONE concurrent caller's write ever match: every
- * other caller (a genuine repeat click, or the loser of a race) gets zero
- * rows back and must treat that as "already verified" rather than attempt
- * — or display — a rotation of its own. The caller (the verify-email route)
- * relies on exactly this: `false` means show the no-code "already verified"
- * state, never a second code.
- *
- * Reuses rotateRecoveryKey's own column semantics (overwriting recovery_key
- * IS the invalidation of whatever code came before, same as an authenticated
- * rotation) — this is not a new recovery mechanism, only a new atomic
- * caller of the existing one, composed with the existing verification write.
- */
-export async function markEmailVerifiedAndRotateRecoveryKey(
-  playerId: string,
-  newRecoveryKey: string
-): Promise<boolean> {
-  const sql = requireSql();
-  const rows = await sql`
-    UPDATE accounts.players
-       SET email_verified_at = now(),
-           recovery_key = ${newRecoveryKey}
-     WHERE player_id = ${playerId}
-       AND disabled_at IS NULL
-       AND email_verified_at IS NULL
-     RETURNING player_id
-  `;
-  return rows.length === 1;
-}
-
 /** Sets or clears the account's profile photo URL. Touches only this column. */
 export async function setAccountPhotoUrl(
   playerId: string,

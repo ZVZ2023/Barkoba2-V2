@@ -41,7 +41,12 @@ function codeOnly(src: string): string {
 test("1. the balance route is session-scoped and cannot name another player", () => {
   // The id comes only from the trusted header middleware sets after stripping
   // any client copy. There is no parameter to ask about someone else.
-  assert.match(BALANCE_ROUTE, /resolveActingPlayerId\(req\.headers\)/);
+  //
+  // V2.7.x M2 — reads resolveActingPlayer() rather than the narrower
+  // resolveActingPlayerId(), so it can tell a guest's introductory pool from
+  // an account's — still request-authority-scoped, still no parameter naming
+  // a different player.
+  assert.match(BALANCE_ROUTE, /resolveActingPlayer\(req\.headers\)/);
   assert.doesNotMatch(BALANCE_ROUTE, /searchParams|params\.|body\./);
   // Reuses the existing computation rather than adding a second one.
   assert.match(BALANCE_ROUTE, /getStatus\(playerId\)/);

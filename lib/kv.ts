@@ -23,6 +23,17 @@ export interface KVClient {
    * delete, no scan, no bulk.
    */
   del(key: string): Promise<void>;
+  /**
+   * V2.7.x — atomic read-and-delete, for exactly-once consumption of a
+   * single-use credential (account-recovery tokens: lib/accountRecovery.ts).
+   * A separate get() then del() is NOT equivalent: against real Upstash,
+   * those are two independent HTTP round trips, and two concurrent requests
+   * for the SAME token could both read a hit before either one's delete
+   * lands — both would then be told the token is valid. GETDEL is one Redis
+   * command (native since Redis 6.2); only one caller can ever observe a
+   * non-null result for a given key, by construction, not by timing luck.
+   */
+  getdel<T>(key: string): Promise<T | null>;
 }
 
 class UpstashKV implements KVClient {
@@ -56,6 +67,11 @@ class UpstashKV implements KVClient {
       await this.client.expire(key, ttlSeconds);
     }
     return count;
+  }
+
+  async getdel<T>(key: string): Promise<T | null> {
+    const val = await this.client.getdel<T>(key);
+    return val ?? null;
   }
 }
 
@@ -103,6 +119,24 @@ class InMemoryKV implements KVClient {
     const next = current + 1;
     await this.set(key, next, ttlSeconds);
     return next;
+  }
+
+  /**
+   * Synchronous read+delete on the underlying Map, with no `await` between
+   * them — safe under Node's single-threaded execution even though this
+   * class has no real atomicity primitive of its own: nothing else can run
+   * between two synchronous statements in the same turn of the event loop.
+   * (This dev-only fallback was never actually the risk the atomic
+   * consumption requirement is about — a real concurrent-request race can
+   * only happen against Upstash, where get() and del() are separate HTTP
+   * round trips. See UpstashKV.getdel, which uses the real GETDEL command.)
+   */
+  async getdel<T>(key: string): Promise<T | null> {
+    const entry = this.store.get(key);
+    if (!entry) return null;
+    this.store.delete(key);
+    if (entry.expiresAt && entry.expiresAt < Date.now()) return null;
+    return entry.value as T;
   }
 }
 
@@ -162,6 +196,10 @@ class NamespacedKV implements KVClient {
 
   del(key: string): Promise<void> {
     return this.inner.del(namespacedKey(key));
+  }
+
+  getdel<T>(key: string): Promise<T | null> {
+    return this.inner.getdel<T>(namespacedKey(key));
   }
 }
 

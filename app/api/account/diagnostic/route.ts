@@ -49,10 +49,13 @@ export async function GET(req: Request) {
     entitlement = {
       lookup: "ok",
       balance: status.balance,
+      // V2.7.x — same account-verification gate as /api/player/entitlement:
+      // an unverified account's introductory pool is worth 0 right now, not
+      // "0 forever". See that route's own header comment for why.
       play_state: resolvePlayState({
         unlimited: unlimited.active,
         balance: status.balance,
-        complimentaryGrant: runtime.complimentaryGrant,
+        complimentaryGrant: account?.email_verified_at != null ? runtime.complimentaryGrant : 0,
         initialComplimentaryGranted: status.initial_complimentary_granted,
       }),
     };
