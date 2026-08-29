@@ -5,6 +5,7 @@ import {
   type PlayerAccount,
 } from "@/lib/playerAccounts";
 import { verificationTokenHash } from "@/lib/emailVerification";
+import { ensureInitialComplimentary } from "@/lib/entitlements";
 
 export const dynamic = "force-dynamic";
 
@@ -46,6 +47,23 @@ export const dynamic = "force-dynamic";
  * /api/account/rotate-recovery-code) as an opt-in action a player can take
  * any time, on their own initiative — exactly where a backup credential
  * belongs, not a mandatory step in the newcomer path.
+ *
+ * V2.7.0.3 HUMAN-TEST FIX — THE +5 GRANT IS NOW EAGER, NOT ONLY LAZY.
+ * ensureInitialComplimentary() has always existed to run at game-creation
+ * (app/api/game/create/route.ts) — a deliberately lazy design, so no ledger
+ * row exists until a grant is actually about to be spent. That is fine for
+ * an ALREADY-established player topping up, but for a newcomer it meant a
+ * real, if narrow, window between "verification succeeded" (this response)
+ * and "the +5 actually exists in the ledger" (only at the next game-create
+ * call) — and the success screen's own "Megkaptad az 5 további VERSENYT"
+ * is written in the past tense, promising something the ledger did not yet
+ * contain. Calling ensureInitialComplimentary() HERE, synchronously, before
+ * this response returns, closes that window: the grant is real by the time
+ * the player can possibly navigate anywhere. The game-create call site is
+ * UNCHANGED and still calls it too — grantComplimentary's grant_key
+ * idempotency (accounts.entitlement_ledger's UNIQUE (player_id, grant_key))
+ * makes a second call from there a guaranteed no-op, not a second grant, so
+ * this is a genuine belt-and-braces fallback, not a duplicated risk.
  */
 
 type ResolveResult =
@@ -162,6 +180,11 @@ export async function POST(req: Request) {
     }
 
     await markEmailVerified(account.player_id);
+    // NEVER THROWS (see ensureInitialComplimentary's own contract) — a
+    // failure here is logged there and falls back to the existing lazy
+    // grant at next game-creation; it must not turn a real verification
+    // into a reported failure.
+    await ensureInitialComplimentary(account.player_id);
 
     return NextResponse.json({ verified: true, already_verified: false, email: account.email });
   } catch (err) {

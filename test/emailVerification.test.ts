@@ -24,6 +24,7 @@ import {
 } from "../app/api/account/verify-email/route";
 import { POST as updateEmail } from "../app/api/account/email/route";
 import { GET as readProfile } from "../app/api/account/profile/route";
+import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 import { createAccountSession } from "../lib/accountSession";
 import { PLAYER_HEADER } from "../lib/playerIdentity";
 
@@ -59,8 +60,16 @@ interface SessionRow {
   revoked_at: string | null;
 }
 
+interface LedgerRow {
+  player_id: string;
+  amount: number;
+  grant_key: string | null;
+}
+
 let accounts: Map<string, AccountRow>;
 let sessions: Map<string, SessionRow>;
+let ledger: LedgerRow[];
+let unlimited: Set<string>;
 
 function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   const query = strings.join(" ");
@@ -156,6 +165,43 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
     return Promise.resolve(row ? [row] : []);
   }
 
+  // V2.7.0.3 — ensureInitialComplimentary's own writes/reads, exercised now
+  // that verify-email's POST calls it eagerly. Matches the shape already
+  // established in test/accountOwnership.test.ts and test/entitlements.test.ts.
+  if (/INSERT INTO accounts\.entitlement_ledger/.test(query)) {
+    const playerId = String(v[0]);
+    const amount = Number(v[1]);
+    const grantKey = typeof v[2] === "string" ? v[2] : null;
+    if (grantKey && ledger.some((r) => r.player_id === playerId && r.grant_key === grantKey)) {
+      return Promise.resolve([]); // ON CONFLICT DO NOTHING
+    }
+    ledger.push({ player_id: playerId, amount, grant_key: grantKey });
+    return Promise.resolve([{ entry_id: ledger.length }]);
+  }
+
+  if (/FROM accounts\.unlimited_play/.test(query)) {
+    return Promise.resolve(unlimited.has(String(v[0])) ? [{ "?column?": 1 }] : []);
+  }
+
+  // getStatus()'s full-shape query. Matches accountOwnership.test.ts's
+  // fake exactly — a simpler balance-only handler would silently zero out
+  // initial_complimentary_granted for any caller of getStatus() (not just
+  // ensureInitialComplimentary, which never calls it), which would be
+  // wrong, not merely incomplete.
+  if (/BOOL_OR\(grant_key = 'initial_complimentary'\)/.test(query)) {
+    const playerId = String(v[0]);
+    const rows = ledger.filter((r) => r.player_id === playerId);
+    return Promise.resolve([{
+      balance: rows.reduce((n, r) => n + r.amount, 0),
+      complimentary_granted: rows.reduce((n, r) => n + r.amount, 0),
+      purchased: 0,
+      consumed: 0,
+      expired: 0,
+      initial_complimentary_granted: rows.some((r) => r.grant_key === "initial_complimentary"),
+      anonymous_complimentary_granted: rows.some((r) => r.grant_key === "anonymous_first_game"),
+    }]);
+  }
+
   return Promise.resolve([]);
 }
 fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => Promise.all(queries);
@@ -163,15 +209,19 @@ fakeSql.transaction = (queries: Promise<Record<string, unknown>[]>[]) => Promise
 beforeEach(() => {
   accounts = new Map();
   sessions = new Map();
+  ledger = [];
+  unlimited = new Set();
   process.env.PLAYER_ID_SECRET ||= "test-secret-please-do-not-use-in-production";
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
+  process.env.ENTITLEMENTS_ENABLED = "true";
   __setSqlClientForTests(fakeSql);
 });
 
 afterEach(() => {
   delete process.env.DATABASE_URL;
   delete process.env.CORPUS_ENABLED;
+  delete process.env.ENTITLEMENTS_ENABLED;
   __setSqlClientForTests(null);
 });
 
@@ -780,6 +830,183 @@ test("verify-email POST verifies without touching the recovery key or issuing an
     registrationTimeKey,
     "a second POST must still not touch the recovery key"
   );
+});
+
+// ---------------------------------------------------------------------------
+// V2.7.0.3 human-test fix — the +5 grant is EAGER now, not only lazy at
+// game-creation. Production testing found the ledger genuinely empty right
+// after verification, so the homepage read a real zero balance and an
+// unclaimed introductory pool — not a display bug, an authoritative-state
+// bug. ensureInitialComplimentary() is called synchronously inside the POST
+// handler, before it responds, so this proves the LEDGER itself, not merely
+// what a status endpoint would infer from it.
+// ---------------------------------------------------------------------------
+
+test("verify-email POST eagerly grants the +5 ledger row — repeat verification never duplicates it", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "c".repeat(32);
+    const rawToken = generateVerificationToken();
+    const hash = await verificationTokenHash(rawToken);
+    await registerPlayerAccount({
+      playerId,
+      recoveryKey: "c".repeat(64),
+      displayName: "Zsolt",
+      email: "zsolt-grant@example.com",
+      emailVerificationTokenHash: hash,
+      emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
+    });
+
+    // Nothing granted yet — the ledger is genuinely empty before verification,
+    // matching production's actual pre-fix state.
+    assert.equal(ledger.filter((r) => r.player_id === playerId).length, 0);
+
+    const post = () =>
+      confirmVerification(
+        new Request("https://barkoba.test/api/account/verify-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: rawToken }),
+        })
+      );
+
+    const first = await post();
+    assert.equal(first.status, 200);
+    assert.equal((await first.json()).verified, true);
+
+    // The LEDGER, not a display computation, now holds the grant.
+    const grantRows = ledger.filter(
+      (r) => r.player_id === playerId && r.grant_key === "initial_complimentary"
+    );
+    assert.equal(grantRows.length, 1, "exactly one initial_complimentary row must exist");
+    assert.equal(grantRows[0]!.amount, 5);
+    const balance = ledger
+      .filter((r) => r.player_id === playerId)
+      .reduce((n, r) => n + r.amount, 0);
+    assert.equal(balance, 5, "the account's real balance must be 5 immediately after verification");
+
+    // A repeat POST (already verified) must not reach the grant call a
+    // second time — and even if it somehow did, grant_key uniqueness would
+    // still refuse a duplicate.
+    const second = await post();
+    assert.equal((await second.json()).already_verified, true);
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerId && r.grant_key === "initial_complimentary").length,
+      1,
+      "a repeat verification must not grant a second time"
+    );
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerId).reduce((n, r) => n + r.amount, 0),
+      5,
+      "balance must still be exactly 5 after the repeat POST"
+    );
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+test("GET /api/player/entitlement reports 5/has_balance immediately after verification, and 4 after spending one", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "d".repeat(32);
+    const rawToken = generateVerificationToken();
+    const hash = await verificationTokenHash(rawToken);
+    await registerPlayerAccount({
+      playerId,
+      recoveryKey: "d".repeat(64),
+      displayName: "Zsolt",
+      email: "zsolt-status@example.com",
+      emailVerificationTokenHash: hash,
+      emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
+    });
+    const sessionToken = await createAccountSession(playerId);
+    const readStatus = () =>
+      readEntitlement(
+        new Request("https://barkoba.test/api/player/entitlement", {
+          headers: { cookie: `bk_account_session=${sessionToken}` },
+        }) as Parameters<typeof readEntitlement>[0]
+      );
+
+    // Before verification: the introductory pool is not yet claimable.
+    const before = await readStatus();
+    assert.equal((await before.json()).play_state, "exhausted");
+
+    await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+
+    // Immediately after — no game played, no separate "claim" step.
+    const after = await readStatus();
+    assert.equal(after.status, 200);
+    const afterBody = await after.json();
+    assert.equal(afterBody.play_state, "has_balance", "the homepage must see a REAL balance, not an eligibility flag");
+    assert.equal(afterBody.balance, 5);
+
+    // One game consumed (flat 1 credit/game, matching the frozen rule) —
+    // the anonymous pool is untouched since this player_id never had one.
+    ledger.push({ player_id: playerId, amount: -1, grant_key: null });
+    const afterPlay = await readStatus();
+    const afterPlayBody = await afterPlay.json();
+    assert.equal(afterPlayBody.play_state, "has_balance");
+    assert.equal(afterPlayBody.balance, 4);
+    assert.equal(
+      ledger.filter((r) => r.player_id === playerId && r.grant_key === "anonymous_first_game").length,
+      0,
+      "the separate anonymous pool must remain untouched for an account that never had one"
+    );
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
+});
+
+test("the eager +5 grant stays separate from an earlier anonymous grant on the SAME player_id — never merged", async () => {
+  process.env.ENTITLEMENT_COMPLIMENTARY_GRANT = "5";
+  try {
+    const playerId = "e".repeat(32);
+    // Simulates having played the anonymous complimentary game as a guest,
+    // BEFORE registering — the same player_id carries forward, per
+    // ensureAnonymousComplimentary's own contract.
+    ledger.push({ player_id: playerId, amount: 1, grant_key: "anonymous_first_game" });
+    ledger.push({ player_id: playerId, amount: -1, grant_key: null });
+
+    const rawToken = generateVerificationToken();
+    const hash = await verificationTokenHash(rawToken);
+    await registerPlayerAccount({
+      playerId,
+      recoveryKey: "e".repeat(64),
+      displayName: "Zsolt",
+      email: "zsolt-anon@example.com",
+      emailVerificationTokenHash: hash,
+      emailVerificationExpiresAt: new Date(Date.now() + EMAIL_VERIFICATION_TTL_SECONDS * 1000).toISOString(),
+    });
+
+    await confirmVerification(
+      new Request("https://barkoba.test/api/account/verify-email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token: rawToken }),
+      })
+    );
+
+    const mine = ledger.filter((r) => r.player_id === playerId);
+    const anonymousRows = mine.filter((r) => r.grant_key === "anonymous_first_game");
+    const initialRows = mine.filter((r) => r.grant_key === "initial_complimentary");
+    assert.equal(anonymousRows.length, 1, "the earlier anonymous grant row must survive untouched");
+    assert.equal(anonymousRows[0]!.amount, 1);
+    assert.equal(initialRows.length, 1, "a separate, distinctly-keyed row for the verified grant");
+    assert.equal(initialRows[0]!.amount, 5);
+    assert.equal(
+      mine.reduce((n, r) => n + r.amount, 0),
+      5,
+      "1 (anonymous) - 1 (spent) + 5 (verified) = 5"
+    );
+  } finally {
+    delete process.env.ENTITLEMENT_COMPLIMENTARY_GRANT;
+  }
 });
 
 // ---------------------------------------------------------------------------
