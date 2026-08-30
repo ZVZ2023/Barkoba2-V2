@@ -70,6 +70,10 @@ sibling-branch dead end ever arose — that dimension is `N/A`, not a free
 nothing about how it handles ambiguity. See §6 for how `N/A` is treated when
 comparing two transcripts.
 
+D1 (§5.1) is the one exception to the five-level scale: it collapses to
+**Excellent / Needs work / N/A**, one level per possible `GameResult`, so that
+an identical outcome cannot be recorded at two different levels. See §5.1.
+
 **No dimension is weighted against the others, and this document does not
 define a combined numeric score.** The SOW's exit criterion asks for "which
 one performed better, with a stated reason per dimension" — a per-dimension
@@ -97,17 +101,21 @@ merits?
 
 **Signal.** `final_action`, `result`, `adjudicator_verdict`.
 
-**Rubric.**
-- **Excellent / Good — `racer_correct`.** The guess was adjudicated correct.
+**Rubric.** One level per outcome, no overlap — every non-null `GameResult`
+value maps to exactly one of the three below:
+- **Excellent — `racer_correct`.** The guess was adjudicated correct.
   (Whether the *timing* of that guess was efficient or lucky is D8's question,
-  not this one — a correct guess is always full credit here.)
-- **Poor — `racer_incorrect`** (incorrect guess, Integrity upheld) or
-  **`composer_win_integrity_upheld`** (conceded, Integrity upheld). The Racer
-  did not converge on the target within budget.
+  not this one — a correct guess is always Excellent here, regardless of how
+  it was reached.)
+- **Needs work — `racer_incorrect`** (a guess was made and adjudicated wrong —
+  whether volunteered early or forced by `forceFinal` at budget exhaustion,
+  both land here; the schema has no separate "ran out of budget" result) **or
+  `composer_win_integrity_upheld`** (the Racer conceded — gave up — and
+  Integrity Review found no Composer dishonesty). Either way, the Racer did
+  not converge on the target within budget, on the merits.
 - **N/A — `racer_win_integrity_violation`.** The Integrity Review found the
-  Composer answered dishonestly somewhere in the transcript. The Racer did not
-  lose on the merits, but it also did not necessarily win on the merits either
-  — the evidence it was reasoning from was corrupted. **Do not score solve
+  Composer — the target-setter — answered dishonestly somewhere in the
+  transcript: a target-setter error, not a Racer result. **Do not score solve
   outcome on this branch**, and treat the whole transcript's other dimensions
   with the caveat that at least one answer in `integrity_flagged_turns` may be
   false and any dimension that leans on that turn's answer should note the
@@ -115,7 +123,10 @@ merits?
 
 **Notes.** This is a binary-ish read of the result table in
 [lib/resolveResult.ts](../lib/resolveResult.ts), deliberately kept simple. It
-answers "did it work", nothing about how well.
+answers "did it work", nothing about how well. Previously "Excellent / Good"
+both named `racer_correct`, which let the identical transcript be recorded at
+two different levels; that ambiguity is removed by giving `racer_correct`
+exactly one label.
 
 ---
 
