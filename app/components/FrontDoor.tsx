@@ -31,17 +31,11 @@ export default function FrontDoor({ version }: { version?: string }) {
         <div className="mx-auto w-full max-w-5xl">
           {/* HERO */}
           <section className="flex flex-col gap-5 py-8 sm:py-12 lg:max-w-xl">
-            {/* The hero title lives in the background artwork itself
-                (public/art/stage-portrait.jpg etc.) — no live HTML headline
-                here, so it is never rendered twice. */}
-            <p className="text-base leading-relaxed text-neutral-700">
-              {copy.hero.support.map((line) => (
-                <span key={line} className="block">
-                  {line}
-                </span>
-              ))}
-            </p>
-
+            {/* The hero title AND the four play-relationship rows
+                (Ember vs Ember / Ember vs AI / AI vs Ember / AI vs AI) are
+                already painted into the background artwork itself
+                (public/art/stage-portrait.jpg etc.) — no live HTML text for
+                either here, so neither is ever rendered twice. */}
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
               <Link
                 href="/play"
