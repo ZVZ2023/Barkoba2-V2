@@ -12,6 +12,7 @@
     "check:isolation": "node scripts/check-isolation.mjs",
     "verify": "npm run check:isolation && npm run test && npm run typecheck && npm run build",
     "eval:adjudicator": "tsx scripts/evalAdjudicator.ts",
+    "eval:game-intelligence": "tsx scripts/evalGameIntelligence.ts",
     "migrate": "tsx scripts/migrate.ts",
     "migrate:status": "tsx scripts/migrate.ts --status"
   },

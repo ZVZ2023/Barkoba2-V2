@@ -80,6 +80,12 @@ const QUARANTINED = [
   "lib/corpus/gameContests.ts",
   "app/api/game/[id]/contest/route.ts",
   "app/api/contest/[id]/route.ts",
+  // M2 — the Racer Guidance catalog and the deterministic evaluation signals
+  // built on top of it are both read-only corpus modules, exactly like
+  // gameContests.ts above: structurally incapable of reaching the secret,
+  // never importing gameStore or any game logic.
+  "lib/corpus/racerGuidanceCatalog.ts",
+  "lib/corpus/gameIntelligenceSignals.ts",
   // V2.4 — the entitlement gate is a PRE-game concern. It has no business near
   // game state, seat authorization or the secret, and quarantining it is what
   // keeps that true as it grows.
