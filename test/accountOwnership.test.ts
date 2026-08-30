@@ -861,3 +861,100 @@ test("guest play fallback cannot authorize a registered account or purchase", ()
     "ordinary Human Composer play must have no account or recovery prerequisite"
   );
 });
+
+// ---------------------------------------------------------------------------
+// V2.7.0.13 — the visitor/IP hourly rate limit (checkGameCreationRateLimit)
+// is an ANONYMOUS abuse safeguard. Production human-test proof: one
+// anonymous complimentary game plus four of five post-verification credits,
+// all from the same IP, hit the default 5/hour ceiling and refused the
+// player's own fifth, legitimately-held credit with the GUEST-limit message
+// — despite the entitlement gate immediately above already having proven
+// real balance. checkGameCreationRateLimit() itself is untouched (still
+// purely IP-keyed, still 5/hour by default) — what changed is that the
+// route no longer calls it at all for a verified account identity.
+// ---------------------------------------------------------------------------
+
+test("A. an anonymous or unverified identity remains fully subject to the visitor rate limit", () => {
+  const creation = readFileSync("app/api/game/create/route.ts", "utf8");
+
+  // The exemption requires playerContext.kind === "account" as its FIRST
+  // condition — a guest, "none", or a registered-but-session-less identity
+  // can never satisfy it, so the rate-limit block below is reached exactly
+  // as before for every one of them.
+  const exemption = creation.slice(
+    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("if (!isVerifiedAccount)")
+  );
+  assert.match(exemption, /playerContext\.kind === "account"/);
+
+  const guarded = creation.slice(
+    creation.indexOf("if (!isVerifiedAccount)"),
+    creation.indexOf("if (!isVerifiedAccount)") + 400
+  );
+  assert.match(guarded, /checkGameCreationRateLimit\(ip\)/);
+  assert.match(guarded, /rate_limited/);
+});
+
+test("B. a verified account identity with a passed entitlement check is exempt from the visitor rate limit", () => {
+  const creation = readFileSync("app/api/game/create/route.ts", "utf8");
+
+  // Exemption requires BOTH an account-kind identity AND a currently
+  // verified email — an unverified registration stays rate-limited exactly
+  // like a guest, matching the product decision precisely ("registered +
+  // email-verified", not merely "registered").
+  const exemption = creation.slice(
+    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("if (!isVerifiedAccount)")
+  );
+  assert.match(exemption, /playerContext\.kind === "account"/);
+  assert.match(exemption, /email_verified_at != null/);
+  assert.match(exemption, /getPlayerAccount\(playerContext\.playerId\)/);
+
+  // The entire rate-limit check AND its refusal live inside
+  // `if (!isVerifiedAccount)` — a verified account never reaches
+  // checkGameCreationRateLimit() or the "rate_limited" response at all, it
+  // is not merely exempted from failing it.
+  const ifIndex = creation.indexOf("if (!isVerifiedAccount)");
+  const closeIndex = creation.indexOf("\n  }\n\n  let body: CreateGameBody;");
+  assert.ok(ifIndex > 0 && closeIndex > ifIndex, "could not locate the guard block");
+  const beforeGuard = creation.slice(0, ifIndex);
+  const afterGuardClose = creation.slice(closeIndex);
+  assert.doesNotMatch(beforeGuard.slice(beforeGuard.indexOf("const isVerifiedAccount =")), /rate_limited/);
+  assert.doesNotMatch(afterGuardClose, /rate_limited/);
+
+  // This exemption sits strictly AFTER the entitlement pre-check (canStartGame
+  // / entitlementRefusal), so "verified account" alone can never bypass the
+  // rate limit without ALSO having already proven a real, spendable balance.
+  const preCheckIndex = creation.indexOf("const preCheck = await canStartGame");
+  const isVerifiedIndex = creation.indexOf("const isVerifiedAccount =");
+  assert.ok(preCheckIndex > 0 && isVerifiedIndex > preCheckIndex);
+});
+
+test("C. the exemption is re-derived from CURRENT account state, never carried forward from the anonymous phase", () => {
+  const creation = readFileSync("app/api/game/create/route.ts", "utf8");
+
+  // getPlayerAccount() is a live, per-request database read of the CURRENT
+  // row — not a cookie flag, not a value threaded through from the earlier
+  // anonymous game, and not anything checkGameCreationRateLimit()'s own
+  // (still purely IP-keyed, still identity-blind) counter could carry
+  // forward. There is nothing in this file that persists "was previously
+  // anonymous" across the registration/verification transition, so a
+  // verified account's exemption is decided fresh on every single request,
+  // exactly like the entitlement balance it depends on.
+  const exemption = creation.slice(
+    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("if (!isVerifiedAccount)")
+  );
+  assert.match(exemption, /await getPlayerAccount/);
+
+  const rateLimitModule = readFileSync("lib/rateLimit.ts", "utf8");
+  const gameCreationFn = rateLimitModule.slice(
+    rateLimitModule.indexOf("export async function checkGameCreationRateLimit"),
+    rateLimitModule.indexOf("export function extractClientIp")
+  );
+  assert.doesNotMatch(
+    gameCreationFn,
+    /player_?id|account|verified/i,
+    "the visitor limiter itself must stay identity-blind — the route decides who it applies to, not the limiter"
+  );
+});

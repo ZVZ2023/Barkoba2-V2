@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { resolveActingPlayer } from "@/lib/actingPlayer";
+import { getPlayerAccount } from "@/lib/playerAccounts";
 import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
@@ -256,17 +257,45 @@ export async function POST(req: NextRequest) {
   const preRefusal = entitlementRefusal(preCheck);
   if (preRefusal) return preRefusal;
 
-  const ip = extractClientIp(req.headers);
-  const rateLimit = await checkGameCreationRateLimit(ip);
+  // V2.7.0.13 PRODUCTION FIX — the visitor/IP hourly limit is an ANONYMOUS
+  // abuse safeguard and must stay scoped to anonymous play, never to a
+  // verified account spending its own held Play Credits.
+  //
+  // ROOT CAUSE THIS CLOSES: checkGameCreationRateLimit() is keyed purely on
+  // client IP, with no identity awareness at all — it counts every game
+  // creation from that IP within the hour, straight through the
+  // anonymous-guest-to-registered-account transition, since the same device
+  // keeps the same IP across both. A human test proved this concretely: one
+  // anonymous complimentary game plus four of five post-verification credits
+  // spent from the same IP hit the default 5/hour ceiling, and the player's
+  // own fifth, legitimately-held credit was refused with the GUEST-limit
+  // message — despite passing the entitlement gate above, which already
+  // proved they hold real balance.
+  //
+  // The fix is narrow and identity-scoped, not a removal: an account
+  // identity is exempted from this ONE anonymous-abuse check ONLY once its
+  // email is actually verified — an unverified registration is not yet
+  // trusted any more than a guest is, and must remain rate-limited exactly
+  // like one. A true guest (or "none") identity is completely unaffected;
+  // RATE_LIMIT_GAMES_PER_HOUR, RACER_DAILY_CALL_CEILING and every other
+  // capacity safeguard are untouched.
+  const isVerifiedAccount =
+    playerContext.kind === "account" &&
+    (await getPlayerAccount(playerContext.playerId))?.email_verified_at != null;
 
-  if (!rateLimit.allowed) {
-    return NextResponse.json(
-      {
-        error: "rate_limited",
-        message: `Elérted a vendégeknek szóló határt: óránként ${rateLimit.limit} játék. Próbáld újra később.`,
-      },
-      { status: 429 }
-    );
+  if (!isVerifiedAccount) {
+    const ip = extractClientIp(req.headers);
+    const rateLimit = await checkGameCreationRateLimit(ip);
+
+    if (!rateLimit.allowed) {
+      return NextResponse.json(
+        {
+          error: "rate_limited",
+          message: `Elérted a vendégeknek szóló határt: óránként ${rateLimit.limit} játék. Próbáld újra később.`,
+        },
+        { status: 429 }
+      );
+    }
   }
 
   let body: CreateGameBody;
