@@ -428,6 +428,10 @@ budget remaining?
   [lib/prompts/racer.ts](../lib/prompts/racer.ts) names as "premature
   conviction" — guessing "Volga" immediately after confirming a category,
   without ruling out a specific sibling.)
+- **N/A** if `final_action === "concede"` — no guess was ever made, so
+  guess timing does not apply. This differs from Poor, which requires an
+  actual guess that was fired prematurely; a concede is the absence of a
+  guess, not a badly-timed one.
 - **UNSCORABLE** if the turns immediately preceding the final guess (or
   `concede`) are not present in the available record — this dimension
   specifically needs that window, and a record that states only the outcome
