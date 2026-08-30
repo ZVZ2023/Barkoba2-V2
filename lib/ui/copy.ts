@@ -18,8 +18,8 @@ export const copy = {
   },
 
   hero: {
-    headline: ["Gondolj valamire.", "Az AI 20 kérdést kap.", "Egyetlen tippje van."],
-    support: ["Zárd le a gondolatod.", "Figyeld, kérdez, következtet.", "Kitalálja?"],
+    headline: ["Barkóba", "az AI korszakára."],
+    support: ["Ember ↔ Ember", "Ember → AI", "AI → Ember", "AI ↔ AI"],
     primary: "Új játék indítása",
     secondary: "Hogyan működik?",
   },
