@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import {
+  accountSessionHash,
   createAccountSession,
   resolveAccountSession,
   revokeAccountSession,
@@ -702,6 +703,74 @@ test("V2.7.0.15 diagnostic — a presented-but-invalid account session logs, an 
     assert.deepEqual(logged, [], "an ordinary anonymous visitor (no session cookie at all) must log nothing");
   } finally {
     console.error = originalError;
+  }
+});
+
+test("V2.7.0.17 diagnostic — distinguishes NO session row from a row that exists but did not validate", async () => {
+  // Production evidence: a presented, well-formed session token failed to
+  // resolve on EVERY request of an affected browsing session, from the
+  // very first page load onward (confirmed via real production logs, not
+  // inferred) — pointing at something wrong with the stored session itself,
+  // not a transient race. This is the one follow-up read that can actually
+  // say which of "no row at all" vs "row exists but revoked/expired/account
+  // disabled" is true, since lib/actingPlayer.ts's own diagnostic can only
+  // say THAT resolution failed, not why.
+  //
+  // Uses a purpose-built fake (not the shared one above, which pre-filters
+  // accounts.player_sessions reads by validity and so cannot distinguish
+  // "row missing" from "row present but invalid") so the two messages are
+  // proven against their actual trigger condition, not assumed.
+  const token = "R".repeat(43);
+  const hash = await accountSessionHash(token);
+  const otherToken = "S".repeat(43);
+  const otherHash = await accountSessionHash(otherToken);
+
+  function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
+    const query = strings.join(" ");
+    const v = values as unknown[];
+    if (/FROM accounts\.player_sessions s\s+JOIN accounts\.players p/.test(query)) {
+      return Promise.resolve([]); // the primary, filtered lookup always misses here
+    }
+    if (/LEFT JOIN accounts\.players/.test(query)) {
+      const presentedHash = String(v[0]);
+      if (presentedHash === otherHash) {
+        // The "row exists but revoked" case.
+        return Promise.resolve([
+          { revoked_at: new Date().toISOString(), expires_at: new Date(Date.now() + 1000).toISOString(), not_expired: true, account_disabled_at: null },
+        ]);
+      }
+      return Promise.resolve([]); // "no row at all" case
+    }
+    return Promise.resolve([]);
+  }
+  fakeSql.transaction = (q: Promise<Record<string, unknown>[]>[]) => Promise.all(q);
+
+  const originalError = console.error;
+  const logged: string[] = [];
+  console.error = (...args: unknown[]) => {
+    logged.push(args.map(String).join(" "));
+  };
+  try {
+    __setSqlClientForTests(fakeSql);
+
+    logged.length = 0;
+    assert.equal(await resolveAccountSession(token), null);
+    assert.ok(
+      logged.some((line) => line.includes("has NO row in accounts.player_sessions at all")),
+      "a session_hash with no matching row must say so precisely"
+    );
+    assert.ok(logged.every((line) => !line.includes(hash) && !line.includes(token)));
+
+    logged.length = 0;
+    assert.equal(await resolveAccountSession(otherToken), null);
+    assert.ok(
+      logged.some((line) => line.includes("session row exists but did not validate — revoked=true")),
+      "a row that exists but is revoked must be distinguished from a missing row"
+    );
+    assert.ok(logged.every((line) => !line.includes(otherHash) && !line.includes(otherToken)));
+  } finally {
+    console.error = originalError;
+    __setSqlClientForTests(null);
   }
 });
 

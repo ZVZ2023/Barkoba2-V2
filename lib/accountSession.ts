@@ -77,7 +77,43 @@ export async function resolveAccountSession(token: string | null): Promise<strin
      LIMIT 1
   `;
   const playerId = rows[0]?.player_id;
-  return typeof playerId === "string" ? playerId : null;
+  if (typeof playerId === "string") return playerId;
+
+  // V2.7.0.17 TEMPORARY DIAGNOSTIC — lib/actingPlayer.ts already proved a
+  // presented, well-formed session token is consistently failing to
+  // resolve in production, from the very first request of an affected
+  // session onward. This is the one follow-up query needed to say WHICH of
+  // the four AND-ed conditions above is the actual cause — a fact no amount
+  // of re-reading the code above can settle without seeing this row. A
+  // read-only, best-effort lookup by session_hash alone, with NO WHERE
+  // filter — reports only booleans and a raw timestamp, never the token,
+  // the hash itself, or a player_id.
+  try {
+    const raw = await sql`
+      SELECT s.revoked_at, s.expires_at, s.expires_at > now() AS not_expired, p.disabled_at AS account_disabled_at
+        FROM accounts.player_sessions s
+        LEFT JOIN accounts.players p ON p.player_id = s.player_id
+       WHERE s.session_hash = ${hash}
+       LIMIT 1
+    `;
+    if (raw.length === 0) {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[barkoba] resolveAccountSession: presented token's session_hash has NO row in accounts.player_sessions at all"
+      );
+    } else {
+      const row = raw[0];
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] resolveAccountSession: session row exists but did not validate — revoked=${row?.revoked_at != null} not_expired=${row?.not_expired === true} account_disabled=${row?.account_disabled_at != null}`
+      );
+    }
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] resolveAccountSession diagnostic query itself failed:", err);
+  }
+
+  return null;
 }
 
 export async function revokeAccountSession(token: string | null): Promise<void> {
