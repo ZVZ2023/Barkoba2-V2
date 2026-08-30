@@ -27,6 +27,7 @@ import { GET as readProfile } from "../app/api/account/profile/route";
 import { GET as readEntitlement } from "../app/api/player/entitlement/route";
 import { createAccountSession, resolveAccountSession } from "../lib/accountSession";
 import { PLAYER_HEADER } from "../lib/playerIdentity";
+import { siteUrlStatus } from "../lib/env";
 
 // ---------------------------------------------------------------------------
 // V2.6.x — email collection, the verification token lifecycle, and
@@ -415,6 +416,50 @@ test("sendVerificationEmail falls back to VERCEL_PROJECT_PRODUCTION_URL when SIT
   } finally {
     mock.restore();
   }
+});
+
+// ---------------------------------------------------------------------------
+// V2.7.0.18 — siteUrlStatus(), added after production evidence traced a "no
+// account session cookie on barkobak.com" report to exactly this fallback
+// chain: a verification email link built from VERCEL_PROJECT_PRODUCTION_URL
+// (rather than the canonical custom domain) sends the browser to a
+// DIFFERENT HOST to complete verification, and ACCOUNT_SESSION_COOKIE is
+// host-only (no Domain attribute — lib/accountSession.ts), so the session
+// that verification issues is invisible everywhere else. `source` is what
+// makes this diagnosable — pins that each fallback tier is correctly
+// attributed, not just that a URL comes out.
+// ---------------------------------------------------------------------------
+
+test("siteUrlStatus reports which fallback tier produced the URL", () => {
+  process.env.SITE_URL = "https://barkobak.com/";
+  assert.deepEqual(siteUrlStatus(), { url: "https://barkobak.com", source: "explicit" });
+  delete process.env.SITE_URL;
+
+  process.env.VERCEL_PROJECT_PRODUCTION_URL = "barkoba2-v2.vercel.app";
+  assert.deepEqual(siteUrlStatus(), {
+    url: "https://barkoba2-v2.vercel.app",
+    source: "vercel_production_url",
+  });
+  delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+
+  process.env.VERCEL_URL = "barkoba2-v2-abc123-zvz-x.vercel.app";
+  assert.deepEqual(siteUrlStatus(), {
+    url: "https://barkoba2-v2-abc123-zvz-x.vercel.app",
+    source: "vercel_deployment_url",
+  });
+  delete process.env.VERCEL_URL;
+
+  assert.deepEqual(siteUrlStatus(), { url: null, source: "unset" });
+});
+
+test("an explicit SITE_URL always wins over either Vercel fallback, even when both are also set", () => {
+  process.env.SITE_URL = "https://barkobak.com";
+  process.env.VERCEL_PROJECT_PRODUCTION_URL = "barkoba2-v2.vercel.app";
+  process.env.VERCEL_URL = "barkoba2-v2-abc123-zvz-x.vercel.app";
+  assert.deepEqual(siteUrlStatus(), { url: "https://barkobak.com", source: "explicit" });
+  delete process.env.SITE_URL;
+  delete process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  delete process.env.VERCEL_URL;
 });
 
 // ---------------------------------------------------------------------------

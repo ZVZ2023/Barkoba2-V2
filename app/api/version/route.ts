@@ -3,7 +3,7 @@ import { getAppVersion } from "@/lib/appVersion";
 import { corpusConfigStatus } from "@/lib/corpus/db";
 import { entitlementStatus } from "@/lib/entitlements";
 import { isProviderAvailable } from "@/lib/providers";
-import { env } from "@/lib/env";
+import { env, siteUrlStatus } from "@/lib/env";
 
 // Deployment identity as JSON. Reads lib/appVersion.ts — the same source the
 // on-screen badge uses, so the two cannot disagree.
@@ -91,6 +91,19 @@ export async function GET() {
       xai_available: isProviderAvailable("xai"),
       xai_model: env.xaiModelRacer(),
       xai_max_tokens: env.xaiMaxTokensRacer(),
+    },
+    // V2.7.0.18 — WHICH origin outbound emails (verification, recovery) send
+    // players' browsers to, and WHY. `source` matters as much as `url`: a
+    // browser that completes email-link verification on a different host
+    // than the one it's later browsed on never sees the account-session
+    // cookie that verification just issued — ACCOUNT_SESSION_COOKIE is
+    // deliberately host-only (see lib/accountSession.ts), so this is not a
+    // hardening detail, it is the exact mechanism a "session cookie" report
+    // traced back to. SAFE TO SERVE PUBLICLY: a public origin, not a secret
+    // — the same value already leaves the server in every verification email.
+    site: {
+      url: siteUrlStatus().url,
+      source: siteUrlStatus().source,
     },
     // V2.7 — capacity telemetry (daily call usage, budget distribution) is
     // deliberately NOT here. Unlike every block above — which exists so an

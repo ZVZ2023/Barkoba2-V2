@@ -354,13 +354,40 @@ export const env = {
    * override them — e.g. to prefer a custom domain over the raw
    * *.vercel.app one.
    */
-  siteUrl: (): string | null => {
-    const explicit = process.env.SITE_URL;
-    if (explicit) return explicit.replace(/\/+$/, "");
-    const productionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
-    if (productionUrl) return `https://${productionUrl}`;
-    const deploymentUrl = process.env.VERCEL_URL;
-    if (deploymentUrl) return `https://${deploymentUrl}`;
-    return null;
-  },
+  siteUrl: (): string | null => siteUrlStatus().url,
 };
+
+/**
+ * V2.7.0.18 — DIAGNOSTIC COMPANION to siteUrl() above, added after production
+ * evidence traced a "no account session cookie at all on barkobak.com" report
+ * to this exact function: a verification/recovery email link built from
+ * VERCEL_PROJECT_PRODUCTION_URL or VERCEL_URL (rather than the canonical
+ * custom domain) sends the browser to a DIFFERENT HOST to complete
+ * verification, ACCOUNT_SESSION_COOKIE has no explicit Domain (host-only by
+ * design — see lib/accountSession.ts), and neither Vercel fallback is
+ * guaranteed to already equal the custom domain, particularly right after
+ * that domain was attached to the project.
+ *
+ * Reports WHICH source produced the URL, not just the URL itself — "ready"
+ * silently swallowed exactly this class of drift for the corpus/entitlement
+ * blocks before their own reason codes were added (see corpusConfigStatus,
+ * entitlementStatus). SAFE TO SERVE PUBLICLY: a site's own public origin is
+ * not a secret — it is the literal destination players' browsers already go
+ * to, and the same value already appears in outbound emails.
+ */
+export type SiteUrlSource = "explicit" | "vercel_production_url" | "vercel_deployment_url" | "unset";
+
+export interface SiteUrlStatus {
+  url: string | null;
+  source: SiteUrlSource;
+}
+
+export function siteUrlStatus(): SiteUrlStatus {
+  const explicit = process.env.SITE_URL;
+  if (explicit) return { url: explicit.replace(/\/+$/, ""), source: "explicit" };
+  const productionUrl = process.env.VERCEL_PROJECT_PRODUCTION_URL;
+  if (productionUrl) return { url: `https://${productionUrl}`, source: "vercel_production_url" };
+  const deploymentUrl = process.env.VERCEL_URL;
+  if (deploymentUrl) return { url: `https://${deploymentUrl}`, source: "vercel_deployment_url" };
+  return { url: null, source: "unset" };
+}

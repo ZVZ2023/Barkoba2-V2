@@ -695,6 +695,21 @@ test("/api/version exposes the block without pricing or player data", () => {
   assert.doesNotMatch(src, /playCreditCostForBudget|getBalance|getStatus|player_id/);
 });
 
+test("V2.7.0.18 — /api/version exposes WHICH source produced the site URL, not just the URL", () => {
+  // Added after production evidence traced a "no account session cookie on
+  // barkobak.com" report to exactly this: a verification email link built
+  // from a Vercel-fallback host (not the canonical custom domain) sends the
+  // browser somewhere ACCOUNT_SESSION_COOKIE — host-only, no Domain
+  // attribute — is never visible from again. `source` distinguishes
+  // "explicit" from either Vercel fallback so a misconfiguration reads as a
+  // fact, not a guess made from re-deriving the fallback chain by hand.
+  const src = readFileSync("app/api/version/route.ts", "utf8");
+  assert.match(src, /site: \{/);
+  assert.match(src, /url: siteUrlStatus\(\)\.url/);
+  assert.match(src, /source: siteUrlStatus\(\)\.source/);
+  assert.match(src, /import \{ env, siteUrlStatus \} from "@\/lib\/env";/);
+});
+
 test("the gate ships OFF and is a no-op until switched on", async () => {
   process.env.ENTITLEMENTS_ENABLED = "false";
   assert.equal(isEntitlementEnabled(), false);
