@@ -46,6 +46,15 @@ const PERMITTED_SECRET_IMPORTERS = [
   "lib/prompts/composerAnswer.ts", // (reserved) answers against the secret
   "lib/prompts/adjudicator.ts", // (reserved) judges the guess
   "lib/prompts/integrityReview.ts", // (reserved) judges the answers
+  // M1 — TEMPORARY. In-process benchmark orchestration for the D-1 Preview
+  // runner (app/api/internal/benchmark/d1-generic-backpack/route.ts): calls
+  // createSecret/lockSecret at creation and getSecretForAdjudication at
+  // resolution, exactly like the two routes above, because it replicates
+  // their sequence directly rather than issuing HTTP requests to them (see
+  // that route's own comment for why: Vercel Deployment Protection blocks a
+  // deployment's self-HTTP calls to its own routes). Remove this entry when
+  // the M1 D-1 proof-of-concept route is deleted.
+  "scripts/runBenchmarkFixture.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */
