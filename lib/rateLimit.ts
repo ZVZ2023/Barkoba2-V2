@@ -9,14 +9,37 @@ export interface RateLimitResult {
 }
 
 /**
- * Fixed-window limiter: N games per rolling-hour bucket per IP. Bucket key
- * includes the current hour so it self-resets — no cleanup job needed.
+ * Fixed-window limiter: N games per rolling-hour bucket per (IP, device
+ * identity) PAIR. Bucket key includes the current hour so it self-resets —
+ * no cleanup job needed.
+ *
+ * V2.7.0.16 PRODUCTION FIX — was keyed on IP alone. Production proof: two
+ * different phones on the same household Wi-Fi (one shared public IP) hit
+ * the SAME bucket, so one device's play blocked the other's — and switching
+ * the first phone to cellular (a different public IP) immediately unblocked
+ * it, confirming the key was purely IP-scoped. A shared/NAT'd public IP
+ * (home Wi-Fi, mobile carrier CGNAT, an office) is common, not an edge case,
+ * so "one IP, one bucket" was never the right abuse model.
+ *
+ * Folding the caller's device/guest identity into the key is not a weaker
+ * protection, it is the SAME protection this codebase already uses
+ * elsewhere for anonymous abuse resistance: ensureAnonymousComplimentary()'s
+ * own header comment states plainly that "the signed bk_player cookie...
+ * is the entire abuse-resistance" for the anonymous credit pool. A single
+ * device (one signed identity) is still capped at RATE_LIMIT_GAMES_PER_HOUR
+ * per hour, exactly as before — only two DIFFERENT devices sharing one IP no
+ * longer share one bucket. `playerId` is optional and defaults to
+ * "unknown" so an identity-less caller (should not occur at the one
+ * production call site, which always resolves a guest or account id before
+ * reaching this check) still degrades to a real, if coarser, per-IP limit
+ * rather than throwing.
  *
  * Set RATE_LIMIT_DISABLED=true in local/dev environments to bypass entirely.
  * RATE_LIMIT_GAMES_PER_HOUR controls the limit in every other environment.
  */
 export async function checkGameCreationRateLimit(
-  ip: string
+  ip: string,
+  playerId?: string | null
 ): Promise<RateLimitResult> {
   const limit = env.rateLimitGamesPerHour();
 
@@ -25,7 +48,8 @@ export async function checkGameCreationRateLimit(
   }
 
   const hourBucket = new Date().toISOString().slice(0, 13); // YYYY-MM-DDTHH
-  const key = `ratelimit:create:${ip}:${hourBucket}`;
+  const identity = playerId ?? "unknown";
+  const key = `ratelimit:create:${ip}:${identity}:${hourBucket}`;
 
   const count = await getKV().incrWithExpiry(key, 60 * 60);
 

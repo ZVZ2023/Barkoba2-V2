@@ -156,7 +156,12 @@ test("the daily AI spend ceilings are separated — the reason this exists", asy
 test("no key builder was changed — the wrapper is the only change", () => {
   assert.match(readFileSync("lib/gameStore.ts", "utf8"), /return `state:\$\{gameId\}`;/);
   assert.match(readFileSync("lib/secretStore.ts", "utf8"), /return `secret:\$\{gameId\}`;/);
-  assert.match(readFileSync("lib/rateLimit.ts", "utf8"), /`ratelimit:create:\$\{ip\}:\$\{hourBucket\}`/);
+  // V2.7.0.16 — rateLimit.ts's OWN key builder legitimately changed since
+  // this invariant was written (shared-IP contamination fix, an unrelated
+  // reason to this namespace-wrapper work): still the same "ratelimit:
+  // create:" family prefix (checked in FAMILIES above), now folding in
+  // device identity too, not just IP.
+  assert.match(readFileSync("lib/rateLimit.ts", "utf8"), /`ratelimit:create:\$\{ip\}:\$\{identity\}:\$\{hourBucket\}`/);
   assert.match(readFileSync("lib/callBudget.ts", "utf8"), /return `budget:\$\{kind\}calls:\$\{day\}`;/);
 });
 

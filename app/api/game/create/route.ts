@@ -285,7 +285,12 @@ export async function POST(req: NextRequest) {
 
   if (!isVerifiedAccount) {
     const ip = extractClientIp(req.headers);
-    const rateLimit = await checkGameCreationRateLimit(ip);
+    // V2.7.0.16 — keyed on (ip, playerId), not ip alone; see
+    // checkGameCreationRateLimit's own comment for the production evidence.
+    // `playerId` is guaranteed non-null on every path that reaches here: an
+    // unresolved identity (kind "registered"/"none") is refused earlier by
+    // the entitlement pre-check above, never reaching this line.
+    const rateLimit = await checkGameCreationRateLimit(ip, playerId);
 
     if (!rateLimit.allowed) {
       // V2.7.0.14 TEMPORARY DIAGNOSTIC — production human-test proof that a

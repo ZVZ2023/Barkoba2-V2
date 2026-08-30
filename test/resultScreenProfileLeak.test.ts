@@ -159,3 +159,58 @@ test("AccountProfile (email input + photo upload) is reachable from exactly one 
   assert.doesNotMatch(RESULT_PANEL, /AccountProfile/);
   assert.doesNotMatch(RACER_CLIENT, /AccountProfile/);
 });
+
+// ---------------------------------------------------------------------------
+// V2.7.0.16 — a verified account that spends its final Play Credit used to
+// see NOTHING on the result screen: PostGameRegisterCTA only ever had
+// "offer" (register) or "hidden". The result screen has no other purchase
+// entry point, so the newcomer's actual next step — buy more — had no CTA
+// anywhere at the exact moment they discovered they were out.
+// ---------------------------------------------------------------------------
+
+const POST_GAME_CTA = readFileSync("app/components/PostGameRegisterCTA.tsx", "utf8");
+
+test("the result-screen CTA offers PURCHASE, not registration, to a verified account at exhausted play_state", () => {
+  assert.match(POST_GAME_CTA, /fetch\("\/api\/account\/profile"/);
+  assert.match(POST_GAME_CTA, /profile\.email_verified/);
+  assert.match(POST_GAME_CTA, /fetch\("\/api\/player\/entitlement"/);
+  assert.match(POST_GAME_CTA, /entitlement\.play_state === "exhausted" \? "purchase" : "hidden"/);
+  assert.match(POST_GAME_CTA, /state === "purchase"/);
+  assert.match(POST_GAME_CTA, /href="\/purchase"/);
+});
+
+test("the decision is NOT balance-alone — verification is checked before play_state is ever consulted", () => {
+  // resolvePlayState() collapses to "exhausted" for BOTH a verified account
+  // that used all 5 AND an unverified/never-registered guest that used
+  // their one anonymous game (see lib/entitlements.ts — it has no
+  // verification concept). Distinguishing "offer purchase" from "offer
+  // registration" REQUIRES the account's current verification state, read
+  // fresh, ahead of any balance/play_state check.
+  const profileCheck = POST_GAME_CTA.indexOf("profile.email_verified");
+  const entitlementFetch = POST_GAME_CTA.indexOf('fetch("/api/player/entitlement"');
+  assert.ok(profileCheck > 0 && entitlementFetch > profileCheck);
+});
+
+test("an unverified (but already registered) account sees neither CTA", () => {
+  // Cannot purchase (see /api/entitlement/intent's own verified-email gate),
+  // and already has an account, so re-offering registration is also wrong.
+  const unverifiedBranch = POST_GAME_CTA.slice(
+    POST_GAME_CTA.indexOf("if (!profile.email_verified)"),
+    POST_GAME_CTA.indexOf("const entitlementRes")
+  );
+  assert.match(unverifiedBranch, /setState\("hidden"\)/);
+  assert.doesNotMatch(unverifiedBranch, /setState\("offer"\)|setState\("purchase"\)/);
+});
+
+test("a true guest or session-less device is unaffected — still goes through the original register/hidden check", () => {
+  // The 401 branch (not an authenticated account session) is byte-identical
+  // in intent to the pre-2.7.0.16 behavior: reuses GET /api/account/register
+  // and its own registered boolean, never touches /api/player/entitlement.
+  const guestBranch = POST_GAME_CTA.slice(
+    POST_GAME_CTA.indexOf("profileRes.status === 401"),
+    POST_GAME_CTA.indexOf("if (!profileRes.ok)")
+  );
+  assert.match(guestBranch, /fetch\("\/api\/account\/register"\)/);
+  assert.match(guestBranch, /registerData\.registered \? "hidden" : "offer"/);
+  assert.doesNotMatch(guestBranch, /entitlement/);
+});

@@ -890,7 +890,7 @@ test("guest play fallback cannot authorize a registered account or purchase", ()
   assert.match(intent, /context\.kind !== "account"/);
   assert.match(intent, /account_required/);
 
-  const rateLimit = creation.indexOf("checkGameCreationRateLimit(ip)");
+  const rateLimit = creation.indexOf("checkGameCreationRateLimit(ip, playerId)");
   const validator = creation.indexOf("runValidator(target");
   const aiTarget = creation.indexOf("chooseComposerTarget({");
   assert.ok(rateLimit > 0 && validator > rateLimit && aiTarget > rateLimit);
@@ -909,9 +909,10 @@ test("guest play fallback cannot authorize a registered account or purchase", ()
 // all from the same IP, hit the default 5/hour ceiling and refused the
 // player's own fifth, legitimately-held credit with the GUEST-limit message
 // — despite the entitlement gate immediately above already having proven
-// real balance. checkGameCreationRateLimit() itself is untouched (still
-// purely IP-keyed, still 5/hour by default) — what changed is that the
-// route no longer calls it at all for a verified account identity.
+// real balance. What changed here is that the route no longer calls the
+// limiter at all for a verified account identity — see V2.7.0.16 below for
+// the SEPARATE fix to the limiter's own key shape (shared-IP contamination
+// between different anonymous devices), which these tests do not cover.
 // ---------------------------------------------------------------------------
 
 test("A. an anonymous or unverified identity remains fully subject to the visitor rate limit", () => {
@@ -931,7 +932,7 @@ test("A. an anonymous or unverified identity remains fully subject to the visito
     creation.indexOf("if (!isVerifiedAccount)"),
     creation.indexOf('error: "rate_limited"') + 100
   );
-  assert.match(guarded, /checkGameCreationRateLimit\(ip\)/);
+  assert.match(guarded, /checkGameCreationRateLimit\(ip, playerId\)/);
   assert.match(guarded, /rate_limited/);
 });
 
@@ -976,25 +977,32 @@ test("C. the exemption is re-derived from CURRENT account state, never carried f
   // getPlayerAccount() is a live, per-request database read of the CURRENT
   // row — not a cookie flag, not a value threaded through from the earlier
   // anonymous game, and not anything checkGameCreationRateLimit()'s own
-  // (still purely IP-keyed, still identity-blind) counter could carry
-  // forward. There is nothing in this file that persists "was previously
-  // anonymous" across the registration/verification transition, so a
-  // verified account's exemption is decided fresh on every single request,
-  // exactly like the entitlement balance it depends on.
+  // counter could carry forward. There is nothing in this file that
+  // persists "was previously anonymous" across the registration/
+  // verification transition, so a verified account's exemption is decided
+  // fresh on every single request, exactly like the entitlement balance it
+  // depends on.
   const exemption = creation.slice(
     creation.indexOf("const accountForExemption ="),
     creation.indexOf("if (!isVerifiedAccount)")
   );
   assert.match(exemption, /await getPlayerAccount/);
 
+  // V2.7.0.16 — the limiter itself now takes a device/guest identity (the
+  // shared-IP fix), but it must stay VERIFICATION-blind: it folds a bare
+  // playerId into its key and nothing more. Whether that id belongs to a
+  // verified account is a decision the ROUTE makes (isVerifiedAccount,
+  // asserted above) entirely BEFORE ever calling the limiter — the limiter
+  // itself has no account/verified concept at all.
   const rateLimitModule = readFileSync("lib/rateLimit.ts", "utf8");
   const gameCreationFn = rateLimitModule.slice(
     rateLimitModule.indexOf("export async function checkGameCreationRateLimit"),
     rateLimitModule.indexOf("export function extractClientIp")
   );
+  assert.match(gameCreationFn, /playerId/, "the limiter must accept a device identity (the shared-IP fix)");
   assert.doesNotMatch(
     gameCreationFn,
-    /player_?id|account|verified/i,
-    "the visitor limiter itself must stay identity-blind — the route decides who it applies to, not the limiter"
+    /account|verified/i,
+    "the visitor limiter itself must stay VERIFICATION-blind — the route decides who it applies to, not the limiter"
   );
 });
