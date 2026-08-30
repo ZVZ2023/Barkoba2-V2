@@ -882,14 +882,14 @@ test("A. an anonymous or unverified identity remains fully subject to the visito
   // can never satisfy it, so the rate-limit block below is reached exactly
   // as before for every one of them.
   const exemption = creation.slice(
-    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("const accountForExemption ="),
     creation.indexOf("if (!isVerifiedAccount)")
   );
   assert.match(exemption, /playerContext\.kind === "account"/);
 
   const guarded = creation.slice(
     creation.indexOf("if (!isVerifiedAccount)"),
-    creation.indexOf("if (!isVerifiedAccount)") + 400
+    creation.indexOf('error: "rate_limited"') + 100
   );
   assert.match(guarded, /checkGameCreationRateLimit\(ip\)/);
   assert.match(guarded, /rate_limited/);
@@ -903,7 +903,7 @@ test("B. a verified account identity with a passed entitlement check is exempt f
   // like a guest, matching the product decision precisely ("registered +
   // email-verified", not merely "registered").
   const exemption = creation.slice(
-    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("const accountForExemption ="),
     creation.indexOf("if (!isVerifiedAccount)")
   );
   assert.match(exemption, /playerContext\.kind === "account"/);
@@ -919,14 +919,14 @@ test("B. a verified account identity with a passed entitlement check is exempt f
   assert.ok(ifIndex > 0 && closeIndex > ifIndex, "could not locate the guard block");
   const beforeGuard = creation.slice(0, ifIndex);
   const afterGuardClose = creation.slice(closeIndex);
-  assert.doesNotMatch(beforeGuard.slice(beforeGuard.indexOf("const isVerifiedAccount =")), /rate_limited/);
+  assert.doesNotMatch(beforeGuard.slice(beforeGuard.indexOf("const accountForExemption =")), /rate_limited/);
   assert.doesNotMatch(afterGuardClose, /rate_limited/);
 
   // This exemption sits strictly AFTER the entitlement pre-check (canStartGame
   // / entitlementRefusal), so "verified account" alone can never bypass the
   // rate limit without ALSO having already proven a real, spendable balance.
   const preCheckIndex = creation.indexOf("const preCheck = await canStartGame");
-  const isVerifiedIndex = creation.indexOf("const isVerifiedAccount =");
+  const isVerifiedIndex = creation.indexOf("const accountForExemption =");
   assert.ok(preCheckIndex > 0 && isVerifiedIndex > preCheckIndex);
 });
 
@@ -942,7 +942,7 @@ test("C. the exemption is re-derived from CURRENT account state, never carried f
   // verified account's exemption is decided fresh on every single request,
   // exactly like the entitlement balance it depends on.
   const exemption = creation.slice(
-    creation.indexOf("const isVerifiedAccount ="),
+    creation.indexOf("const accountForExemption ="),
     creation.indexOf("if (!isVerifiedAccount)")
   );
   assert.match(exemption, /await getPlayerAccount/);
