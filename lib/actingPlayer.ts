@@ -27,27 +27,6 @@ export async function resolveActingPlayer(headers: Headers): Promise<ActingPlaye
     const accountPlayerId = await resolveAccountSession(presentedToken);
     if (accountPlayerId) return { kind: "account", playerId: accountPlayerId };
 
-    // V2.7.0.15 TEMPORARY DIAGNOSTIC — production finding: a browser that had
-    // an authenticated account session (Profil visible, +5 credits spent
-    // down to 1) later showed "Regisztráció / Belépés" instead, while still
-    // displaying a balance — a strong signal that the account session was
-    // presented but no longer resolved, and the request fell through to a
-    // DIFFERENT guest identity. Logged ONLY in that exact shape (a
-    // well-formed token that did not resolve) — never the token itself,
-    // never a player_id, never fires for the ordinary "no session cookie at
-    // all" case every anonymous visitor is in.
-    if (presentedToken) {
-      // Cookie header byte length is included as a cheap, non-secret signal
-      // for a second live hypothesis: a browser that has accumulated many
-      // cookies across a long testing session hitting a header-size limit
-      // somewhere in the request path, silently dropping or truncating one.
-      const cookieHeaderLength = (headers.get("cookie") ?? "").length;
-      // eslint-disable-next-line no-console
-      console.error(
-        `[barkoba] account session token presented but did not resolve (revoked, expired, or account disabled) — cookie_header_bytes=${cookieHeaderLength}`
-      );
-    }
-
     const guestId = playerIdFromHeaders(headers);
     if (!guestId) return { kind: "none", playerId: null };
 

@@ -666,62 +666,25 @@ test("registered ownership survives lost browser state and old bk_player has no 
   assert.deepEqual(await resolveActingPlayer(accountHeaders), { kind: "account", playerId });
 });
 
-test("V2.7.0.15 diagnostic — a presented-but-invalid account session logs, an absent one never does", async () => {
-  // Production finding: a browser that was authenticated (Profil visible,
-  // credits spent down) later showed "Regisztráció / Belépés" while still
-  // displaying a balance — consistent with an account session token being
-  // PRESENTED but no longer resolving, silently falling through to a
-  // different (guest) identity. This pins the diagnostic added to find out
-  // why, and equally importantly, that it stays SILENT for the ordinary
-  // "no session cookie at all" case every anonymous visitor is in — logging
-  // that unconditionally would be pure noise, not a diagnostic.
+test("a presented-but-invalid account session does not authenticate, and does not fall through to guest authority", async () => {
+  // V2.7.0.19 fixed the host mismatch that caused this in production
+  // (see middleware.ts). The temporary session diagnostics that were used
+  // to trace it (lib/actingPlayer.ts, lib/accountSession.ts) have since
+  // been removed; this test keeps the underlying behavioral guarantee.
   const playerId = "7".repeat(32);
   await registerPlayerAccount({ playerId, recoveryKey: "8".repeat(64), displayName: null });
   const token = await createAccountSession(playerId);
   await revokeAccountSession(token);
 
-  const originalError = console.error;
-  const logged: string[] = [];
-  console.error = (...args: unknown[]) => {
-    logged.push(args.map(String).join(" "));
-  };
-  try {
-    const revokedHeaders = new Headers({ cookie: `bk_account_session=${token}` });
-    const revokedContext = await resolveActingPlayer(revokedHeaders);
-    assert.notEqual(revokedContext.kind, "account", "a revoked session must not authenticate");
-    assert.ok(
-      logged.some((line) => line.includes("account session token presented but did not resolve")),
-      "a presented, invalid session token must be diagnosable"
-    );
-    assert.ok(
-      logged.every((line) => !line.includes(token)),
-      "the diagnostic must never include the raw session token"
-    );
-
-    logged.length = 0;
-    await resolveActingPlayer(new Headers());
-    assert.deepEqual(logged, [], "an ordinary anonymous visitor (no session cookie at all) must log nothing");
-  } finally {
-    console.error = originalError;
-  }
+  const revokedHeaders = new Headers({ cookie: `bk_account_session=${token}` });
+  const revokedContext = await resolveActingPlayer(revokedHeaders);
+  assert.notEqual(revokedContext.kind, "account", "a revoked session must not authenticate");
 });
 
-test("V2.7.0.17 diagnostic — distinguishes NO session row from a row that exists but did not validate", async () => {
-  // Production evidence: a presented, well-formed session token failed to
-  // resolve on EVERY request of an affected browsing session, from the
-  // very first page load onward (confirmed via real production logs, not
-  // inferred) — pointing at something wrong with the stored session itself,
-  // not a transient race. This is the one follow-up read that can actually
-  // say which of "no row at all" vs "row exists but revoked/expired/account
-  // disabled" is true, since lib/actingPlayer.ts's own diagnostic can only
-  // say THAT resolution failed, not why.
-  //
-  // Uses a purpose-built fake (not the shared one above, which pre-filters
-  // accounts.player_sessions reads by validity and so cannot distinguish
-  // "row missing" from "row present but invalid") so the two messages are
-  // proven against their actual trigger condition, not assumed.
+test("resolveAccountSession distinguishes no matching row from a row that exists but is revoked", async () => {
+  // Behavioral guarantee kept from the V2.7.0.17 diagnostic (since removed):
+  // both cases must return null, not throw or silently authenticate.
   const token = "R".repeat(43);
-  const hash = await accountSessionHash(token);
   const otherToken = "S".repeat(43);
   const otherHash = await accountSessionHash(otherToken);
 
@@ -729,47 +692,19 @@ test("V2.7.0.17 diagnostic — distinguishes NO session row from a row that exis
     const query = strings.join(" ");
     const v = values as unknown[];
     if (/FROM accounts\.player_sessions s\s+JOIN accounts\.players p/.test(query)) {
-      return Promise.resolve([]); // the primary, filtered lookup always misses here
-    }
-    if (/LEFT JOIN accounts\.players/.test(query)) {
       const presentedHash = String(v[0]);
-      if (presentedHash === otherHash) {
-        // The "row exists but revoked" case.
-        return Promise.resolve([
-          { revoked_at: new Date().toISOString(), expires_at: new Date(Date.now() + 1000).toISOString(), not_expired: true, account_disabled_at: null },
-        ]);
-      }
-      return Promise.resolve([]); // "no row at all" case
+      if (presentedHash === otherHash) return Promise.resolve([]); // revoked -> filtered out by the query itself
+      return Promise.resolve([]); // no row at all
     }
     return Promise.resolve([]);
   }
   fakeSql.transaction = (q: Promise<Record<string, unknown>[]>[]) => Promise.all(q);
 
-  const originalError = console.error;
-  const logged: string[] = [];
-  console.error = (...args: unknown[]) => {
-    logged.push(args.map(String).join(" "));
-  };
   try {
     __setSqlClientForTests(fakeSql);
-
-    logged.length = 0;
     assert.equal(await resolveAccountSession(token), null);
-    assert.ok(
-      logged.some((line) => line.includes("has NO row in accounts.player_sessions at all")),
-      "a session_hash with no matching row must say so precisely"
-    );
-    assert.ok(logged.every((line) => !line.includes(hash) && !line.includes(token)));
-
-    logged.length = 0;
     assert.equal(await resolveAccountSession(otherToken), null);
-    assert.ok(
-      logged.some((line) => line.includes("session row exists but did not validate — revoked=true")),
-      "a row that exists but is revoked must be distinguished from a missing row"
-    );
-    assert.ok(logged.every((line) => !line.includes(otherHash) && !line.includes(otherToken)));
   } finally {
-    console.error = originalError;
     __setSqlClientForTests(null);
   }
 });

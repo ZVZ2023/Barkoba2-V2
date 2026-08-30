@@ -63,7 +63,23 @@ function canonicalHostRedirect(req: NextRequest): NextResponse | null {
   const canonicalHost = new URL(canonical).hostname;
   if (canonicalHost === req.nextUrl.hostname) return null;
 
-  const target = new URL(req.nextUrl.pathname + req.nextUrl.search, canonical);
+  // SECURITY — must never do `new URL(pathname + search, canonical)`. A
+  // pathname beginning with `//` (or a backslash, which URL parsers
+  // normalize to `//`) is a PROTOCOL-RELATIVE reference: passed as the
+  // first argument to `new URL()`, it is treated as its own authority and
+  // silently overrides `canonical`'s host entirely — e.g. a request path of
+  // `//evil.com/x` would resolve to `https://evil.com/x`, turning this
+  // trusted-looking Vercel/Barkóba hostname into an open redirect to
+  // anywhere. Confirmed empirically before and after this fix, not assumed.
+  //
+  // Setting `.pathname`/`.search` as PROPERTIES on an already-constructed
+  // URL is safe: it can only ever change the path/query of the object it
+  // is set on, never its origin, however the string is crafted — so an
+  // attacker-controlled path segment can only ever land inside
+  // barkobak.com's own path, never redirect off of it.
+  const target = new URL(canonical);
+  target.pathname = req.nextUrl.pathname;
+  target.search = req.nextUrl.search;
   return NextResponse.redirect(target);
 }
 

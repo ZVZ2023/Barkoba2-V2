@@ -61,6 +61,28 @@ test("a request for /purchase on the legacy host redirects too", async () => {
   assert.equal(res?.headers.get("location"), "https://barkobak.com/purchase");
 });
 
+test("SECURITY — a protocol-relative path (//evil.com/...) cannot hijack the redirect to an external host", async () => {
+  // Found during pre-release security review: `new URL(pathname + search,
+  // canonical)` treats a pathname beginning with `//` (or a backslash,
+  // which URL parsers normalize to `//`) as its OWN authority, silently
+  // overriding `canonical`'s host — turning this trusted-looking
+  // Vercel/Barkóba hostname into an open redirect to anywhere an attacker
+  // names. Confirmed exploitable before this fix (empirically, not by
+  // inspection alone); this pins that it no longer is.
+  for (const raw of [
+    "https://barkoba2-v2.vercel.app//evil.example.com/phish?y=1",
+    "https://barkoba2-v2.vercel.app/\\evil.example.com/phish",
+  ]) {
+    const req = new NextRequest(raw);
+    const res = await middleware(req);
+    const location = res?.headers.get("location");
+    assert.ok(location, `expected a redirect for ${raw}`);
+    // The attacker-chosen host must land as an inert path fragment on
+    // barkobak.com — never as the resolved redirect's actual host.
+    assert.equal(new URL(location!).hostname, "barkobak.com", `must never redirect off-host for ${raw}`);
+  }
+});
+
 test("the -zvz-x and -git-main-zvz-x stable aliases redirect identically", async () => {
   for (const host of ["barkoba2-v2-zvz-x.vercel.app", "barkoba2-v2-git-main-zvz-x.vercel.app"]) {
     const req = new NextRequest(`https://${host}/`);

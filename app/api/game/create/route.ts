@@ -293,15 +293,6 @@ export async function POST(req: NextRequest) {
     const rateLimit = await checkGameCreationRateLimit(ip, playerId);
 
     if (!rateLimit.allowed) {
-      // V2.7.0.14 TEMPORARY DIAGNOSTIC — production human-test proof that a
-      // real verified account with a real credit still hit this exact
-      // branch after 2.7.0.13 shipped, on the confirmed-live deployment
-      // (matched by commit SHA via /api/version). Non-secret: reports which
-      // branch of the exemption failed, never a player_id or email.
-      // eslint-disable-next-line no-console
-      console.error(
-        `[barkoba] game-create rate_limited despite exemption check: playerContext.kind=${playerContext.kind} accountFound=${accountForExemption !== null} emailVerified=${accountForExemption?.email_verified_at != null}`
-      );
       return NextResponse.json(
         {
           error: "rate_limited",
