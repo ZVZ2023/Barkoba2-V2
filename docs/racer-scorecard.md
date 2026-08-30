@@ -61,7 +61,7 @@ what the Racer is expected to know mid-game.
 
 Each dimension is scored independently, on:
 
-**Poor / Fair / Good / Excellent / N/A**
+**Poor / Fair / Good / Excellent / N/A / UNSCORABLE**
 
 `N/A` is a real outcome, not a default. If a game never produced an occasion
 for a dimension to matter — no `AMBIGUOUS` answer ever occurred, no
@@ -70,9 +70,26 @@ sibling-branch dead end ever arose — that dimension is `N/A`, not a free
 nothing about how it handles ambiguity. See §6 for how `N/A` is treated when
 comparing two transcripts.
 
+`UNSCORABLE` is a different thing and must never be merged with `N/A`. `N/A`
+asserts a fact about the *game*: this situation did not arise, and that
+absence is itself informative. `UNSCORABLE` asserts a fact about the
+*record in front of the scorer*: the situation may or may not have arisen,
+but the evidence needed to tell is not available — a narrative excerpt, a
+partial `qa_log`, a summary of only some turns. Scoring a dimension `N/A`
+when the truth is really `UNSCORABLE` silently reports "handled cleanly" on a
+transcript that was simply never checked, which is the opposite of what
+happened. Default to `UNSCORABLE` whenever the record could plausibly be
+incomplete; reserve `N/A` for a verdict reached against a complete, trusted
+`qa_log`. (This gap was found, not designed in from the start: the M0 dry
+run in this session scored two real transcripts and had to invent this
+distinction ad hoc on several dimensions because only fragments of each
+game's `qa_log` exist in this repository.)
+
 D1 (§5.1) is the one exception to the five-level scale: it collapses to
-**Excellent / Needs work / N/A**, one level per possible `GameResult`, so that
-an identical outcome cannot be recorded at two different levels. See §5.1.
+**Excellent / Needs work / N/A**, one level per possible `GameResult`, and
+does not use `UNSCORABLE` — its inputs (`final_action`, `result`,
+`adjudicator_verdict`) are always present, in full, on a resolved
+`GameRecord`, so there is no partial-evidence case for it to cover. See §5.1.
 
 **No dimension is weighted against the others, and this document does not
 define a combined numeric score.** The SOW's exit criterion asks for "which
@@ -164,6 +181,9 @@ cuts."
   early turns, or repeated sibling enumeration rather than partitioning
   (`"is it X?" / "is it Y?" / "is it Z?"` instead of a question that splits X,
   Y, Z, and others at once).
+- **UNSCORABLE** if the available record is not the full sequence of question
+  turns — a partial excerpt can support a read on the turns it shows, but not
+  a verdict on the whole-game arc this dimension asks about.
 
 **Notes.** Normalize against `max_questions`, not an absolute count — a
 20-question game and a 100-question game are not compared on raw turns used.
@@ -194,6 +214,9 @@ direct evidence of what the Racer believed KNOWN to be at that point.
   final guess.
 - **Poor.** The final guess, or a pivotal late-game question building directly
   toward it, is incompatible with an established earlier answer.
+- **UNSCORABLE** if the available record is not the full prior transcript —
+  a partial excerpt can rule out inconsistency within itself, but cannot rule
+  out inconsistency against turns it doesn't contain.
 
 **Notes.** This is distinct from D5. D3 asks "does the Racer only build on
 what's true so far" (a *positive*, ongoing consistency check across the whole
@@ -227,8 +250,12 @@ breed B, then breed C one at a time, after "is it a dog breed" was already a
   was tight), or two low-impact ones.
 - **Poor.** Three or more, or a pattern of sibling-by-sibling enumeration
   inside a settled branch instead of a single dividing question.
-- **N/A** only if the game is too short (e.g. ended in 2–3 turns) to have had
-  a real opportunity for redundancy to arise.
+- **N/A** only if the full `qa_log` was checked and the game is genuinely too
+  short (e.g. ended in 2–3 turns) to have had a real opportunity for
+  redundancy to arise.
+- **UNSCORABLE** if only a partial record is available — a short *excerpt* of
+  a longer game can look too short for redundancy to arise while turns
+  outside the excerpt are simply unseen. Do not call that `N/A`.
 
 **Notes.** A question flagged by the Guess Detector (`guess_detector_flagged`)
 and resolved as `continue_questioning` is not automatically redundant — check
@@ -263,8 +290,12 @@ premise.
   guess does not rest on the falsified premise anyway.
 - **Poor.** A hypothesis that was directly contradicted by an answer survives,
   unaddressed, into the final guess.
-- **N/A** if no answer in the transcript plausibly falsified anything the
-  Racer had been building toward — i.e. the game never presented this test.
+- **N/A** if the full transcript was checked and no answer in it plausibly
+  falsified anything the Racer had been building toward — i.e. the game
+  never presented this test.
+- **UNSCORABLE** if only a partial record is available — the absence of a
+  visible falsifying answer in what's shown does not establish that none
+  occurred elsewhere in the game.
 
 **Notes.** Do not double-penalize here for AMBIGUOUS handling — that has its
 own dimension (D7). A `NO` that contradicts a live hypothesis is this
@@ -309,10 +340,16 @@ referent as the locked target").
   needlessly narrow single sibling declared as the guess when any member of a
   `generic_type` family would have counted.
 
-**Notes.** This dimension is always scorable — every resolved game has a
-`revealed_granularity` — but is only meaningfully differentiating when the
-target's granularity was ever actually in tension with a question the Racer
-asked. Note explicitly when a transcript simply never approached this edge.
+**Notes.** The final-guess-vs-granularity half of this check is always
+scorable — every resolved game has a `revealed_granularity` and a
+`final_guess_text`. The questioning-ladder half (whether earlier questions
+respected the granularity throughout, not just the final guess) needs the
+full transcript; score that half **UNSCORABLE** when only a partial record
+is available, even where the final-guess half can still be scored on its
+own. Where the full transcript is available and the target's granularity
+was never actually in tension with a question the Racer asked, note
+explicitly that the dimension simply never approached this edge, rather than
+crediting it as Excellent by default.
 
 ---
 
@@ -342,7 +379,11 @@ reading, even though the final guess turned out to depend on it (also bad)?
 - **Poor.** A paraphrase repeat occurs on a dimension that mattered, or an
   `AMBIGUOUS` axis is left permanently unresolved despite the final guess
   depending on which reading was true.
-- **N/A** if the transcript contains no `AMBIGUOUS` answers.
+- **N/A** if the full transcript was checked and genuinely contains no
+  `AMBIGUOUS` answers.
+- **UNSCORABLE** if only a partial record is available — the absence of a
+  documented `AMBIGUOUS` answer in what's shown does not establish that none
+  occurred elsewhere in the game.
 
 **Notes.** `ambiguous_consumed_credit` marks an `AMBIGUOUS` that burned a real
 question (past the free cap). A mishandled `AMBIGUOUS` that also cost a
@@ -387,6 +428,10 @@ budget remaining?
   [lib/prompts/racer.ts](../lib/prompts/racer.ts) names as "premature
   conviction" — guessing "Volga" immediately after confirming a category,
   without ruling out a specific sibling.)
+- **UNSCORABLE** if the turns immediately preceding the final guess (or
+  `concede`) are not present in the available record — this dimension
+  specifically needs that window, and a record that states only the outcome
+  cannot support a level here.
 
 **Notes.** A guess flagged by the Guess Detector
 (`guess_detector_flagged: true`) that resolves `confirm_guess` should be
@@ -419,8 +464,11 @@ member). Check the question immediately after that run.
 - **Poor.** The Racer continues enumerating same-level siblings past the point
   the guidance itself flags (two or three consecutive NOs), never reopening
   the parent frame.
-- **N/A** if the transcript never produced a run of two or more consecutive
-  NOs on the same narrow branch.
+- **N/A** if the full transcript was checked and it genuinely never produced
+  a run of two or more consecutive NOs on the same narrow branch.
+- **UNSCORABLE** if only a partial record is available — the absence of a
+  visible bad-branch run in what's shown does not establish that none
+  occurred elsewhere in the game.
 
 **Notes.** Multiple bad-branch episodes can occur in one game; score the
 dimension on the pattern across all of them, citing each, not just the first.
