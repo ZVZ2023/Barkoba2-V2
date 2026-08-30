@@ -665,6 +665,46 @@ test("registered ownership survives lost browser state and old bk_player has no 
   assert.deepEqual(await resolveActingPlayer(accountHeaders), { kind: "account", playerId });
 });
 
+test("V2.7.0.15 diagnostic — a presented-but-invalid account session logs, an absent one never does", async () => {
+  // Production finding: a browser that was authenticated (Profil visible,
+  // credits spent down) later showed "Regisztráció / Belépés" while still
+  // displaying a balance — consistent with an account session token being
+  // PRESENTED but no longer resolving, silently falling through to a
+  // different (guest) identity. This pins the diagnostic added to find out
+  // why, and equally importantly, that it stays SILENT for the ordinary
+  // "no session cookie at all" case every anonymous visitor is in — logging
+  // that unconditionally would be pure noise, not a diagnostic.
+  const playerId = "7".repeat(32);
+  await registerPlayerAccount({ playerId, recoveryKey: "8".repeat(64), displayName: null });
+  const token = await createAccountSession(playerId);
+  await revokeAccountSession(token);
+
+  const originalError = console.error;
+  const logged: string[] = [];
+  console.error = (...args: unknown[]) => {
+    logged.push(args.map(String).join(" "));
+  };
+  try {
+    const revokedHeaders = new Headers({ cookie: `bk_account_session=${token}` });
+    const revokedContext = await resolveActingPlayer(revokedHeaders);
+    assert.notEqual(revokedContext.kind, "account", "a revoked session must not authenticate");
+    assert.ok(
+      logged.some((line) => line.includes("account session token presented but did not resolve")),
+      "a presented, invalid session token must be diagnosable"
+    );
+    assert.ok(
+      logged.every((line) => !line.includes(token)),
+      "the diagnostic must never include the raw session token"
+    );
+
+    logged.length = 0;
+    await resolveActingPlayer(new Headers());
+    assert.deepEqual(logged, [], "an ordinary anonymous visitor (no session cookie at all) must log nothing");
+  } finally {
+    console.error = originalError;
+  }
+});
+
 test("legacy protected players migrate idempotently without changing player_id", async () => {
   const record: DurablePlayer = {
     player_id: "1".repeat(32),
