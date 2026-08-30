@@ -637,6 +637,29 @@ test("the retry fix did not open the endpoint to a browser", async () => {
   assert.deepEqual(wrongSecret.body, noSecret.body);
 });
 
+test("V2.7.0.12 — a trailing newline/space in the configured secret does not break a correctly-trimmed presented token", async () => {
+  // Production incident: ENTITLEMENT_GRANT_SECRET was rotated to a fresh,
+  // identical value on both Barkóba and the DICS adapter, redeployed, and
+  // every grant call still 401'd. Root cause: the adapter's own env reader
+  // already trims every secret it sends as a Bearer token (matching this
+  // route's own `presented = header.slice(7).trim()`), but Barkóba's env
+  // reader (lib/env.ts's entitlementGrantSecret()) did not trim its side —
+  // a Vercel dashboard paste carrying a trailing newline made
+  // constantTimeEqual()'s length check fail on every call, permanently,
+  // regardless of how many times the SAME secret was re-pasted the same way.
+  const player = await claimedPlayer("q".repeat(32));
+  const ref = await createPurchaseRef(player);
+
+  process.env.ENTITLEMENT_GRANT_SECRET = `${SECRET}\n`;
+  const outcome = await callGrant(
+    { purchase_ref: ref, external_order_id: "order_whitespace", package_id: "dics_scoop", quantity: 1 },
+    { authorization: `Bearer ${SECRET}`, "content-type": "application/json" }
+  );
+
+  assert.equal(outcome.status, 200, "a trailing newline on the CONFIGURED side must not defeat a clean presented token");
+  assert.equal(outcome.body.granted, true);
+});
+
 test("the reference carries no money or price and exposes no player id", () => {
   // The file explains at length WHY it holds no money and what the ledger does
   // instead, so a bare substring search finds the rationale and reports it as

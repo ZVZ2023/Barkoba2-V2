@@ -128,7 +128,20 @@ export async function POST(req: NextRequest) {
 
   const header = req.headers.get("authorization") ?? "";
   const presented = header.startsWith("Bearer ") ? header.slice(7).trim() : "";
-  if (!presented || !constantTimeEqual(presented, configured)) return unauthorized();
+  if (!presented || !constantTimeEqual(presented, configured)) {
+    // V2.7.0.12 — TEMPORARY, non-secret diagnostic for the live 401 this is
+    // shipped alongside a fix for (see lib/env.ts's entitlementGrantSecret()
+    // trim comment). Server-side log only — the response body stays exactly
+    // { error: "unauthorized" }, unchanged, per this function's own
+    // "deliberately uninformative" contract above. Lengths and a boolean
+    // reveal nothing about either secret's content; remove once the live
+    // caller (the DICS adapter) authenticates successfully again.
+    // eslint-disable-next-line no-console
+    console.error(
+      `[barkoba] /api/entitlement/grant unauthorized: header_present=${header.length > 0} presented_len=${presented.length} configured_len=${configured.length} lengths_match=${presented.length === configured.length}`
+    );
+    return unauthorized();
+  }
 
   let body: GrantBody;
   try {

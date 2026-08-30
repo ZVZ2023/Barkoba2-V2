@@ -219,8 +219,19 @@ export const env = {
    * Null means the endpoint is out of service and rejects everything. It must
    * never fall open: an unconfigured grant endpoint that accepted anything
    * would be worse than one that did not exist.
+   *
+   * V2.7.0.12 PRODUCTION FIX — TRIMMED, deliberately, matching the adapter's
+   * own `required()` helper (DICS-Barkoba-Adapter/api/webhook.ts), which
+   * already trims every env var it reads including this same secret before
+   * sending it as the presented Bearer token. This side previously did not:
+   * a Vercel dashboard paste of a freshly rotated secret carrying a trailing
+   * newline or space would silently and permanently 401 every grant call,
+   * because the route's constantTimeEqual() rejects on length mismatch
+   * before ever comparing content — indistinguishable from a genuinely wrong
+   * secret, and NOT fixed by rotating to a new value pasted the same way.
+   * An all-whitespace value still correctly falls through to null below.
    */
-  entitlementGrantSecret: () => process.env.ENTITLEMENT_GRANT_SECRET || null,
+  entitlementGrantSecret: () => process.env.ENTITLEMENT_GRANT_SECRET?.trim() || null,
 
   // --- V2.5: Game Intelligence benchmark ingress ---------------------------
 
