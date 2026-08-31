@@ -1,229 +1,213 @@
-# M4 — Evaluation & Execution Status
+# M4 — Evaluation & Final Verdict
 
-**Status: BLOCKED on live model execution.** Everything reachable without a
-real Anthropic API call and a real Vercel Preview deployment is done:
-pre-registration ([docs/m4-experiment-spec.md](m4-experiment-spec.md)),
-`racer/4.1.0` implementation, the held-out fixture, and the full local test
-suite are green. No PASS/REVISE/REJECT verdict is rendered below — rendering
-one without the evidence the pre-registered criteria require would be
-exactly the "mislabelled evidence is worse than missing evidence" failure
-this codebase's own conventions exist to prevent (see
-[lib/prompts/racer.ts](../lib/prompts/racer.ts)'s `assertGuidanceApplied`
-comment). See §1 for the precise blocker and the one action that clears it.
+**Status: COMPLETE.** All six pre-registered games ran, all six transcripts
+are preserved in `docs/m4-evidence/`, and a verdict is rendered strictly
+against the criteria frozen in `docs/m4-experiment-spec.md` §9, before this
+document existed in this form and without amendment to those criteria.
+
+**Execution environment:** Vercel Preview deployments of this repository
+(`barkoba2-v2`, team `zvz-x`), reached via this session's Vercel connector
+after access was restored. Two branches were deployed:
+`claude/m4-ai-play-intelligence-1394d4` (the M4 branch, `racer/4.1.0`) and
+`m4-heldout-control-baseline` (a throwaway branch forked from the M3
+baseline commit `2ca5f1b`, `racer/4.0.0`, with only the held-out fixture's
+files cherry-picked on — created solely to obtain fresh `racer/4.0.0`
+control evidence for the held-out target, per §2's run-ordering note; not
+part of the M4 branch's own history). Both are Preview deployments only;
+neither touched `main` or production.
 
 ---
 
 ## 0. Evidence index
 
-Every run this milestone touches, real or pending, in one table. No row is
-ever filled with fabricated data — "not yet run" is a status, not something
-worked around with placeholder content.
+| Fixture | Guidance | Transcript | Model | Questions | Result |
+|---|---|---|---|---|---|
+| D-1 (generic backpack) | `racer/4.0.0` (control) | [control-rg-4.0.0/d1-generic-backpack.transcript.json](m4-evidence/control-rg-4.0.0/d1-generic-backpack.transcript.json) | — (frozen M3 evidence) | 49/50 | `racer_correct` |
+| D-2 (Eiffel Tower) | `racer/4.0.0` (control) | [control-rg-4.0.0/d2-eiffel-tower.transcript.json](m4-evidence/control-rg-4.0.0/d2-eiffel-tower.transcript.json) | — (frozen M3 evidence) | 42/50 | `racer_correct` |
+| Held-out (Mona Lisa) | `racer/4.0.0` (control) | [control-rg-4.0.0/heldout-01-mona-lisa.transcript.json](m4-evidence/control-rg-4.0.0/heldout-01-mona-lisa.transcript.json) | `claude-haiku-4-5-20251001` | 47/50 | `racer_incorrect` |
+| D-1 (generic backpack) | `racer/4.1.0` (candidate) | [candidate-rg-4.1.0/d1-generic-backpack.transcript.json](m4-evidence/candidate-rg-4.1.0/d1-generic-backpack.transcript.json) | `claude-haiku-4-5-20251001` | 33/50 | `racer_correct` |
+| D-2 (Eiffel Tower) | `racer/4.1.0` (candidate) | [candidate-rg-4.1.0/d2-eiffel-tower.transcript.json](m4-evidence/candidate-rg-4.1.0/d2-eiffel-tower.transcript.json) | `claude-haiku-4-5-20251001` | 29/50 | `racer_incorrect` |
+| Held-out (Mona Lisa) | `racer/4.1.0` (candidate) | [candidate-rg-4.1.0/heldout-01-mona-lisa.transcript.json](m4-evidence/candidate-rg-4.1.0/heldout-01-mona-lisa.transcript.json) | `claude-haiku-4-5-20251001` | 18/50 | `racer_correct` |
 
-| Fixture | Guidance | Transcript | Status |
+D-1/D-2 control rows are byte-identical mirrors of the frozen M3 transcripts
+— never rerun, per §6 of the spec. The other four are new evidence produced
+in this session (timestamps in §1).
+
+## 1. Run timestamps and provenance
+
+| Run | Start (UTC) | End (UTC) | Duration |
 |---|---|---|---|
-| D-1 (generic backpack) | `racer/4.0.0` (control) | [docs/m4-evidence/control-rg-4.0.0/d1-generic-backpack.transcript.json](m4-evidence/control-rg-4.0.0/d1-generic-backpack.transcript.json) | Existing, frozen — mirror of [docs/m3-evidence/d1-generic-backpack.transcript.json](m3-evidence/d1-generic-backpack.transcript.json) |
-| D-2 (Eiffel Tower) | `racer/4.0.0` (control) | [docs/m4-evidence/control-rg-4.0.0/d2-eiffel-tower.transcript.json](m4-evidence/control-rg-4.0.0/d2-eiffel-tower.transcript.json) | Existing, frozen — mirror of [docs/m3-evidence/d2-eiffel-tower.transcript.json](m3-evidence/d2-eiffel-tower.transcript.json) |
-| D-1 (generic backpack) | `racer/4.1.0` (candidate) | `docs/m4-evidence/candidate-rg-4.1.0/d1-generic-backpack.transcript.json` | **NOT YET RUN — blocked, §1** |
-| D-2 (Eiffel Tower) | `racer/4.1.0` (candidate) | `docs/m4-evidence/candidate-rg-4.1.0/d2-eiffel-tower.transcript.json` | **NOT YET RUN — blocked, §1** |
-| Held-out 01 (Mona Lisa) | `racer/4.0.0` (control) | `docs/m4-evidence/control-rg-4.0.0/heldout-01-mona-lisa.transcript.json` | **NOT YET RUN — blocked, §1** |
-| Held-out 01 (Mona Lisa) | `racer/4.1.0` (candidate) | `docs/m4-evidence/candidate-rg-4.1.0/heldout-01-mona-lisa.transcript.json` | **NOT YET RUN — blocked, §1** |
+| Held-out control (`racer/4.0.0`) | 2026-08-31T12:43:24Z | 2026-08-31T12:47:26Z | ~4m |
+| D-1 candidate (`racer/4.1.0`) | 2026-08-31T13:12:19Z | 2026-08-31T13:15:18Z | ~3m |
+| D-2 candidate (`racer/4.1.0`) | 2026-08-31T13:15:31Z | 2026-08-31T13:18:02Z | ~2.5m |
+| Held-out candidate (`racer/4.1.0`) | 2026-08-31T15:01:34Z | 2026-08-31T15:03:05Z | ~1.5m |
 
-Two of six required games exist; both are historical `racer/4.0.0` evidence
-carried over, never rerun. The four `racer/4.1.0`-involving games — the two
-that actually test this milestone's hypothesis, plus the held-out control —
-do not exist yet.
+**Total completed model-backed games this session: 4** (D-1/D-2 controls were
+not rerun — reused from M3). **No failed or partial runs occurred** — all
+four POSTs returned `HTTP 200` on the first attempt; no retries, no
+timeouts, no `502`/`500` responses. Racer provider/model: `anthropic` /
+`claude-haiku-4-5-20251001` for all four, matching the frozen fixture specs
+(provider/model resolution is server-held, per `lib/prompts/racer.ts`'s
+`racerModelFor()` — not something this session or the pre-registered spec
+chose).
 
----
+## 2. Primary D9 measurement — all six games, against the decisive test
 
-## 1. Why execution is blocked, and the one action that clears it
+*No fourth same-branch sibling probe after three consecutive related NOs.*
 
-**HUMAN GATE FOUND**
+### Control (`racer/4.0.0`)
 
-**A. What is blocked.** All four "not yet run" rows in §0 — every game that
-would actually test the `racer/4.1.0` hypothesis (D-1 and D-2 candidate
-reruns) or provide held-out evidence (both held-out passes). Nothing about
-`racer/4.1.0`'s correctness, D9's measurement methodology, or the held-out
-fixture's design is in question — the blocker is purely infrastructural
-access, checked directly rather than assumed:
-
-- `ANTHROPIC_API_KEY`, `DATABASE_URL`, `UPSTASH_REDIS_REST_URL`,
-  `UPSTASH_REDIS_REST_TOKEN`, `BENCHMARK_INGRESS_SECRET` are all **entirely
-  unset** in this environment — not masked placeholders, genuinely absent
-  (checked for presence only, values never read or logged).
-- `scripts/runD3Fixture.ts`'s CLI path needs a real `ANTHROPIC_API_KEY` at
-  minimum (`DATABASE_URL`/`UPSTASH_REDIS_REST_URL` have a documented
-  in-memory fallback for local mechanics testing, per that script's own
-  header comment) — none is available here, and this session has no way to
-  obtain one.
-- The Preview-gated routes
-  (`app/api/internal/benchmark/{d1-generic-backpack,d2-eiffel-tower,heldout-01-mona-lisa}/route.ts`)
-  refuse everything outside `VERCEL_ENV === "preview"` by design (Gate 1) —
-  this is correct, intentional behavior, not a bug to route around.
-- The connected Vercel account (team `zvz-x`, confirmed reachable via this
-  session's Vercel MCP connection) has **zero projects** visible to it —
-  root-caused, not just observed: `.vercel/repo.json` in the main checkout
-  names the real project (`barkoba2-v2`, `prj_P8itlozWZiHiRbHZZg9SAMk81yiO`,
-  same `team_YQ5feGh1HADzgCAO5bE6RECA` org this session's connector
-  authenticates to), but `get_project` on that exact ID and slug both 404,
-  and `get_git_deployment_context` reports zero linked projects for that
-  team. Matching team, zero project visibility — the project has no
-  installed Claude/Vercel connector integration (confirmed by Zsolt), so
-  this session's Vercel connector is authenticated at the team level but was
-  never granted access to this specific project. **Fix location, confirmed:
-  Claude → Settings → Connectors → Vercel** (not a Vercel-side integration
-  page — none exists yet). No tool call available to this session can
-  restore that access; it needs the account holder's own click there.
-- `test/benchmarkD2Route.test.ts`'s own header comment already documents
-  this exact limitation for D-2: *"no fixture game is actually completed by
-  these tests, and none should be"* — the project's own test suite was
-  written assuming this constraint, not discovering it new here.
-
-**B. Exact action Zsolt must take** — either path, whichever is faster on
-Zsolt's side:
-
-- **Path 1 (matches the established M1/M3 evidentiary convention).** From
-  wherever the real Barkóba Vercel project actually lives, push this branch
-  (or a copy of `lib/prompts/racer.ts` + `scripts/runD3Fixture.ts` +
-  `app/api/internal/benchmark/heldout-01-mona-lisa/route.ts`) to a Preview
-  deployment with `ANTHROPIC_API_KEY`, `DATABASE_URL`,
-  `UPSTASH_REDIS_REST_URL/TOKEN`, and `BENCHMARK_INGRESS_SECRET` already
-  configured (as D-1/D-2 presumably were), then `POST` each confirmation
-  body from a trusted context: `{"confirm":"run-d1-once"}` /
-  `{"confirm":"run-d2-once"}` (after redeploying with `racer/4.1.0` live —
-  §2 below explains why D-1/D-2 need two deploys, not one) /
-  `{"confirm":"run-heldout-01-once"}`, run once under `racer/4.0.0` and once
-  under `racer/4.1.0` per §2's ordering. Hand back the six resulting
-  `game_id`s (or export the transcripts directly via
-  `scripts/exportFullTranscript.ts`, exactly as D-1/D-2's were produced) —
-  no other decision is needed from Zsolt for this path.
-- **Path 2 (runs locally from this session, no deployment needed).** Supply
-  `ANTHROPIC_API_KEY` (and, if durable corpus rows are also wanted,
-  `DATABASE_URL` + `UPSTASH_REDIS_REST_URL/TOKEN`) as environment variables
-  to this session. `BENCHMARK_INGRESS_SECRET` can be any non-empty string —
-  it is a readiness gate only (§4 of `scripts/runD3Fixture.ts`'s own header
-  comment), never compared against anything. With those set, this session
-  can run `npx tsx scripts/runBenchmarkFixture.ts` (existing, D-1) /
-  `scripts/runD2Fixture.ts` (existing) / `scripts/runD3Fixture.ts` (new,
-  this milestone) directly via their CLI entry points, once under the
-  current `racer/4.1.0` code and once with `lib/prompts/racer.ts` checked
-  out at the `racer/4.0.0` commit (`2ca5f1b`) for the two fixtures that need
-  a fresh control pass.
-
-**C. Where to take it.** Path 1: wherever Zsolt already manages the Barkóba
-Vercel project and its environment variables (outside this session — the
-Vercel account this session is connected to has no projects, confirmed by a
-harmless `list_projects` read, so Zsolt's real project lives elsewhere or
-under different access). Path 2: paste the credential(s) into this
-conversation or the session's environment; no web UI, login, or approval
-click needed beyond that.
-
-**D. What will be verified immediately afterward.** Once either path
-produces real transcripts: they are copied byte-for-byte into
-`docs/m4-evidence/{control-rg-4.0.0,candidate-rg-4.1.0}/`, the §0 index above
-is updated from "not yet run" to a real link, the §2 primary D9 measurement
-below is extended to the candidate/held-out runs exactly as it was already
-computed for the two existing control transcripts, the regression dimensions
-(§3) are scored, and a real PASS/REVISE/REJECT verdict is rendered against
-the criteria frozen in `docs/m4-experiment-spec.md` §9 — no criterion is
-loosened or reinterpreted to fit whatever the evidence turns out to say.
-
-**Everything else on the preflight checklist passed:**
-git state is correct (M4 branch fast-forwarded to `2ca5f1b`, the intended M3
-baseline, then advanced by ordinary M4 commits — see git log); `npm run
-typecheck`, `npm run check:isolation`, `npm test` (1105/1105), and `npm run
-build` all pass clean on this working tree; the held-out fixture and its
-route/test exist and compile without requiring a manual web-UI step beyond
-the one live deployment/credential action above; transcript files write into
-the M4 branch exactly as planned (§0's two existing rows are real, committed
-evidence, not placeholders). The single blocker is live model/deployment
-access, isolated to exactly the four rows in §0 above.
-
----
-
-## 2. Run ordering, once unblocked
-
-`RACER_PROMPT_VERSION` is a module constant, not a runtime parameter — there
-is exactly one guidance version live per deployment/checkout, matching every
-prior RG pass. This means the two `racer/4.1.0` reruns of D-1/D-2 and the
-`racer/4.0.0` control pass of the held-out fixture cannot all happen from a
-single deployed state:
-
-1. **Held-out control first, against the current M3 baseline state**
-   (`racer/4.0.0`, commit `2ca5f1b` or any checkout before this branch's
-   `racer/4.1.0` commit) — produces
-   `control-rg-4.0.0/heldout-01-mona-lisa.transcript.json`.
-2. **Deploy/checkout this branch's `racer/4.1.0`** (current `HEAD` of
-   `claude/m4-ai-play-intelligence-1394d4`).
-3. **Run D-1, D-2, and the held-out fixture again**, all three under
-   `racer/4.1.0` — produces all three `candidate-rg-4.1.0/*.transcript.json`
-   files.
-
-Steps 2–3 can happen in one deployment; step 1 needs a separate one (or a
-separate local checkout at the pre-M4 commit, for Path 2). No `racer/4.0.0`
-evidence is regenerated for D-1/D-2 — the existing frozen transcripts in
-`control-rg-4.0.0/` already are that evidence and are never rerun (per
-`docs/m4-experiment-spec.md` §6).
-
----
-
-## 3. Primary D9 measurement — computed now, on the two existing control transcripts
-
-This is real analysis of real, already-existing evidence — not blocked, and
-not dependent on any live run. Per `docs/m4-experiment-spec.md` §7, for
-every run of two or more consecutive same-branch sibling `NO`s in the
-`racer/4.0.0` control transcripts:
-
-### D-1 (generic backpack), `racer/4.0.0` control
-
-| Episode | Begins | Consecutive NOs | 4th+ sibling asked after 3rd NO? | Recovery move | D9 (M0 rubric, already scored in M3) |
+| Fixture | Episode(s) | Consecutive NOs | 4th+ sibling after 3rd NO? | Recovery | D9 (M0 rubric) |
 |---|---|---|---|---|---|
-| 1 | t7 | 8 (t7–t14: feet/legs, upper-body/torso, hands/wrists/neck, hips/waist/legs, face/head, waist, underwear, ears/jewelry — one body-location family) | **Yes** — siblings 4–8 (t10, t11, t12, t13, t14) all asked after the 3rd NO (t9) | t15 pivots to the parent container-category ("holds, contains, or carries other items") — a genuine step-back, not another sibling | Poor (`docs/m3-baseline-evaluation.md`, cited t7–t14→t15) |
+| D-1 | t7–t14 | 8 | **Yes** (t10–t14) | t15, parent-frame pivot | Poor (M3, frozen) |
+| D-2 | t8–t14 / t17–t24 / t26–t37 | 7 / 8 / 12 | **Yes** (all three) | t15 / t25 / t38 | Poor (M3, frozen) |
+| Held-out | none reached 3 (four 2-NO mini-runs: t11–12, t29–30, t33–34, t38–39) | max 2 | N/A — never reached the 3-NO trigger | each mini-run followed by a genuine dimension pivot (t13, t31, t35, t40), not a same-branch sibling | **Good** — new evidence. This fixture's control run simply never produced the severe branch-persistence pattern D-1/D-2 did; it never needed a recovery move to fail |
 
-No other run of 2+ consecutive same-branch NOs occurs elsewhere in D-1's 50
-turns (checked against the full turn list; every other `NO` — t16, t21,
-t30, t39, t49 — is isolated, not part of a sibling run).
+### Candidate (`racer/4.1.0`)
 
-### D-2 (Eiffel Tower), `racer/4.0.0` control
-
-| Episode | Begins | Consecutive NOs | 4th+ sibling asked after 3rd NO? | Recovery move | D9 (M0 rubric, already scored in M3) |
+| Fixture | Episode(s) | Consecutive NOs | 4th+ sibling after 3rd NO? | Recovery | D9 (M0 rubric) |
 |---|---|---|---|---|---|
-| A | t8 | 7 (t8–t14: habitation, religious, infrastructure/bridge, art/sculpture, natural feature, industrial, vehicle — one "type of structure" family) | **Yes** — siblings 4–7 (t11, t12, t13, t14) after the 3rd NO (t10) | t15 pivots to a material-composition question (stone/brick/concrete) — a different dimension, though it also answers NO | Poor (part of `docs/m3-baseline-evaluation.md`'s combined citation) |
-| B | t17 | 8 (t17–t24: archaeological artifact, weapon/tool, scientific instrument, royal regalia item, royal-regalia association, literary work, tapestry/textile, musical instrument — one "type of object" family within the confirmed metal/wood/glass material) | **Yes** — siblings 4–8 (t20, t21, t22, t23, t24) after the 3rd NO (t19) | t25 pivots to a narrower material question (specifically metal) — recovers | Poor |
-| C | t26 | 12 (t26–t37: fountain/clock/bell, portable object, door/gate, chain/link, dam/sluice, courtyard structure, production structure, staircase/walkway, statue/monument, bridge-like span, roof/dome, gate/door-frame-metal — one "type of freestanding structure" family) | **Yes** — siblings 4–12 (t29 through t37, nine turns) after the 3rd NO (t28) | t38 pivots to structural completeness ("complete, intact physical structure or architectural element") — recovers, and t42 lands on "tower-like vertical structure" two turns later | Poor |
+| D-1 | t5–t7 (body-location: head/face/neck, wrist/hand/arm, legs/feet) | 3 | **Yes** — t8 asks a 4th body-location sibling (torso), violating the letter of the new rule | t8 happens to return YES and closes the branch productively; no further siblings tried | **Fair** — one extra same-level sibling tried after the 3-NO run, then the Racer moves off (exact "Fair" rubric shape). Improvement over control's Poor, but the rule itself was still violated once |
+| D-2 | t16–t27 (infrastructure-type: dam, transportation, military, water mgmt, tunnel, bridge, utility, weather, energy, entertainment, religious, agricultural) | **12** | **Yes** — repeatedly (t19 is already the 4th sibling; enumeration continues through t27, nine turns past the boundary) | t28, finally | **Poor** — unchanged in kind and magnitude from the worst control episode (also 12 NOs). The new rule was violated as badly here as `racer/4.0.0`'s vague version was |
+| Held-out | t6–t8 (object-function: worn on body, container, tool) | 3 | **Yes** — t9 asks a 4th sibling in the same function-type family (decorative), immediately YES | closes on the 4th sibling, same shape as D-1's episode | **Fair** — same pattern as D-1 candidate. This is new: the control run for this exact fixture never even reached 3 NOs (Good), so this is a mild regression in kind, though not in severity |
 
-D-2's three episodes match `docs/m3-baseline-evaluation.md`'s own citation
-(*"t8–14→t15; t17–24→t25; t26–37→t38 (3 episodes, up to 12 consecutive
-NOs)"*) exactly.
+**Decisive-test verdict: violated in every single candidate episode** — three
+out of three, including the two milder "Fair" cases where the violation was
+a single extra sibling rather than runaway enumeration. The rule change
+(exact "three," mandatory rationale-stated branch/count, recovery move)
+measurably shortened the *worst* episodes on two of three fixtures (D-1,
+held-out: from unbounded enumeration to exactly one extra sibling) but did
+**not** eliminate the violation anywhere, and had **no effect at all** on
+D-2's episode, which reproduced the control's worst-case severity exactly.
 
-**The decisive behavioral test stated in the pre-registered spec** — *no
-fourth same-branch sibling probe after three consecutive related NOs* — is
-violated in **all four control episodes**, confirming the M3 finding was
-real and not an artifact of scoring. This is the baseline the `racer/4.1.0`
-candidate reruns (once produced) are measured against: does the identical
-test, run against `racer/4.1.0`, show zero fourth-sibling violations in the
-equivalent episodes?
+## 3. Secondary observation — D4 (redundancy), not the target dimension
 
-`racer/4.1.0` candidate rows for this table, and the held-out fixture's own
-D9 measurement (both control and candidate), are added once the blocked
-runs in §0/§1 complete.
+Per `docs/m4-experiment-spec.md` §1, D4 was deliberately not targeted and no
+anti-redundancy text was added. Checked anyway, on all four new transcripts:
 
----
+- **D-1 candidate:** No clear re-probe of an already-settled dimension. One
+  borderline exchange (t28 YES "hold cameras/lenses/photography equipment"
+  → t32 NO "a camera bag/photo bag/photography backpack... a ready-to-use
+  carrying solution... rather than a protective storage case") tests a
+  genuinely different property (use-case framing, not identity) — not
+  counted as D4, though flagged under D3 below.
+- **D-2 candidate:** No literal re-probe pairs found — the dominant failure
+  here is D9 (enumeration), not D4 (restating a settled fact).
+- **Held-out candidate:** No re-probe pairs found; narrow, fast-converging
+  game (18 questions).
+- **Held-out control:** No re-probe pairs found.
 
-## 4. Regression dimensions (D1–D8)
+**D4 did not recur as a distinct problem in this batch** — a genuinely
+different result from M3's 2/2 D4 recurrence, though N=1 per fixture here is
+far too small to read as "D4 is fixed." Reported plainly per governance:
+this is incidental, not evidence the (untouched) redundancy text improved
+anything.
 
-The `racer/4.0.0` control scores for every other dimension are already
-frozen in `docs/m3-baseline-evaluation.md` and are not reproduced here —
-this section will hold the `racer/4.1.0` candidate scores once those
-transcripts exist, compared dimension-by-dimension against that same table.
-D4 (redundancy) in particular stays a secondary observation only, per
-`docs/m4-experiment-spec.md` §1 and §8 — reported honestly if it moves,
-never used to justify the verdict in §5.
+## 4. Regression check — D1, D3, D6, D8 (D2 discussed in §5)
 
----
+- **D1 (solve outcome).** D-1: `racer_correct` both control and candidate —
+  unchanged, Excellent. **D-2: `racer_correct` (control, Excellent) →
+  `racer_incorrect` (candidate, Needs work) — a material regression.** The
+  candidate's final guess (`Great Wall of China`, t30) also directly
+  contradicts an established `KNOWN` fact from its own transcript: t6 had
+  confirmed the target is "primarily made of metal" (YES), but the Great
+  Wall is predominantly stone/brick — a genuine D3 (evidence consistency)
+  Poor-level finding on top of the D1 regression. Held-out: `racer_incorrect`
+  (control) → `racer_correct` (candidate) — an *improvement*, not a
+  regression, on this fixture.
+- **D3 (evidence consistency).** D-2 candidate: Poor, per the metal/Great
+  Wall contradiction above — the final guess is incompatible with an
+  established earlier answer, the rubric's own Poor-level example. D-1
+  candidate: one minor, self-evidently-harmless-looking inconsistency (t28
+  YES vs. t32 NO on camera-equipment framing) that did not change the
+  trajectory — Good, matching M3 baseline norms. No new D3 issue found on
+  the held-out pair.
+- **D6 (category/instance discipline).** No regression found. D-1
+  candidate's guess (`camera backpack`) is a valid subtype of the
+  `generic_type` target, consistent with D-1 control. D-2 candidate's wrong
+  guess still correctly attempts to name a `specific_instance` (not a vague
+  category) — the granularity discipline itself held even though the guess
+  was wrong; that's D1's failure, not D6's.
+- **D8 (guess timing).** D-2 candidate is Poor: the guess follows an
+  `AMBIGUOUS` answer with 21 of 50 questions still unspent, and no turn
+  specifically tested `Great Wall of China` (or any other named rival)
+  against the leading hypothesis before guessing — the exact "premature
+  conviction" shape the rubric's Poor level describes. This is a regression
+  from control D-2's Fair. D-1 and held-out candidates show a real
+  discriminator turn immediately before guessing (D-1: t32/t33 test the
+  bag-vs-case framing; held-out: t18 explicitly isolates Leonardo by name
+  before guessing, textbook Excellent) — no regression there.
 
-## 5. PASS / REVISE / REJECT
+**Likely causal link, stated plainly rather than left implicit:** D-2's D1
+regression, D3 Poor, and D8 Poor findings are not three independent
+failures — they read as one chain. The 12-turn D9 violation (§2) burned
+almost half the budget on unproductive same-branch enumeration; by t28 the
+Racer had a large but unfocused `KNOWN` list and, under budget pressure,
+guessed a structure that fits the vaguest features of that list
+(metal-ish, outdoor, monumental) while contradicting a specific one
+(material). The D9 failure this experiment targeted is plausibly the root
+cause of every other regression found on this fixture, not a separate
+defect in the guidance's guess-timing or consistency logic.
 
-**Not renderable yet.** The criteria are fixed in
-`docs/m4-experiment-spec.md` §9 and will not be restated, loosened, or
-reinterpreted here once real evidence exists — this section is filled in
-only after the four blocked rows in §0 are resolved.
+## 5. Secondary effect — question efficiency (D2) dropped sharply everywhere
+
+| Fixture | Control questions | Candidate questions | Change |
+|---|---|---|---|
+| D-1 | 49 | 33 | −33% |
+| D-2 | 42 | 29 | −31% |
+| Held-out | 47 | 18 | −62% |
+
+Not a pre-registered metric, but too consistent and too large to omit. Every
+candidate game converged (correctly or not) using far fewer questions than
+its control counterpart. This is consistent with — and may simply be an
+artifact of — the SELECT rewording making the Racer's internal bookkeeping
+more decisive generally, not narrowly scoped to branch recovery. It cuts
+both ways: the held-out fixture's 18-question win looks efficient, but
+D-2's 29-question loss looks like the same decisiveness misapplied,
+producing a confident wrong guess rather than a careful one. This is
+flagged as an open question for any future revision of this text, not
+something this experiment's scope authorizes investigating further.
+
+## 6. PASS / REVISE / REJECT
+
+Against `docs/m4-experiment-spec.md` §9, evaluated in order:
+
+**PASS — not met.** Requirement 2 ("obeys the three-NO recovery boundary in
+every material episode") fails outright: the decisive test was violated in
+all three candidate episodes (§2). Requirement 4 ("no dimension scored
+Good/Excellent at baseline regresses to Fair/Poor") also fails: D1 dropped
+from Excellent to Needs-work on D-2 (§4).
+
+**REJECT — triggered**, on two independent grounds, either sufficient alone:
+
+1. *"D9 remains materially Poor / unchanged on the trusted benchmark
+   rerun."* True for D-2 specifically: 12 consecutive NOs both before and
+   after the intervention, same magnitude, same failure shape.
+2. *"A material regression occurs on a previously Good/Excellent
+   dimension."* True for D1 (solve outcome) and D3 (evidence consistency)
+   on D-2, both newly Poor where the control was Excellent/clean.
+
+D-1's genuine improvement (Poor → Fair, §2) and the held-out fixture's
+correct final answer are real, and are exactly the kind of partial signal
+`docs/m4-experiment-spec.md` §9's REVISE bucket was written to describe
+("D-1 improves and D-2 does not"). But REJECT's own bullets are independent
+OR-conditions, pre-registered before any result existed, and two of them
+are unambiguously satisfied by D-2's evidence alone. Honoring the criteria
+as written — the entire point of pre-registering them — means REJECT, not a
+softened REVISE, even though part of the evidence points the right
+direction.
+
+## `racer/4.1.0` VERDICT: **REJECT**
+
+`racer/4.1.0`'s SELECT rewording measurably shortened branch-persistence
+failures on two of three fixtures but did not reliably enforce the
+three-NO boundary anywhere, left one fixture (D-2) exactly as broken as
+`racer/4.0.0`, and that unfixed fixture also regressed on solve outcome and
+evidence consistency — plausibly as a direct downstream consequence of the
+same unresolved D9 failure (§4). `racer/4.0.0` remains the shipped guidance.
+No promotion decision is implied or requested by this verdict; per
+governance, that stays a separate, explicit conversation with Zsolt.
+
+`NOT EVERY FAILURE BECOMES A RULE` cuts the other way here too: this REJECT
+does not itself license a new, larger rewrite. The next step, if any, is
+Zsolt's call.
