@@ -159,8 +159,55 @@ import type {
  * same no-credentials constraint as every version above. The compression
  * hypothesis itself (shorter reads better under repeated injection) is
  * untested until Zsolt plays it.
+ *
+ * `racer/4.1.0` — ONE BOUNDED D9 FIX, NOT A D4 FIX TOO.
+ *
+ * racer/4.0.0's first field evidence (M3 baseline, docs/m3-baseline-evaluation.md,
+ * two controlled fixtures) surfaced two recurring failures at perfect 2/2
+ * recurrence: D4 (redundant question) and D9 (poor branch recovery). Both
+ * were candidates for this pass. M4 deliberately targets D9 ONLY — one
+ * recurring material failure, one bounded intervention, so a measured effect
+ * can be attributed to one cause. D4 is carried forward as a
+ * regression/secondary-observation dimension in M4's benchmark, not as a
+ * second target; see docs/m4-experiment-spec.md §1.
+ *
+ * THE D9 DIAGNOSIS. SELECT already stated the recovery rule in racer/4.0.0:
+ * "After two or three related NOs on the same branch, stop... and ask
+ * whether the parent frame itself is wrong." The M3 evidence shows this rule
+ * was violated, not missing — D-1 ran 8 consecutive same-branch NOs
+ * (t7-t14) and D-2 ran as many as 12 (t26-t37) before either game stepped
+ * back. This is the same failure shape RG #3's own history already
+ * documents once (racer/3.0.0 -> 3.1.0, docs/DESIGN-NOTES.md §47):
+ * descriptive preference proved too weak for a countable pattern, and was
+ * fixed there by turning it into an explicit, numbered gate rather than a
+ * softer preference.
+ *
+ * THE FIX. SELECT's vague "two or three" threshold becomes an exact,
+ * countable "three." The Racer is now required to make its own branch-NO
+ * count and recovery move explicit in `rationale` once the boundary is
+ * reached, rather than holding it as unobserved internal state — the exact
+ * gap the M3 evidence exposed (a model that silently tracks a branch will
+ * silently fail to act on it; one required to name the branch and its count
+ * out loud has nowhere to quietly keep enumerating). No new schema field, no
+ * new architecture: this reuses the existing `rationale` output exactly as
+ * racer/3.1.0's Hierarchy gate and racer/3.2.0's Resolved-branch gate reused
+ * the existing structured-output loop rather than adding a new call.
+ *
+ * WHAT DID NOT CHANGE. KNOWN, UNKNOWN, HYPOTHESES, RED FLAGS (including its
+ * own redundancy bullet, which is D4's territory), and BEFORE ANY FINAL
+ * GUESS are byte-identical to racer/4.0.0. RACER_SYSTEM_PROMPT and both
+ * schemas are untouched — the experimental variable stays isolated to one
+ * paragraph, matching every prior RG #3/#4 pass. No new anti-redundancy text
+ * was added anywhere in this version.
+ *
+ * Full pre-registered hypothesis, exact diff, fixture identities, and
+ * PASS/REVISE/REJECT criteria: docs/m4-experiment-spec.md, frozen before any
+ * racer/4.1.0 transcript was produced or inspected.
+ *
+ * NOT YET FIELD-VALIDATED as of this commit — same no-credentials constraint
+ * as every version above. See docs/m4-evaluation.md for execution status.
  */
-export const RACER_PROMPT_VERSION = "racer/4.0.0";
+export const RACER_PROMPT_VERSION = "racer/4.1.0";
 
 /**
  * RG #4 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
@@ -170,9 +217,11 @@ export const RACER_PROMPT_VERSION = "racer/4.0.0";
  * block stays last before the instruction to act and is shared by both paths
  * that can author the player-facing question.
  *
- * THE TEXT IS CANONICAL. It is reproduced verbatim in docs/DESIGN-NOTES.md §50
- * against `racer/4.0.0`. Editing it without bumping the version breaks the
- * database claim above.
+ * THE TEXT IS CANONICAL. `racer/4.0.0`'s text is reproduced verbatim in
+ * docs/DESIGN-NOTES.md §50; the current `racer/4.1.0` text below (one changed
+ * SELECT paragraph, everything else byte-identical to §50's text) is
+ * reproduced in docs/DESIGN-NOTES.md §52. Editing it without bumping the
+ * version breaks the database claim above.
  *
  * ~400 WORDS, DOWN FROM ~800. See the racer/4.0.0 history note above for why:
  * length itself had become the risk, not any missing rule.
@@ -197,7 +246,7 @@ HYPOTHESES
 The leading family or families still consistent with KNOWN, plus the single strongest credible alternative. Keep this small and live, never a single premature favorite.
 
 SELECT
-Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After two or three related NOs on the same branch, stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings.
+Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After three related NOs on one branch, the next question must not be a fourth sibling there — name the branch and NO-count in rationale, then test the parent frame or pivot dimensions.
 
 RED FLAGS — reject and regenerate if the question:
 - Contradicts anything in KNOWN

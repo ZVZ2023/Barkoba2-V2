@@ -398,14 +398,17 @@ test("both providers receive the same prompt version", () => {
   // "racer/3.1.0" when the Hierarchy gate and the strengthened pre-guess
   // validation check were added, again to "racer/3.2.0" when the
   // Resolved-branch gate and the close-candidate specificity gate were added
-  // on top of that block, and again to "racer/4.0.0" when that whole
-  // nine-stage, ~800-word block was compressed into a six-stage, ~400-word
-  // loop. The INVARIANT is unchanged and is what this test is really for:
-  // exactly one version, shared by both providers. The literal is pinned as
-  // well so that an accidental revert to a previously-published version —
-  // which would silently relabel new evidence as old — fails here rather
-  // than in the corpus.
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
+  // on top of that block, again to "racer/4.0.0" when that whole nine-stage,
+  // ~800-word block was compressed into a six-stage, ~400-word loop, and
+  // again to "racer/4.1.0" (M4) when SELECT's vague "two or three related
+  // NOs" threshold became an exact, countable "three" with a mandatory
+  // rationale-stated recovery move — see docs/m4-experiment-spec.md. The
+  // INVARIANT is unchanged and is what this test is really for: exactly one
+  // version, shared by both providers. The literal is pinned as well so that
+  // an accidental revert to a previously-published version — which would
+  // silently relabel new evidence as old — fails here rather than in the
+  // corpus.
+  assert.equal(RACER_PROMPT_VERSION, "racer/4.1.0");
   const versions = RACER_SRC.match(/RACER_PROMPT_VERSION = "[^"]+"/g) ?? [];
   assert.equal(versions.length, 1, "exactly one prompt version, shared by both providers");
 });

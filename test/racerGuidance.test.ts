@@ -232,17 +232,20 @@ test("repeated negative evidence is paired with parent-level reconsideration, el
   ]);
   assert.match(content, /A1: NO/);
   assert.match(content, /A2: NO/);
-  // The two/three-related-NOs rule must sit inside SELECT, ahead of RED
-  // FLAGS — not in a trailing appendix below the reject-and-regenerate list,
-  // which is where v3 buried it.
+  // The three-related-NOs rule must sit inside SELECT, ahead of RED FLAGS —
+  // not in a trailing appendix below the reject-and-regenerate list, which is
+  // where v3 buried it. M4 (racer/4.1.0) tightened the threshold from a vague
+  // "two or three" to an exact "three" and added a mandatory rationale-stated
+  // recovery move — see docs/m4-experiment-spec.md — but the placement
+  // invariant this test checks is unchanged.
   const selectAt = content.indexOf("SELECT\n");
-  const rowsAt = content.indexOf("After two or three related NOs on the same branch");
+  const rowsAt = content.indexOf("After three related NOs on one branch");
   const redFlagsAt = content.indexOf("RED FLAGS");
   assert.ok(selectAt >= 0 && rowsAt > selectAt, "the NOs rule must be inside SELECT");
   assert.ok(redFlagsAt > rowsAt, "the NOs rule must precede RED FLAGS, not follow it");
   assert.match(
     content,
-    /stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings\./
+    /the next question must not be a fourth sibling there — name the branch and NO-count in rationale, then test the parent frame or pivot dimensions\./
   );
 });
 
@@ -448,8 +451,8 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/4.0.0", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
+test("the Racer guidance version is racer/4.1.0", () => {
+  assert.equal(RACER_PROMPT_VERSION, "racer/4.1.0");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/2.7.0", "the RG v2 version must not be reused");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/3.0.0", "the pre-Hierarchy-gate RG v3 version must not be reused");
   assert.notEqual(
@@ -461,6 +464,11 @@ test("the Racer guidance version is racer/4.0.0", () => {
     RACER_PROMPT_VERSION,
     "racer/3.2.0",
     "the pre-compression, nine-stage RG v3 version must not be reused"
+  );
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/4.0.0",
+    "the pre-M4, vague-threshold SELECT paragraph must not be reused"
   );
 });
 
@@ -479,7 +487,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/4.0.0");
+    assert.equal(result.provenance.prompt_version, "racer/4.1.0");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");

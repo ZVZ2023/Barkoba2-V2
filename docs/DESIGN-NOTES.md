@@ -4612,3 +4612,105 @@ Production testing on `barkobak.com` confirmed the newcomer path worked end to e
 
 **The homepage badge stopped lying to an already-played guest.** `resolvePlayState()` (`lib/entitlements.ts`) is untouched — the bug was never in that pure function, it was in what its two callers fed it. `complimentaryGrant`/`initialComplimentaryGranted` were always the POST-VERIFICATION pool's numbers, regardless of who was asking: a guest who had already spent their pre-registration `anonymous_first_game` credit, or a registered-but-unverified account, would still read `complimentaryGrant > 0 && !initial_complimentary_granted` as true and see "Az első VERSENYED vár rád" — a promise about a grant that either was not theirs (guest, already-spent) or was not yet reachable (unverified account). Fixed by having each caller (`/api/player/entitlement`, `/api/account/diagnostic`) compute the CORRECT pair for the caller's actual identity kind and verification status before calling `resolvePlayState()` — no new state, no parallel system, just correct inputs to the one existing interpreter. `getStatus()` gained a second durable flag, `anonymous_complimentary_granted` (mirroring the existing `initial_complimentary_granted`, same ledger, same `BOOL_OR` shape, different `grant_key`), so a guest's own pool is now checked against its own history instead of the account pool's.
 
+## 52. M4 — one bounded D9 fix, not a D4 fix too (`racer/4.1.0`)
+
+**A different kind of pass from §50.** `racer/4.0.0` was a restructure of the
+whole block; `racer/4.1.0` changes exactly one paragraph. It is motivated by
+the M3 baseline — the first real evidence against `racer/4.0.0`
+(`docs/m3-baseline-evaluation.md`, two controlled fixtures, D-1 "generic
+backpack" and D-2 "the Eiffel Tower") — which found two failures at perfect
+2/2 recurrence: D4 (redundant question) and D9 (poor branch recovery). Both
+were live candidates for this pass. M4 deliberately targets **D9 only**: one
+recurring material failure, one bounded intervention, so a measured effect
+can be attributed to a single cause rather than diffused across two. D4 is
+carried forward in M4's benchmark as a regression/secondary-observation
+dimension, not a second target — see `docs/m4-experiment-spec.md` §1 for the
+full scope reasoning, including why the two failures were suspected to share
+a root cause and why that suspicion is not sufficient grounds to fix both at
+once.
+
+**The D9 diagnosis.** `racer/4.0.0`'s `SELECT` already stated the recovery
+rule: *"After two or three related NOs on the same branch, stop... and ask
+whether the parent frame itself is wrong."* The M3 evidence shows this rule
+was violated, not missing — D-1 ran to 8 consecutive same-branch NOs
+(t7–t14, a body-location ladder: feet, torso, hands, hips, face, waist,
+underwear, ears, all NO, before t15 finally asks the actual parent category)
+and D-2 ran to as many as 12 (t26–t37, a structure-type ladder). This is the
+same failure shape RG #3's own history already documents once before
+(`racer/3.0.0` → `3.1.0`, §47): a descriptive preference proved too weak for
+a countable pattern, and was fixed there by turning it into an explicit gate
+rather than a softer preference.
+
+**The fix.** `SELECT`'s vague "two or three" threshold becomes an exact
+"three." The Racer must now state the branch and its NO-count in its own
+`rationale` once the boundary is reached, converting what `racer/4.0.0` left
+as unobserved internal state (*"hold this state internally... emit only the
+resulting question or guess"*) into an explicit, checkable move — the exact
+gap the M3 evidence exposed. No new schema field, no new architecture: this
+reuses the existing `rationale` output exactly as `racer/3.1.0`'s Hierarchy
+gate and `racer/3.2.0`'s Resolved-branch gate reused the existing
+structured-output loop rather than adding a call.
+
+**Exact diff (only paragraph changed, everything else byte-identical to
+§50's text):**
+
+```diff
+ SELECT
+-Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After two or three related NOs on the same branch, stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings.
++Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After three related NOs on one branch, the next question must not be a fourth sibling there — name the branch and NO-count in rationale, then test the parent frame or pivot dimensions.
+```
+
+The replacement clause was deliberately trimmed to hold the whole block at exactly 400 words — `racer/4.0.0`'s own upper compression bound (`test/racerGuidance.test.ts`, "RG #4 is under 400 words"). `racer/4.1.0` keeps that discipline rather than treating it as spent once `racer/4.0.0` shipped.
+
+**What did NOT change.** `KNOWN`, `UNKNOWN`, `HYPOTHESES`, `RED FLAGS`
+(including its own redundancy bullet — D4's territory), and
+`BEFORE ANY FINAL GUESS` are byte-identical to `racer/4.0.0`.
+`RACER_SYSTEM_PROMPT` and both structured-output schemas are untouched. No
+new anti-redundancy text was added anywhere in this version, on purpose —
+see `docs/m4-experiment-spec.md` §1 for why D4 stays out of scope here even
+though it is the M3 baseline's #1-ranked finding by materiality.
+
+**Held-out fixture.** M4 also adds one held-out target not used to design
+this diff — `heldout-01-mona-lisa` (the Mona Lisa, `specific_instance`),
+domain-distant from D-1 (a worn object) and D-2 (a public monument), chosen
+for its own dense sibling taxonomy (painting vs. sculpture vs. tapestry vs.
+manuscript) capable of producing the same enumeration shape under a
+materially different subject. Spec: `scripts/runD3Fixture.ts`.
+
+**Full canonical text, current as of this section:**
+
+```
+RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
+
+Before every turn, hold this state internally. Emit only the resulting question or guess.
+
+KNOWN
+Every hard YES, NO, and AMBIGUOUS answer so far. These are filters, not suggestions — nothing later may contradict one. AMBIGUOUS is informative failure, not a soft answer: it means the last question conflated two things a truthful answerer could not separate. Isolate one of them next; never re-ask a paraphrase of it.
+
+UNKNOWN
+The open dimensions that actually matter for this target's domain — discovered from the target itself, not a fixed checklist. Which one, if answered, would most shrink what remains possible?
+
+HYPOTHESES
+The leading family or families still consistent with KNOWN, plus the single strongest credible alternative. Keep this small and live, never a single premature favorite.
+
+SELECT
+Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After three related NOs on one branch, the next question must not be a fourth sibling there — name the branch and NO-count in rationale, then test the parent frame or pivot dimensions.
+
+RED FLAGS — reject and regenerate if the question:
+- Contradicts anything in KNOWN
+- Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
+- Names one specific sibling while a broader grouping one level up still has multiple live alternatives
+- Is a disguised identity question — naming a candidate is a GUESS, not a question
+- Investigates spelling, letters, or name structure instead of meaning and properties
+- Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
+
+BEFORE ANY FINAL GUESS
+Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.
+```
+
+**NOT YET FIELD-VALIDATED as of this commit.** Same no-credentials constraint
+that has held for every RG #3/#4 pass — no live game has been played against
+this text. Full pre-registered hypothesis, exact runs required, and
+PASS/REVISE/REJECT criteria: `docs/m4-experiment-spec.md`. Execution status:
+`docs/m4-evaluation.md`.
+

@@ -2,7 +2,7 @@ import { test, beforeEach, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { splitSqlStatements } from "../lib/corpus/sqlStatements";
-import { CORE_RACER_RULES, RACER_PROMPT_VERSION } from "../lib/prompts/racer";
+import { RACER_PROMPT_VERSION } from "../lib/prompts/racer";
 import {
   getGuidanceVersion,
   listGuidanceDecisions,
@@ -15,34 +15,76 @@ import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 //
 // SCOPE, STATED HONESTLY, matching test/corpusPersistence.test.ts: there is no
 // PostgreSQL in this test environment. These tests verify (1) that migration
-// 0012's seed data is byte-identical to the guidance actually shipped in
-// lib/prompts/racer.ts — the provenance claim this whole catalog exists to
-// make true by construction — and (2) that the read module issues only SELECT
-// statements and correctly reports the valid zero-decision initial state. They
-// do NOT prove the migration applies cleanly against live Neon; that is a
-// live-migration exercise, listed as a remaining item in the completion
-// report.
+// 0012's seed data is byte-identical to the racer/4.0.0 guidance text it was
+// written to describe, frozen below rather than imported live — see the
+// M4 note directly above RACER_4_0_0_TEXT for why — and (2) that the read
+// module issues only SELECT statements and correctly reports the valid
+// zero-decision initial state. They do NOT prove the migration applies
+// cleanly against live Neon; that is a live-migration exercise, listed as a
+// remaining item in the completion report.
 // ---------------------------------------------------------------------------
 
 const MIGRATION = readFileSync("migrations/0012_racer_guidance_catalog.sql", "utf8");
 
-// --- provenance: the seed must say exactly what the code says ---------------
+// M4 — this migration seeded exactly ONE guidance version, racer/4.0.0, and
+// must go on describing that version forever, regardless of what
+// lib/prompts/racer.ts exports live today. Before M4, CORE_RACER_RULES *was*
+// racer/4.0.0's text, so importing it live and migration 0012's seed were
+// the same string by definition. M4 bumped CORE_RACER_RULES to racer/4.1.0's
+// text (docs/m4-experiment-spec.md), which would make a live import silently
+// stop matching this migration's historical seed — exactly the kind of
+// drift this catalog exists to catch, not cause. Frozen verbatim from
+// docs/DESIGN-NOTES.md §50 and racer/4.0.0 as it stood at commit 2ca5f1b
+// (M3 baseline close), never edited going forward.
+const RACER_4_0_0_TEXT = `RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
 
-test("migration 0012 seeds the exact CORE_RACER_RULES text, byte for byte", () => {
+Before every turn, hold this state internally. Emit only the resulting question or guess.
+
+KNOWN
+Every hard YES, NO, and AMBIGUOUS answer so far. These are filters, not suggestions — nothing later may contradict one. AMBIGUOUS is informative failure, not a soft answer: it means the last question conflated two things a truthful answerer could not separate. Isolate one of them next; never re-ask a paraphrase of it.
+
+UNKNOWN
+The open dimensions that actually matter for this target's domain — discovered from the target itself, not a fixed checklist. Which one, if answered, would most shrink what remains possible?
+
+HYPOTHESES
+The leading family or families still consistent with KNOWN, plus the single strongest credible alternative. Keep this small and live, never a single premature favorite.
+
+SELECT
+Prefer the question that most usefully divides current HYPOTHESES over one that only confirms the leader. A broad split across an unresolved dimension beats naming siblings one at a time. After two or three related NOs on the same branch, stop — that is a signal, not a coincidence — and ask whether the parent frame itself is wrong before trying more siblings.
+
+RED FLAGS — reject and regenerate if the question:
+- Contradicts anything in KNOWN
+- Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
+- Names one specific sibling while a broader grouping one level up still has multiple live alternatives
+- Is a disguised identity question — naming a candidate is a GUESS, not a question
+- Investigates spelling, letters, or name structure instead of meaning and properties
+- Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
+
+BEFORE ANY FINAL GUESS
+Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.`;
+
+// --- provenance: the seed must say exactly what racer/4.0.0 actually was ----
+
+test("migration 0012 seeds the exact racer/4.0.0 guidance text, byte for byte", () => {
   const match = /\$guidance\$([\s\S]*?)\$guidance\$/.exec(MIGRATION);
   assert.ok(match, "expected a $guidance$ ... $guidance$ dollar-quoted body in the migration");
   assert.equal(
     match![1],
-    CORE_RACER_RULES,
-    "the seeded guidance_text must be identical to the live CORE_RACER_RULES constant — " +
-      "this is the fact the catalog exists to record, and it must be true by construction, " +
-      "not by discipline"
+    RACER_4_0_0_TEXT,
+    "the seeded guidance_text must be identical to racer/4.0.0's frozen text — " +
+      "this is the fact this migration exists to record, permanently, regardless of " +
+      "which version is live today"
   );
 });
 
-test("migration 0012 seeds the version string that RACER_PROMPT_VERSION actually is", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
+test("migration 0012 seeds racer/4.0.0, and RACER_PROMPT_VERSION has since moved on (M4)", () => {
   assert.match(MIGRATION, /'racer\/4\.0\.0'/);
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/4.0.0",
+    "as of M4, the live guidance is racer/4.1.0 — migration 0012 is a historical " +
+      "record of racer/4.0.0, not a live mirror of RACER_PROMPT_VERSION"
+  );
 });
 
 test("migration 0012 never asserts a promotion/rejection decision for the seeded version", () => {
@@ -142,7 +184,7 @@ test("getGuidanceVersion parses the observability jsonb whether the driver retur
   versionRows = [
     {
       version: "racer/4.0.0",
-      guidance_text: CORE_RACER_RULES,
+      guidance_text: RACER_4_0_0_TEXT,
       introduced_at: "2026-08-21T19:22:14.000Z",
       source_ref: "204de3780a1177614ef73af40285afda87efe784",
       game_memory_observability: observability, // object, as most drivers return jsonb
