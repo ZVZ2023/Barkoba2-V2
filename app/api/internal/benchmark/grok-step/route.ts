@@ -29,7 +29,20 @@ export const maxDuration = 300;
 
 const START_CONFIRM = "run-grok-step-start";
 const CONTINUE_CONFIRM = "run-grok-step-continue";
-const VALID_FIXTURES: GrokFixtureKey[] = ["d1-grok", "d2-grok"];
+const VALID_FIXTURES: GrokFixtureKey[] = [
+  "d1-grok",
+  "d2-grok",
+  "disc-01-wristwatch",
+  "disc-02-guitar",
+  "disc-03-great-sphinx",
+  "disc-04-titanic",
+  "disc-05-platypus",
+  "disc-06-golden-gate-bridge",
+  "disc-07-rosetta-stone",
+  "disc-08-chess",
+  "disc-09-rubber-duck",
+  "disc-10-antarctica",
+];
 
 function notFound(): NextResponse {
   return NextResponse.json({ error: "not_found" }, { status: 404 });

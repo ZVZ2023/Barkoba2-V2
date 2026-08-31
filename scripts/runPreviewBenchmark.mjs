@@ -114,7 +114,20 @@ async function runFixture(fixtureKey, baseUrl, shareToken) {
   if (res.status !== 200) process.exitCode = 1;
 }
 
-const GROK_LOOP_FIXTURES = new Set(["d1-grok", "d2-grok"]);
+const GROK_LOOP_FIXTURES = new Set([
+  "d1-grok",
+  "d2-grok",
+  "disc-01-wristwatch",
+  "disc-02-guitar",
+  "disc-03-great-sphinx",
+  "disc-04-titanic",
+  "disc-05-platypus",
+  "disc-06-golden-gate-bridge",
+  "disc-07-rosetta-stone",
+  "disc-08-chess",
+  "disc-09-rubber-duck",
+  "disc-10-antarctica",
+]);
 
 /**
  * Drives a Grok fixture to completion via app/api/internal/benchmark/

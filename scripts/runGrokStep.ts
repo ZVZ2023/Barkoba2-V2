@@ -75,7 +75,19 @@ import {
   PINNED_MODEL as D2_PINNED_MODEL,
 } from "./runD2GrokCalibration";
 
-export type GrokFixtureKey = "d1-grok" | "d2-grok";
+export type GrokFixtureKey =
+  | "d1-grok"
+  | "d2-grok"
+  | "disc-01-wristwatch"
+  | "disc-02-guitar"
+  | "disc-03-great-sphinx"
+  | "disc-04-titanic"
+  | "disc-05-platypus"
+  | "disc-06-golden-gate-bridge"
+  | "disc-07-rosetta-stone"
+  | "disc-08-chess"
+  | "disc-09-rubber-duck"
+  | "disc-10-antarctica";
 
 interface FixtureSpec {
   benchmarkCaseId: string;
@@ -114,6 +126,144 @@ const SPECS: Record<GrokFixtureKey, FixtureSpec> = {
     gameLanguage: D2_GAME_LANGUAGE,
     provider: D2_RACER_PROVIDER,
     pinnedModel: D2_PINNED_MODEL,
+  },
+
+  // -------------------------------------------------------------------------
+  // V2.8.x — 10-game discovery batch. Frozen per
+  // docs/v2.8-grok-baseline/discovery-10-fixture-spec.md BEFORE game 1 ran;
+  // target/definition text here is byte-identical to that spec, which is the
+  // durable record if the two are ever compared. All 10 share difficulty,
+  // budget, language, provider, and pinned model with the calibration pair.
+  // -------------------------------------------------------------------------
+  "disc-01-wristwatch": {
+    benchmarkCaseId: "v2.8-discovery-01-wristwatch",
+    target: "a wristwatch",
+    definition:
+      "A wristwatch as a general kind of object: a small timekeeping device worn around the wrist, secured by a band or strap. This refers to wristwatches as a category — any ordinary wristwatch counts, regardless of brand, whether analog or digital, mechanical or electronic, smart or simple. Not one particular wristwatch.",
+    granularity: "generic_type",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-02-guitar": {
+    benchmarkCaseId: "v2.8-discovery-02-guitar",
+    target: "a guitar",
+    definition:
+      "A guitar as a general kind of object: a stringed musical instrument with a neck and a body, played by plucking or strumming its strings, typically having six strings. This refers to guitars as a category — any ordinary guitar counts, regardless of brand, whether acoustic or electric, regardless of body shape or number of strings. Not one particular guitar.",
+    granularity: "generic_type",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-03-great-sphinx": {
+    benchmarkCaseId: "v2.8-discovery-03-great-sphinx",
+    target: "the Great Sphinx of Giza",
+    definition:
+      "The Great Sphinx of Giza: the specific, one-of-a-kind limestone statue of a reclining creature with a lion's body and a human head, located on the Giza plateau in Egypt, near the Great Pyramids. This refers to that exact statue — not sphinxes in general, not any other sphinx statue elsewhere in the world, and not a replica or scale model. There is only one Great Sphinx of Giza; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-04-titanic": {
+    benchmarkCaseId: "v2.8-discovery-04-titanic",
+    target: "the Titanic",
+    definition:
+      "The Titanic: the specific British passenger ocean liner that sank in the North Atlantic Ocean in April 1912 after striking an iceberg on her maiden voyage. This refers to that exact ship — not ocean liners in general, not any other ship, and not a replica, model, or a film/dramatization about it. There is only one RMS Titanic; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-05-platypus": {
+    benchmarkCaseId: "v2.8-discovery-05-platypus",
+    target: "a platypus",
+    definition:
+      "A platypus as a general kind of living creature: a semi-aquatic, egg-laying mammal native to eastern Australia, with a duck-like bill, webbed feet, and a beaver-like tail. This refers to platypuses as a category — any ordinary platypus counts. Not one particular platypus.",
+    granularity: "generic_type",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-06-golden-gate-bridge": {
+    benchmarkCaseId: "v2.8-discovery-06-golden-gate-bridge",
+    target: "the Golden Gate Bridge",
+    definition:
+      "The Golden Gate Bridge: the specific suspension bridge spanning the Golden Gate strait, connecting San Francisco to Marin County, California, completed in 1937 and known for its Art Deco towers painted 'International Orange.' This refers to that exact bridge — not suspension bridges in general, not any other bridge, and not a replica or model. There is only one Golden Gate Bridge; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-07-rosetta-stone": {
+    benchmarkCaseId: "v2.8-discovery-07-rosetta-stone",
+    target: "the Rosetta Stone",
+    definition:
+      "The Rosetta Stone: the specific granodiorite stele inscribed with a decree in three scripts (hieroglyphic, Demotic, and Ancient Greek), discovered in 1799 near the town of Rosetta in Egypt, now held in the British Museum. This refers to that exact stone — not inscribed stelae in general, not any other Egyptian artifact, and not a replica or cast. There is only one Rosetta Stone; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-08-chess": {
+    benchmarkCaseId: "v2.8-discovery-08-chess",
+    target: "the game of chess",
+    definition:
+      "The game of chess as a specific, singular thing: the two-player strategy board game played on an 8x8 checkered board with a defined set of pieces (king, queen, rooks, bishops, knights, pawns), each with fixed legal moves, where the objective is to checkmate the opponent's king. This refers to chess itself, as codified by its standard rules — not board games in general, not one specific chess match or tournament, not a physical chess set as an object, and not a single chess piece. There is only one game of chess; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-09-rubber-duck": {
+    benchmarkCaseId: "v2.8-discovery-09-rubber-duck",
+    target: "a rubber duck",
+    definition:
+      "A rubber duck as a general kind of object: a small, buoyant, duck-shaped toy typically made of rubber or soft plastic, commonly used as a bath toy for children. This refers to rubber ducks as a category — any ordinary rubber duck counts, regardless of size, exact color, or brand. Not one particular rubber duck.",
+    granularity: "generic_type",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
+  },
+  "disc-10-antarctica": {
+    benchmarkCaseId: "v2.8-discovery-10-antarctica",
+    target: "Antarctica",
+    definition:
+      "Antarctica: the specific, one-of-a-kind continent located at the southernmost point of the Earth, almost entirely covered by ice, surrounding the South Pole. This refers to that exact continent — not continents in general, not the Arctic (a different, northern region that is not a continent), and not any specific research station or expedition on it. There is only one Antarctica; this is it.",
+    granularity: "specific_instance",
+    modifiers: null,
+    difficulty: "medium",
+    maxQuestions: 50,
+    gameLanguage: "en",
+    provider: "xai",
+    pinnedModel: "grok-4.20-0309-reasoning",
   },
 };
 
