@@ -114,6 +114,66 @@ async function runFixture(fixtureKey, baseUrl, shareToken) {
   if (res.status !== 200) process.exitCode = 1;
 }
 
+const GROK_LOOP_FIXTURES = new Set(["d1-grok", "d2-grok"]);
+
+/**
+ * Drives a Grok fixture to completion via app/api/internal/benchmark/
+ * grok-step, one short HTTP call per turn, instead of one long-lived
+ * whole-game call — see scripts/runGrokStep.ts's own header comment for why
+ * (Vercel's maxDuration ceiling vs. Grok's reasoning latency).
+ */
+async function runGrokLoop(fixtureKey, baseUrl, shareToken, maxSteps = 120) {
+  if (!GROK_LOOP_FIXTURES.has(fixtureKey)) usageAndExit(`unknown grok-loop fixture "${fixtureKey}"`);
+
+  const cookie = await establishBypassCookie(baseUrl, shareToken);
+  const url = `${baseUrl}/api/internal/benchmark/grok-step`;
+
+  async function post(body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Non-JSON response (HTTP ${res.status}): ${text.slice(0, 500)}`);
+    }
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    return json;
+  }
+
+  let status = await post({ confirm: "run-grok-step-start", fixture: fixtureKey });
+  console.log(
+    `[start] game_id=${status.game_id} benchmark_run_id=${status.benchmark_run_id} q=${status.question_count}/${status.max_questions}`
+  );
+
+  let steps = 0;
+  while (!status.done) {
+    steps += 1;
+    if (steps > maxSteps) {
+      throw new Error(`Exceeded ${maxSteps} steps without the game completing. Last status: ${JSON.stringify(status)}`);
+    }
+    status = await post({ confirm: "run-grok-step-continue", fixture: fixtureKey, gameId: status.game_id });
+    console.log(
+      `[step ${steps}] phase=${status.phase} q=${status.question_count}/${status.max_questions}` +
+        (status.last_question ? ` last_q="${status.last_question.slice(0, 60)}..." -> ${status.last_answer}` : "")
+    );
+    if (status.phase === "resolving" && !status.done) {
+      // One more call performs adjudication/integrity review and completes.
+      status = await post({ confirm: "run-grok-step-continue", fixture: fixtureKey, gameId: status.game_id });
+      console.log(`[resolve] result=${status.result} final_action=${status.final_action}`);
+    }
+  }
+
+  console.log("\nFINAL:");
+  console.log(JSON.stringify(status, null, 2));
+}
+
 async function runExport(benchmarkRunId, baseUrl, shareToken) {
   const cookie = await establishBypassCookie(baseUrl, shareToken);
   const url = `${baseUrl}/api/internal/benchmark/export-transcript?benchmarkRunId=${encodeURIComponent(benchmarkRunId)}`;
@@ -133,6 +193,12 @@ async function main() {
   if (first === "export") {
     if (args.length !== 4) usageAndExit("export mode needs: export <benchmarkRunId> <baseUrl> <shareToken>");
     await runExport(second, third, fourth);
+    return;
+  }
+
+  if (first === "grok-loop") {
+    if (args.length !== 4) usageAndExit("grok-loop mode needs: grok-loop <d1-grok|d2-grok> <baseUrl> <shareToken>");
+    await runGrokLoop(second, third, fourth);
     return;
   }
 

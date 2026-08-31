@@ -77,6 +77,11 @@ const PERMITTED_SECRET_IMPORTERS = [
   // Grok calibration routes are deleted.
   "scripts/runD1GrokCalibration.ts",
   "scripts/runD2GrokCalibration.ts",
+  // V2.8.x — TEMPORARY. Turn-by-turn stepping driver for the same Grok
+  // fixtures (app/api/internal/benchmark/grok-step/route.ts), needed because
+  // a whole game no longer fits inside one Vercel function invocation at
+  // Grok's reasoning latency. Remove alongside the two entries above.
+  "scripts/runGrokStep.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */
