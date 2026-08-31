@@ -70,6 +70,16 @@ interface XaiResponse {
     // returns is not stated and guessing wrong would silently report nothing.
     reasoning_tokens?: number;
     completion_tokens_details?: { reasoning_tokens?: number };
+    // V2.8.x — Grok cost-observability batch. Read best-effort, same reasoning
+    // as reasoning_tokens above: shape not fully confirmed until a real
+    // response has been inspected (see the smoke test's rawUsage passthrough),
+    // so every field here is optional and additive, never assumed present.
+    prompt_tokens?: number;
+    total_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number };
+    cost_in_usd_ticks?: number;
+    cost?: number;
+    [key: string]: unknown;
   };
 }
 
@@ -227,6 +237,15 @@ export const xaiAdapter: ProviderAdapter = {
         reasoningTokens:
           data.usage?.reasoning_tokens ??
           data.usage?.completion_tokens_details?.reasoning_tokens,
+        promptTokens: data.usage?.prompt_tokens,
+        cachedPromptTokens: data.usage?.prompt_tokens_details?.cached_tokens,
+        totalTokens: data.usage?.total_tokens,
+        // NOT populated here: whatever unit cost_in_usd_ticks/cost turn out to
+        // be, converting it correctly needs a real response to check against
+        // first (see rawUsage below) — a guessed divisor would look
+        // authoritative and be silently wrong. costUsd stays unset until that
+        // conversion is confirmed against actual xAI output.
+        rawUsage: data.usage,
       },
     };
   },

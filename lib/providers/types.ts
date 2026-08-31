@@ -103,6 +103,23 @@ export interface ToolCallResult<T> {
     finishReason?: string;
     completionTokens?: number;
     reasoningTokens?: number;
+    /**
+     * V2.8.x — Grok cost-observability batch. Extended fields, populated
+     * best-effort exactly like the two above: absent means the provider did
+     * not report it, never that the value was zero.
+     */
+    promptTokens?: number;
+    cachedPromptTokens?: number;
+    totalTokens?: number;
+    costUsd?: number;
+    /**
+     * TEMPORARY, AUDIT-ONLY. The whole provider usage object, unprocessed,
+     * so the smoke test can show exactly what a given API actually returns
+     * before any field name here is trusted. Remove once the structured
+     * fields above are confirmed against a real response and no longer need
+     * the raw fallback.
+     */
+    rawUsage?: unknown;
   };
 }
 
