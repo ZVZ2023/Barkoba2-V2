@@ -70,6 +70,13 @@ const PERMITTED_SECRET_IMPORTERS = [
   // convention. Remove this entry when the M4 held-out benchmark route is
   // deleted.
   "scripts/runD3Fixture.ts",
+  // V2.8.x — TEMPORARY. Same reasoning as scripts/runD2Fixture.ts above, for
+  // the Grok calibration runners
+  // (app/api/internal/benchmark/{d1,d2}-grok-calibration/route.ts). Separate
+  // entries, matching the one-fixture-per-file convention. Remove when the
+  // Grok calibration routes are deleted.
+  "scripts/runD1GrokCalibration.ts",
+  "scripts/runD2GrokCalibration.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */

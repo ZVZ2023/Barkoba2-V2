@@ -41,6 +41,9 @@ const FIXTURES = {
   d1: { route: "d1-generic-backpack", confirm: "run-d1-once" },
   d2: { route: "d2-eiffel-tower", confirm: "run-d2-once" },
   heldout01: { route: "heldout-01-mona-lisa", confirm: "run-heldout-01-once" },
+  "xai-smoke": { route: "xai-smoke-test", confirm: "run-xai-smoke-test-once" },
+  "d1-grok": { route: "d1-grok-calibration", confirm: "run-d1-grok-calibration-once" },
+  "d2-grok": { route: "d2-grok-calibration", confirm: "run-d2-grok-calibration-once" },
 };
 
 function usageAndExit(message) {
@@ -54,17 +57,45 @@ function usageAndExit(message) {
   process.exit(1);
 }
 
-async function establishBypassCookie(baseUrl, shareToken) {
-  const url = `${baseUrl}/?_vercel_share=${encodeURIComponent(shareToken)}`;
-  const res = await fetch(url, { redirect: "follow" });
-  const cookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
-  if (cookies.length === 0) {
-    throw new Error(
-      `No cookies received from the share-link GET (status ${res.status}) — the share token may be expired or wrong.`
-    );
+async function establishBypassCookie(baseUrl, shareToken, maxHops = 10) {
+  // MUST follow redirects manually, accumulating cookies at every hop.
+  // Node's fetch(..., {redirect: "follow"}) only exposes the FINAL
+  // response's headers — any Set-Cookie issued on an intermediate redirect
+  // (which is exactly how Vercel's share-link bypass sets its cookie, on a
+  // 307 before landing on the deployment) is silently dropped, and the
+  // subsequent request then hits Vercel's real login wall instead of the
+  // deployment.
+  let jar = {};
+  let current = `${baseUrl}/?_vercel_share=${encodeURIComponent(shareToken)}`;
+  for (let hop = 0; hop < maxHops; hop++) {
+    const cookieHeader = Object.entries(jar)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
+    const res = await fetch(current, {
+      redirect: "manual",
+      headers: cookieHeader ? { Cookie: cookieHeader } : {},
+    });
+    const setCookies = typeof res.headers.getSetCookie === "function" ? res.headers.getSetCookie() : [];
+    for (const c of setCookies) {
+      const pair = c.split(";")[0];
+      const eq = pair.indexOf("=");
+      if (eq > 0) jar[pair.slice(0, eq).trim()] = pair.slice(eq + 1).trim();
+    }
+    const location = res.headers.get("location");
+    if (res.status >= 300 && res.status < 400 && location) {
+      current = new URL(location, current).toString();
+      continue;
+    }
+    if (Object.keys(jar).length === 0) {
+      throw new Error(
+        `No cookies received after following the share-link redirect chain (final status ${res.status}) — the share token may be expired or wrong.`
+      );
+    }
+    return Object.entries(jar)
+      .map(([k, v]) => `${k}=${v}`)
+      .join("; ");
   }
-  // Keep only the name=value pair from each Set-Cookie line.
-  return cookies.map((c) => c.split(";")[0]).join("; ");
+  throw new Error(`Share-link redirect chain exceeded ${maxHops} hops.`);
 }
 
 async function runFixture(fixtureKey, baseUrl, shareToken) {
