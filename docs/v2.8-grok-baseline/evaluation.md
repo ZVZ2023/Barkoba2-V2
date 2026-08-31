@@ -27,6 +27,61 @@ pooled number.
 
 **Discovery batch record: 6/10 correct.** Calibration: 1/2 correct.
 
+## 0a. Corrections (2026-08-31, post-hoc re-verification of this document)
+
+Two factual errors in the original pass of this document, found on renewed
+transcript inspection and corrected here rather than silently edited away.
+Both corrections are reflected everywhere below; nothing else in this
+document was changed.
+
+**Correction 1 — game 8 (chess) was never a hard-evidence contradiction
+(A1).** The original draft claimed t7 was a hard NO to "abstract concept"
+that t8–t33 then violated. Re-reading the actual transcript:
+- t5 "Is the target a physical object?" → **NO**
+- t6 "Is the target a place or location?" → **NO**
+- t7 "Is the target a natural phenomenon?" → **NO**
+- t8 "Is the target an abstract concept or idea?" → **YES**
+
+There was never a hard NO to "abstract concept" — t7 ruled out *natural
+phenomenon*, not abstractness. Every question from t9 onward legitimately
+explores subtypes of the abstract-concept space t8 opened, never contradicts
+established evidence, and the Integrity Review already on file for this game
+independently reached the same conclusion ("None of these rise to a clear,
+unarguable factual contradiction"). The A1 claim is **struck**. Game 8 is
+reclassified as a **residual-dimension / poor-zoom-out failure**: 26 turns
+(t9–t34) crawl sibling subtypes within the abstract-concept branch
+(math → philosophy → science → religion → law → linguistics →
+social/cultural → norm → construct → institution → relationship →
+transmission → ritual → skill) without the Racer ever asking the one
+question that would have found the target — whether the target is a
+**game, sport, pastime, or contest** — despite "game" being sitting
+unused as a high-value discriminator dimension the whole time. The eventual
+guess, "tradition," is a wrong-*parent*-class guess reached by exhausting
+one branch, not a contradiction of anything established.
+
+**Correction 2 — AMBIGUOUS was not zero across the discovery batch.** The
+original draft stated "zero AMBIGUOUS answers across all 10 discovery
+games." Re-scanning every transcript's `ambiguous_count` field and turn log
+finds **4 AMBIGUOUS answers across the 10 discovery games**, not 3 (as a
+partial recount would also have missed one) and not zero:
+- Discovery 1 (wristwatch), t8 — "Does it require electricity to function?"
+- Discovery 2 (guitar), t5 — "Is the target larger than a breadbox?"
+- Discovery 8 (chess), t16 — "Is the target a social or cultural concept?"
+- Discovery 9 (rubber duck), t7 — "Is it larger than a breadbox?"
+
+(For completeness, calibration D-1/backpack also had one AMBIGUOUS at t6,
+same "larger than a breadbox" framing — calibration games are a separate
+evidence pool from the discovery batch and were never claimed to be zero.)
+
+The "zero AMBIGUOUS" claim and its F-dimension "N/A, nothing to score"
+conclusion are struck. All references below are corrected to 4/10 games
+with at least one AMBIGUOUS turn, and F is scored as: AMBIGUOUS occurred in
+4/10 games, in every case the Racer's next question or ("breadbox"/
+"electricity") reformulation was reasonable and did not cause a downstream
+error, cost a turn, or contribute to a branch-recovery incident. No new
+failure pattern is being asserted from this — it is a factual correction to
+the count, not a new finding requiring its own rank in §3.
+
 ## 1. Cross-game table
 
 | # | Fixture | Type | Result | Q used | Final guess | A1/A2 | D9 incident | Notable recovery |
@@ -38,21 +93,24 @@ pooled number.
 | 5 | platypus | generic | correct | 12 | platypus | none | **avoided** — t5–7 (Carnivora/rodent/primate NO), t8 tests parent frame ("placental mammal?") instead of a 4th order | **Excellent-shaped**: genuine parent-frame test after exactly 3 NOs |
 | 6 | Golden Gate Bridge | specific | **incorrect** | 14 | **"bridge"** | none | none | — |
 | 7 | Rosetta Stone | specific | correct | 33 | Rosetta Stone | none | **severe** — t18, t20–24 (metal/wood/plastic/glass/fabric NO), stone YES at t24 = 5th+ sibling | resolved at t24, but very late |
-| 8 | chess | specific | **incorrect** | 34 | **"tradition"** | **A1-shaped, sustained** — t7 hard NO to "abstract concept," t8–t33 (26 turns) test subtypes/adjacent framings of "concept" anyway | related sibling/branch pattern, but framed as sustained premise violation rather than pure enumeration | none — never recovered |
+| 8 | chess | specific | **incorrect** | 34 | **"tradition"** | none (see §0a correction 1) | no clean 3-NO/4th-sibling event — instead a 26-turn (t9–t34) sibling/subtype crawl within the abstract-concept branch, never zooming out to test "game/activity/pastime" as a dimension | none — never zoomed out to the game/activity dimension at all |
 | 9 | rubber duck | generic | correct | 22 | rubber duck | none | none | — |
 | 10 | Antarctica | specific | **incorrect** | 17 | **"glacier"** | none (near-miss, not contradiction) | none — but "continent"/"landmass" as an explicit category was never tested at all | — |
 
-**AMBIGUOUS answers across all 10 discovery games: zero.** A sharp contrast
-with the Claude M3 D-1 baseline (24/49 questions AMBIGUOUS). Observed fact,
-not interpreted further — F (AMBIGUOUS handling) is N/A for this entire
-batch; nothing to score.
+**AMBIGUOUS answers across the 10 discovery games: 4** (games 1, 2, 8, 9 —
+one each; see §0a correction 2 for the exact turns). Still a sharp contrast
+with the Claude M3 D-1 baseline (24/49 questions AMBIGUOUS), just not zero.
+F (AMBIGUOUS handling): in all 4 occurrences the Racer's next question
+reformulated the ambiguous predicate cleanly (e.g. re-asking size via a
+concrete comparison) and no downstream error, wasted turn, or D9 incident
+traces back to any of them — scored as handled without incident, not N/A.
 
 **D4 redundancy:** one clear instance found, inside game 8's larger failure
 — t16 ("a conceptual framework about society or culture?") and t17 ("a
 concept pertaining to society or culture?") are near-paraphrases of each
-other, both already subsumed by the t7 contradiction. Not elevated to a
-primary finding on its own (N=1, embedded in a larger failure), per
-governance.
+other, both inside the same abstract-concept branch the game never zoomed
+out of. Not elevated to a primary finding on its own (N=1, embedded in a
+larger failure), per governance.
 
 ## 2. D1–D9 scoring — what was rigorously checked vs. not
 
@@ -97,9 +155,12 @@ pattern this batch produced.**
 
 ### #2 — D9 bad-branch persistence (moderate-ranked)
 
-**Recurrence: 2 clean instances (games 3, 7), 1 related-but-distinct
-instance (game 8's sustained premise violation is D9-adjacent but scored
-separately as A1 above).** Confirms the exact same failure shape the M3
+**Recurrence: 2 clean instances (games 3, 7).** Game 8's sibling/subtype
+crawl is a related but operationally distinct shape — no single branch ever
+produced 3 related NOs followed by a 4th same-branch sibling probe against
+the frozen definition; it is scored separately in #3 below as a
+residual-dimension failure, not counted toward D9 recurrence. Confirms the
+exact same failure shape the M3
 Claude baseline and M4 Grok-vs-Claude comparison already found —
 **generalizes across providers**, not a Claude-specific artifact. `racer/4.1.0`
 was already tried and REJECTED against this dimension in M4; that
@@ -112,19 +173,25 @@ experiment's conclusion stands and is not reopened here.
 questions), which plausibly increases exposure to other failure modes, but
 did not directly cause any of this batch's four losses.
 
-### #3 — Sustained evidence-carry-forward violation (game 8, N=1)
+### #3 — Residual-dimension / unused-discriminator failure (game 8, N=1)
 
-The 26-turn run testing subtypes of a category already excluded by a hard
-NO is the single most severe *episode* in the whole batch, but it is **one
-instance**. Per this project's own standing rule — not every failure
-becomes a rule — this is flagged as a high-severity, unconfirmed pattern,
-not promoted to an actionable finding. A third data point would be needed.
+**Corrected (§0a):** this is not a hard-evidence contradiction. It is a
+26-turn (t9–t34) sibling/subtype crawl that stays entirely inside the
+abstract-concept branch t8 legitimately opened, while a major unused
+dimension — "is the target a game, sport, pastime, or contest?" — sits
+untested the entire game, right up to the final wrong-parent-class guess
+("tradition"). It is the single most severe *episode* in the whole batch by
+turn count, but it is **one instance**. Per this project's own standing rule
+— not every failure becomes a rule — this is flagged as a high-severity,
+unconfirmed pattern, not promoted to an actionable finding. A third data
+point would be needed.
 
 ### Not elevated
 
 D4 (one embedded instance), D2 efficiency (variable, tracks with #2/#3
-rather than independent), D7 (N/A, zero AMBIGUOUS answers), D8/D5 (no
-severe cross-game pattern surfaced during play).
+rather than independent), D7 (4/10 games had one AMBIGUOUS turn each; every
+instance handled without downstream incident — see §0a correction 2), D8/D5
+(no severe cross-game pattern surfaced during play).
 
 ## 4. Facts vs. interpretations vs. hypotheses — kept explicitly separate
 
@@ -132,11 +199,14 @@ severe cross-game pattern surfaced during play).
 - 6/10 discovery games correct, 4/10 incorrect.
 - 3 of those 4 losses share an identical final-guess shape: a bare category
   label.
-- Zero AMBIGUOUS answers across all 10 discovery games.
+- 4/10 discovery games had exactly one AMBIGUOUS answer each (games 1, 2, 8,
+  9); see §0a correction 2 for exact turns — not zero, as an earlier pass of
+  this document incorrectly stated.
 - D9's exact 3-NO/4th-sibling boundary was violated in games 3 and 7 (both
-  still won) and arguably in game 8's own way (lost).
-- Game 8's t8–t33 all build on a premise (`abstract concept`) the transcript
-  itself hard-excluded at t7.
+  still won).
+- Game 8's t9–t34 all stay inside the abstract-concept branch t8 opened
+  (no prior hard NO to abstractness — see §0a correction 1), never testing
+  the unused "game/activity/pastime" dimension.
 
 **Plausible interpretations:**
 - The bare-category-guess pattern plausibly reflects the Racer treating
@@ -147,16 +217,22 @@ severe cross-game pattern surfaced during play).
 - Grok's D9 persistence, at the same magnitude as Claude's, suggests the
   underlying weakness is in `racer/4.0.0`'s own SELECT wording (already
   established in M4) rather than being specific to either model.
-- Zero AMBIGUOUS answers may reflect Grok's questions being phrased more
-  cleanly/atomically than the compound framings that triggered many of
-  Claude's AMBIGUOUS results in M3 — or may reflect the Composer (always
-  Anthropic) resolving Grok's phrasing more decisively. Both are plausible;
-  neither is confirmed.
+- Game 8's 26-turn sibling crawl plausibly reflects the same underlying gap
+  as #1 (no validation step before continuing to narrow within an already-
+  entered branch) rather than a distinct mechanism — both are about the
+  Racer not periodically checking whether its current branch is still the
+  most efficient one to be in, given the full KNOWN state. Not confirmed;
+  flagged as a plausible link between #1 and #3, not asserted as one cause.
+- Grok's low AMBIGUOUS rate (5 across 12 completed games, all with clean
+  recovery) may reflect Grok's questions being phrased more cleanly/atomically
+  than the compound framings that triggered many of Claude's AMBIGUOUS
+  results in M3 — or may reflect the Composer (always Anthropic) resolving
+  Grok's phrasing more decisively. Both are plausible; neither is confirmed.
 
 **Unproven hypotheses, explicitly not acted on:**
 - That fixing the bare-category-guess pattern would not introduce new
   failures elsewhere (untested).
-- That game 8's contradiction pattern is anything more than an
+- That game 8's residual-dimension pattern is anything more than an
   unusually loud single game (N=1, per governance not yet a rule).
 - Any claim that Grok is "better" or "worse" than Claude at Barkóba overall
   — the two calibration games and this discovery batch are not a matched,
