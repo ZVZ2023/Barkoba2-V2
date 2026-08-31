@@ -60,9 +60,19 @@ access, checked directly rather than assumed:
   refuse everything outside `VERCEL_ENV === "preview"` by design (Gate 1) —
   this is correct, intentional behavior, not a bug to route around.
 - The connected Vercel account (team `zvz-x`, confirmed reachable via this
-  session's Vercel MCP connection) has **zero projects** — there is no
-  deployed Barkóba project reachable from here to create a Preview
-  deployment against at all, independent of any credential.
+  session's Vercel MCP connection) has **zero projects** visible to it —
+  root-caused, not just observed: `.vercel/repo.json` in the main checkout
+  names the real project (`barkoba2-v2`, `prj_P8itlozWZiHiRbHZZg9SAMk81yiO`,
+  same `team_YQ5feGh1HADzgCAO5bE6RECA` org this session's connector
+  authenticates to), but `get_project` on that exact ID and slug both 404,
+  and `get_git_deployment_context` reports zero linked projects for that
+  team. Matching team, zero project visibility — the project has no
+  installed Claude/Vercel connector integration (confirmed by Zsolt), so
+  this session's Vercel connector is authenticated at the team level but was
+  never granted access to this specific project. **Fix location, confirmed:
+  Claude → Settings → Connectors → Vercel** (not a Vercel-side integration
+  page — none exists yet). No tool call available to this session can
+  restore that access; it needs the account holder's own click there.
 - `test/benchmarkD2Route.test.ts`'s own header comment already documents
   this exact limitation for D-2: *"no fixture game is actually completed by
   these tests, and none should be"* — the project's own test suite was
