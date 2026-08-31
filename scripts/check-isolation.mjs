@@ -55,6 +55,13 @@ const PERMITTED_SECRET_IMPORTERS = [
   // deployment's self-HTTP calls to its own routes). Remove this entry when
   // the M1 D-1 proof-of-concept route is deleted.
   "scripts/runBenchmarkFixture.ts",
+  // M3 — TEMPORARY. Same reasoning as scripts/runBenchmarkFixture.ts above,
+  // for the D-2 Preview runner (app/api/internal/benchmark/d2-eiffel-tower/
+  // route.ts). A separate entry rather than widening the D-1 one because it
+  // is a separate file — see that file's own header comment for why it is
+  // not a shared, parameterized runner. Remove this entry when the M3 D-2
+  // controlled-benchmark route is deleted.
+  "scripts/runD2Fixture.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */
@@ -86,6 +93,10 @@ const QUARANTINED = [
   // never importing gameStore or any game logic.
   "lib/corpus/racerGuidanceCatalog.ts",
   "lib/corpus/gameIntelligenceSignals.ts",
+  // M3 — full-transcript export for scoring against docs/racer-scorecard.md.
+  // Same read-only, secret-incapable contract as gameIntelligenceSignals.ts
+  // above, one row wider (every turn, not just aggregate counts).
+  "lib/corpus/transcriptExport.ts",
   // V2.4 — the entitlement gate is a PRE-game concern. It has no business near
   // game state, seat authorization or the secret, and quarantining it is what
   // keeps that true as it grows.
