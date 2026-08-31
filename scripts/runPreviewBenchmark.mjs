@@ -122,7 +122,7 @@ const GROK_LOOP_FIXTURES = new Set(["d1-grok", "d2-grok"]);
  * whole-game call — see scripts/runGrokStep.ts's own header comment for why
  * (Vercel's maxDuration ceiling vs. Grok's reasoning latency).
  */
-async function runGrokLoop(fixtureKey, baseUrl, shareToken, maxSteps = 120) {
+async function runGrokLoop(fixtureKey, baseUrl, shareToken, maxSteps = 120, resumeGameId = null) {
   if (!GROK_LOOP_FIXTURES.has(fixtureKey)) usageAndExit(`unknown grok-loop fixture "${fixtureKey}"`);
 
   const cookie = await establishBypassCookie(baseUrl, shareToken);
@@ -147,10 +147,17 @@ async function runGrokLoop(fixtureKey, baseUrl, shareToken, maxSteps = 120) {
     return json;
   }
 
-  let status = await post({ confirm: "run-grok-step-start", fixture: fixtureKey });
-  console.log(
-    `[start] game_id=${status.game_id} benchmark_run_id=${status.benchmark_run_id} q=${status.question_count}/${status.max_questions}`
-  );
+  let status;
+  if (resumeGameId) {
+    console.log(`[resume] continuing existing game_id=${resumeGameId}`);
+    status = await post({ confirm: "run-grok-step-continue", fixture: fixtureKey, gameId: resumeGameId });
+    console.log(`[step] phase=${status.phase} q=${status.question_count}/${status.max_questions}`);
+  } else {
+    status = await post({ confirm: "run-grok-step-start", fixture: fixtureKey });
+    console.log(
+      `[start] game_id=${status.game_id} benchmark_run_id=${status.benchmark_run_id} q=${status.question_count}/${status.max_questions}`
+    );
+  }
 
   let steps = 0;
   while (!status.done) {
@@ -197,8 +204,11 @@ async function main() {
   }
 
   if (first === "grok-loop") {
-    if (args.length !== 4) usageAndExit("grok-loop mode needs: grok-loop <d1-grok|d2-grok> <baseUrl> <shareToken>");
-    await runGrokLoop(second, third, fourth);
+    if (args.length < 4 || args.length > 5)
+      usageAndExit(
+        "grok-loop mode needs: grok-loop <d1-grok|d2-grok> <baseUrl> <shareToken> [resumeGameId]"
+      );
+    await runGrokLoop(second, third, fourth, 120, args[4] ?? null);
     return;
   }
 

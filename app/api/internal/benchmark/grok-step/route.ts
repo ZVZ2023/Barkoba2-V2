@@ -20,7 +20,12 @@ import { startGrokFixture, stepGrokFixture, GrokStepError, type GrokFixtureKey }
 //   4. POST-only.
 // ---------------------------------------------------------------------------
 
-export const maxDuration = 60;
+// Bumped from an initial 60s after a real single-step FUNCTION_INVOCATION_
+// TIMEOUT: one step is a Composer answer (Anthropic, fast) plus one Grok
+// Racer turn, and Grok's reasoning latency alone can exceed 60s as the
+// transcript grows. 300s matches every other internal/benchmark route's
+// ceiling and comfortably covers a single step even under slow reasoning.
+export const maxDuration = 300;
 
 const START_CONFIRM = "run-grok-step-start";
 const CONTINUE_CONFIRM = "run-grok-step-continue";
