@@ -62,6 +62,14 @@ const PERMITTED_SECRET_IMPORTERS = [
   // not a shared, parameterized runner. Remove this entry when the M3 D-2
   // controlled-benchmark route is deleted.
   "scripts/runD2Fixture.ts",
+  // M4 — TEMPORARY. Same reasoning as scripts/runD2Fixture.ts above, for the
+  // held-out benchmark fixture's Preview runner
+  // (app/api/internal/benchmark/heldout-01-mona-lisa/route.ts). A separate
+  // entry rather than widening the D-1/D-2 ones because it is a separate
+  // file — matches the project's established one-fixture-per-file
+  // convention. Remove this entry when the M4 held-out benchmark route is
+  // deleted.
+  "scripts/runD3Fixture.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */
