@@ -50,10 +50,6 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   const [clarification, setClarification] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
-  // V2.5-B3 — which AI races. A NAME only; the model behind it is server-held,
-  // so nothing here can put a model id on Barkóba's bill or in the corpus.
-  // Defaults to the opponent every previous game was played against.
-  const [racerProvider, setRacerProvider] = useState<"anthropic" | "xai">("anthropic");
   // V2.5 — the language of PLAY, not of this screen. "auto" lets Barkóba read
   // it from how the target was written; the explicit options exist because a
   // one-word target (Grok, Apple, Tesla) reveals nothing about which language
@@ -81,9 +77,12 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
           // this only proposes.
           difficulty,
           max_questions: pickedBudget(difficulty, budgetOverride),
-          // V2.5-B3 — proposes an opponent. The server validates it, refuses an
-          // unknown or unconfigured one, and never substitutes a different AI.
-          racer_provider: racerProvider,
+          // V2.8.0 — the ordinary public client no longer proposes an
+          // opponent at all. The server picks it (one "Barkóba AI",
+          // server-authoritative) — see the PUBLIC_RACER_PROVIDER constant
+          // in app/api/game/create/route.ts. The field this used to send is
+          // deliberately absent, not merely defaulted, so there is nothing
+          // here for a future build to accidentally start sending again.
           // "auto" is sent as-is; the server treats anything that is not "hu"
           // or "en" as a request to decide, so it never becomes game state.
           game_language: gameLanguage,
@@ -133,7 +132,7 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   }
 
   return (
-    <GameShell role="Te gondolsz valamire. Az AI fogja kitalálni." version={versionLabel}>
+    <GameShell role="Te gondolsz valamire. A Barkóba AI fogja kitalálni." version={versionLabel}>
       <p className="text-sm text-[var(--ink-soft)]">
         Gondolj valamire, és rögzítsd. Az AI teljesen vakon indul, és{" "}
         {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.
@@ -196,34 +195,6 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
                   onClick={() => setGameLanguage(option.value)}
                   className={`min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
                     gameLanguage === option.value
-                      ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
-                      : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
-                  }`}
-                >
-                  {option.label}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* V2.5-B3 — which AI takes the guessing seat. Deliberately the same
-              pill idiom as the difficulty control rather than a new pattern:
-              this is one added choice, not a redesign of the page. */}
-          <div className="flex flex-col gap-2">
-            <span className="text-sm font-medium text-[var(--ink)]">Ki találgasson?</span>
-            <div className="flex gap-2">
-              {(
-                [
-                  { value: "anthropic", label: "Claude" },
-                  { value: "xai", label: "Grok" },
-                ] as const
-              ).map((option) => (
-                <button
-                  key={option.value}
-                  type="button"
-                  onClick={() => setRacerProvider(option.value)}
-                  className={`min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
-                    racerProvider === option.value
                       ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
                       : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
                   }`}

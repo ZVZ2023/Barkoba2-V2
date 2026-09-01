@@ -80,7 +80,7 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
     }`;
 
   return (
-    <GameShell role="Az AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
+    <GameShell role="A Barkóba AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
       {naming ? (
         <NamePrompt onDone={() => setNaming(false)} />
       ) : busy ? (

@@ -122,6 +122,26 @@ function resolveBenchmark(req: NextRequest): {
  * reason for adding a second provider is to compare them; a silent substitution
  * poisons exactly the evidence the feature exists to produce.
  */
+/**
+ * V2.8.0 — PUBLIC RELEASE: the ONE provider the server chooses for every
+ * ordinary Human↔AI game. A product decision, not a provider-registry
+ * default — DEFAULT_RACER_PROVIDER stays "anthropic" and is untouched by
+ * this; that constant is a transport-layer fallback used when no provider
+ * argument is supplied at all (diagnostic scripts, tests), not a policy
+ * about what ordinary players get.
+ *
+ * WHY THIS EXISTS SEPARATELY FROM resolveRacerProvider's original
+ * client-proposes/server-validates contract: that contract stays exactly as
+ * it was — see the call site below, which still runs every candidate
+ * through the same two refusals (unknown / unavailable), never a
+ * substitution. What changed is WHICH VALUE reaches it: an ordinary public
+ * caller's own `racer_provider` field is never read at all now, only a
+ * validated internal/benchmark caller's is. See the call site for how that
+ * boundary is drawn — reusing resolveBenchmark()'s existing secret-header
+ * gate rather than inventing a second one.
+ */
+const PUBLIC_RACER_PROVIDER: ModelProviderId = "xai";
+
 function resolveRacerProvider(
   requested: unknown
 ): { ok: true; provider: ModelProviderId } | { ok: false; response: NextResponse } {
@@ -181,6 +201,13 @@ interface CreateGameBody {
    * V2.5-B3 — which AI should race. A NAME only: "anthropic" or "xai". The
    * model id behind it is server-held and never client-authoritative.
    * Meaningful only when the Racer seat is the AI.
+   *
+   * V2.8.0 — IGNORED for an ordinary public caller. The server pins the
+   * public path to PUBLIC_RACER_PROVIDER regardless of what this field
+   * says; it is honored only for a caller that already passed
+   * resolveBenchmark()'s secret-header gate. Kept in the body type so that
+   * internal/benchmark tooling posting through this same route continues to
+   * work unchanged.
    */
   racer_provider?: string;
   /**
@@ -483,8 +510,19 @@ export async function POST(req: NextRequest) {
   // V2.5-B3 — resolved BEFORE the Validator runs, so a refusal costs no model
   // call. Only meaningful when the AI races; a Human↔Human game has no provider
   // and must not be refused because one was unavailable.
+  //
+  // V2.8.0 — SERVER-AUTHORITATIVE PUBLIC PROVIDER. An ordinary caller's own
+  // `body.racer_provider` is never read: it is replaced with
+  // PUBLIC_RACER_PROVIDER before resolveRacerProvider ever sees it, so no
+  // client-controlled mechanism (request body, or anything a future client
+  // build might add) can move an ordinary game onto a different provider.
+  // Only a caller that already passed resolveBenchmark()'s secret-header gate
+  // — a clearly internal/admin/benchmark surface, never reachable from the
+  // ordinary player-facing client — may still propose one, preserving the
+  // original client-proposes/server-validates contract for that surface only.
+  const isBenchmarkCaller = benchmark.benchmark_case_id !== null;
   const racerProviderChoice = resolveRacerProvider(
-    humanVsHuman ? undefined : body.racer_provider
+    humanVsHuman ? undefined : isBenchmarkCaller ? body.racer_provider : PUBLIC_RACER_PROVIDER
   );
   if (!racerProviderChoice.ok) return racerProviderChoice.response;
 
