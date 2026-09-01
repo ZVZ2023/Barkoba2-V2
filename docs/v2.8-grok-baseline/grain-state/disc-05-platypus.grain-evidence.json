@@ -1,0 +1,1471 @@
+{
+  "fixture": "disc-05-platypus",
+  "steps": [
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target real or has it ever really existed, as opposed to being fictional?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 128,
+          "completionTokens": 70,
+          "reasoningTokens": 856,
+          "totalTokens": 2758,
+          "latencyMs": 8074,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 70,
+            "total_tokens": 2758,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 856,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 44706000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a person?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1617
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1846,
+          "cachedPromptTokens": 128,
+          "completionTokens": 62,
+          "reasoningTokens": 422,
+          "totalTokens": 2330,
+          "latencyMs": 4784,
+          "rawUsage": {
+            "prompt_tokens": 1846,
+            "completion_tokens": 62,
+            "total_tokens": 2330,
+            "prompt_tokens_details": {
+              "text_tokens": 1846,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 422,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 33831000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an animal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1323
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1860,
+          "cachedPromptTokens": 128,
+          "completionTokens": 78,
+          "reasoningTokens": 722,
+          "totalTokens": 2660,
+          "latencyMs": 8358,
+          "rawUsage": {
+            "prompt_tokens": 1860,
+            "completion_tokens": 78,
+            "total_tokens": 2660,
+            "prompt_tokens_details": {
+              "text_tokens": 1860,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 722,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 41906000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a mammal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1723
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1874,
+          "cachedPromptTokens": 1088,
+          "completionTokens": 59,
+          "reasoningTokens": 335,
+          "totalTokens": 2268,
+          "latencyMs": 3465,
+          "rawUsage": {
+            "prompt_tokens": 1874,
+            "completion_tokens": 59,
+            "total_tokens": 2268,
+            "prompt_tokens_details": {
+              "text_tokens": 1874,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1088
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 335,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 21851000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a domesticated animal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1562
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1887,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 946,
+          "totalTokens": 2910,
+          "latencyMs": 11384,
+          "rawUsage": {
+            "prompt_tokens": 1887,
+            "completion_tokens": 77,
+            "total_tokens": 2910,
+            "prompt_tokens_details": {
+              "text_tokens": 1887,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 946,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 47818500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a marine mammal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1988
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1902,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 71,
+          "reasoningTokens": 1712,
+          "totalTokens": 3685,
+          "latencyMs": 23349,
+          "rawUsage": {
+            "prompt_tokens": 1902,
+            "completion_tokens": 71,
+            "total_tokens": 3685,
+            "prompt_tokens_details": {
+              "text_tokens": 1902,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1712,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 54910000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a primate?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1325
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1917,
+          "cachedPromptTokens": 1088,
+          "completionTokens": 79,
+          "reasoningTokens": 3073,
+          "totalTokens": 5069,
+          "latencyMs": 35286,
+          "rawUsage": {
+            "prompt_tokens": 1917,
+            "completion_tokens": 79,
+            "total_tokens": 5069,
+            "prompt_tokens_details": {
+              "text_tokens": 1917,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1088
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3073,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 91338500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a rodent?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1629
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1931,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 99,
+          "reasoningTokens": 1618,
+          "totalTokens": 3648,
+          "latencyMs": 23245,
+          "rawUsage": {
+            "prompt_tokens": 1931,
+            "completion_tokens": 99,
+            "total_tokens": 3648,
+            "prompt_tokens_details": {
+              "text_tokens": 1931,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1618,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 53622500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a carnivore?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1413
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1944,
+          "cachedPromptTokens": 128,
+          "completionTokens": 85,
+          "reasoningTokens": 1159,
+          "totalTokens": 3188,
+          "latencyMs": 12652,
+          "rawUsage": {
+            "prompt_tokens": 1944,
+            "completion_tokens": 85,
+            "total_tokens": 3188,
+            "prompt_tokens_details": {
+              "text_tokens": 1944,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1159,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 54056000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a feline (member of the Felidae family)?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1760
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1959,
+          "cachedPromptTokens": 128,
+          "completionTokens": 78,
+          "reasoningTokens": 963,
+          "totalTokens": 3000,
+          "latencyMs": 11315,
+          "rawUsage": {
+            "prompt_tokens": 1959,
+            "completion_tokens": 78,
+            "total_tokens": 3000,
+            "prompt_tokens_details": {
+              "text_tokens": 1959,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 963,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 49168500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Canidae family (canid)?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1597
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1980,
+          "cachedPromptTokens": 128,
+          "completionTokens": 98,
+          "reasoningTokens": 893,
+          "totalTokens": 2971,
+          "latencyMs": 11190,
+          "rawUsage": {
+            "prompt_tokens": 1980,
+            "completion_tokens": 98,
+            "total_tokens": 2971,
+            "prompt_tokens_details": {
+              "text_tokens": 1980,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 893,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 48181000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Ursidae family (bears)?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1415
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2002,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 101,
+          "reasoningTokens": 2329,
+          "totalTokens": 4432,
+          "latencyMs": 27067,
+          "rawUsage": {
+            "prompt_tokens": 2002,
+            "completion_tokens": 101,
+            "total_tokens": 4432,
+            "prompt_tokens_details": {
+              "text_tokens": 2002,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2329,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 72335000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a marsupial?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1332
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2024,
+          "cachedPromptTokens": 128,
+          "completionTokens": 82,
+          "reasoningTokens": 3405,
+          "totalTokens": 5511,
+          "latencyMs": 40240,
+          "rawUsage": {
+            "prompt_tokens": 2024,
+            "completion_tokens": 82,
+            "total_tokens": 5511,
+            "prompt_tokens_details": {
+              "text_tokens": 2024,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3405,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 111131000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Mustelidae family?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1809
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2040,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 111,
+          "reasoningTokens": 1182,
+          "totalTokens": 3333,
+          "latencyMs": 15384,
+          "rawUsage": {
+            "prompt_tokens": 2040,
+            "completion_tokens": 111,
+            "total_tokens": 3333,
+            "prompt_tokens_details": {
+              "text_tokens": 2040,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1182,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 44385000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target more closely related to cats than to dogs?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1563
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2060,
+          "cachedPromptTokens": 128,
+          "completionTokens": 100,
+          "reasoningTokens": 2366,
+          "totalTokens": 4526,
+          "latencyMs": 27939,
+          "rawUsage": {
+            "prompt_tokens": 2060,
+            "completion_tokens": 100,
+            "total_tokens": 4526,
+            "prompt_tokens_details": {
+              "text_tokens": 2060,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2366,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 86056000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Procyonidae family (procyonid)?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2637
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2080,
+          "cachedPromptTokens": 128,
+          "completionTokens": 100,
+          "reasoningTokens": 3037,
+          "totalTokens": 5217,
+          "latencyMs": 35561,
+          "rawUsage": {
+            "prompt_tokens": 2080,
+            "completion_tokens": 100,
+            "total_tokens": 5217,
+            "prompt_tokens_details": {
+              "text_tokens": 2080,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3037,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 103081000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Mephitidae family?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1919
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2106,
+          "cachedPromptTokens": 128,
+          "completionTokens": 82,
+          "reasoningTokens": 2188,
+          "totalTokens": 4376,
+          "latencyMs": 24421,
+          "rawUsage": {
+            "prompt_tokens": 2106,
+            "completion_tokens": 82,
+            "total_tokens": 4376,
+            "prompt_tokens_details": {
+              "text_tokens": 2106,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2188,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 81731000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the Ailuridae family?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 17,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1373
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2127,
+          "cachedPromptTokens": 128,
+          "completionTokens": 92,
+          "reasoningTokens": 2992,
+          "totalTokens": 5211,
+          "latencyMs": 36688,
+          "rawUsage": {
+            "prompt_tokens": 2127,
+            "completion_tokens": 92,
+            "total_tokens": 5211,
+            "prompt_tokens_details": {
+              "text_tokens": 2127,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2992,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 102343500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 18,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a member of the biological order Carnivora?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 18,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1507
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 19,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2148,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 101,
+          "reasoningTokens": 4093,
+          "totalTokens": 6342,
+          "latencyMs": 48857,
+          "rawUsage": {
+            "prompt_tokens": 2148,
+            "completion_tokens": 101,
+            "total_tokens": 6342,
+            "prompt_tokens_details": {
+              "text_tokens": 2148,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4093,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 118260000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 19,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Can the target fly?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 19,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2103
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 20,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2169,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 94,
+          "reasoningTokens": 2114,
+          "totalTokens": 4377,
+          "latencyMs": 23647,
+          "rawUsage": {
+            "prompt_tokens": 2169,
+            "completion_tokens": 94,
+            "total_tokens": 4377,
+            "prompt_tokens_details": {
+              "text_tokens": 2169,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2114,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 68872500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 20,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the target lay eggs?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 20,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1411
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 21,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2182,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 97,
+          "reasoningTokens": 2399,
+          "totalTokens": 4678,
+          "latencyMs": 26997,
+          "rawUsage": {
+            "prompt_tokens": 2182,
+            "completion_tokens": 97,
+            "total_tokens": 4678,
+            "prompt_tokens_details": {
+              "text_tokens": 2182,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2399,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 76235000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 21,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the target have spines or quills covering its body?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 21,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1630
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 22,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2196,
+          "cachedPromptTokens": 128,
+          "completionTokens": 106,
+          "reasoningTokens": 1630,
+          "totalTokens": 3932,
+          "latencyMs": 21466,
+          "rawUsage": {
+            "prompt_tokens": 2196,
+            "completion_tokens": 106,
+            "total_tokens": 3932,
+            "prompt_tokens_details": {
+              "text_tokens": 2196,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1630,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 69506000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "questioning",
+      "question_count": 22,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a monotreme?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 22,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2105
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 23,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2216,
+          "cachedPromptTokens": 128,
+          "completionTokens": 137,
+          "reasoningTokens": 1606,
+          "totalTokens": 3959,
+          "latencyMs": 20662,
+          "rawUsage": {
+            "prompt_tokens": 2216,
+            "completion_tokens": 137,
+            "total_tokens": 3959,
+            "prompt_tokens_details": {
+              "text_tokens": 2216,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1606,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 69931000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "resolving",
+      "question_count": 23,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [
+        {
+          "turn_index": 24,
+          "proposed_guess": "platypus",
+          "required_grain": "unset",
+          "decision": "no_check_unset",
+          "grain_ok": null,
+          "reasoning": "required_target_grain was never established from play evidence; no comparison is possible.",
+          "retried": false,
+          "retry_guess": null,
+          "retry_decision": null
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 23,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1770
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 24,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2230,
+          "cachedPromptTokens": 128,
+          "completionTokens": 74,
+          "reasoningTokens": 1346,
+          "totalTokens": 3650,
+          "latencyMs": 15683,
+          "rawUsage": {
+            "prompt_tokens": 2230,
+            "completion_tokens": 74,
+            "total_tokens": 3650,
+            "prompt_tokens_details": {
+              "text_tokens": 2230,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1346,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 62031000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "a555e8d8-0ac1-403e-bc88-2f6f2b107332",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-grain-state",
+      "benchmark_run_id": "0db3b708-9bf4-4998-8dd1-32d2d4fcb946",
+      "phase": "complete",
+      "question_count": 23,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
