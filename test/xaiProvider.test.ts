@@ -442,6 +442,9 @@ test("the xAI adapter is quarantined from the secret store", () => {
 test("the key is server-side only and never reaches a client bundle", () => {
   assert.doesNotMatch(readFileSync("lib/env.ts", "utf8"), /NEXT_PUBLIC_XAI/);
   assert.doesNotMatch(readFileSync("app/ComposerEntry.tsx", "utf8"), /XAI_API_KEY/);
-  // The selector sends a provider NAME. Nothing else.
-  assert.match(readFileSync("app/ComposerEntry.tsx", "utf8"), /racer_provider: racerProvider/);
+  // V2.8.0 — the public client no longer proposes a provider at all; the
+  // server is authoritative (see app/api/game/create/route.ts's
+  // PUBLIC_RACER_PROVIDER). Assert the field is genuinely absent from what
+  // this component sends, not merely that no key leaks.
+  assert.doesNotMatch(readFileSync("app/ComposerEntry.tsx", "utf8"), /racer_provider/);
 });
