@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
-import { getGame, saveGame } from "@/lib/gameStore";
+import {
+  acquireTurnLock,
+  getGame,
+  releaseTurnLock,
+  saveGameIfRevisionMatches,
+} from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
@@ -21,15 +26,53 @@ import type {
 
 export const maxDuration = 60;
 
+// V2.8.1 — the My Car Key integrity hotfix. The turn lock's TTL matches
+// maxDuration exactly: it must never expire before a legitimate in-flight
+// request could still be genuinely running (that would let a second request
+// in prematurely and defeat the whole point), and there is no reason for it
+// to outlive that. If the Racer call times out, the platform kills this
+// function before it reaches its own `finally` release — the lock then
+// simply expires on its own TTL, at most `TURN_LOCK_TTL_SECONDS` after
+// acquisition, no worse than the request itself would have taken. A later
+// retry sees "busy, try again shortly" for up to that long rather than ever
+// risking a stale answer landing on the wrong question — see
+// docs/DESIGN-NOTES.md for the incident this closes.
+const TURN_LOCK_TTL_SECONDS = maxDuration;
+
 interface TurnBody {
   answer?: ComposerAnswer;
   ambiguous_explanation?: string;
+  /**
+   * V2.8.1 — required whenever `answer` is present. The revision (see
+   * GameRecord.revision) the client's screen was showing when it decided
+   * what question it was answering. The server accepts the answer only if
+   * this still matches canonical state; see the "stale_turn" response
+   * below for what happens when it doesn't.
+   */
+  expected_revision?: number;
 }
 
 const VALID_ANSWERS: ComposerAnswer[] = ["YES", "NO", "AMBIGUOUS"];
 
 function respond(game: GameRecord, status = 200) {
   return NextResponse.json({ game }, { status });
+}
+
+/**
+ * V2.8.1 — the game has moved on since the client's snapshot. Returned
+ * instead of applying a stale answer. `game` must always be the freshest
+ * canonical read available to the caller, so the client can reconcile to it
+ * directly rather than being told to blindly resubmit.
+ */
+function staleTurn(game: GameRecord) {
+  return NextResponse.json(
+    {
+      error: "stale_turn",
+      message: "A játék időközben továbblépett — frissítve a jelenlegi állapotra.",
+      game,
+    },
+    { status: 409 }
+  );
 }
 
 /** The most recent question awaiting a Composer answer, if any. */
@@ -121,233 +164,373 @@ export async function POST(
     );
   }
 
-  const pending = findPendingEntry(game);
-
-  // -------------------------------------------------------------------------
-  // Step 1 — record the Composer's answer, if one was supplied.
-  // -------------------------------------------------------------------------
-  if (answer) {
-    if (!pending) {
+  // ---------------------------------------------------------------------------
+  // V2.8.1 — exact-question binding, the My Car Key integrity hotfix.
+  //
+  // CRITICAL INVARIANT: a human answer must never be applied to a question
+  // unless the server can verify that answer was submitted for the exact
+  // pending question/state it targets. Every ordinary public caller
+  // submitting an answer MUST supply expected_revision — there is no
+  // fallback to the old unsafe behavior. (Audited: GameClient.tsx is the
+  // only caller of this route for the human-Composer/AI-Racer path; no
+  // internal/benchmark caller answers questions through it.)
+  //
+  // This is a cheap, lock-free rejection of an OBVIOUSLY stale snapshot,
+  // using the read already in hand. It is re-checked again below, against a
+  // fresh read, once the turn lock is held — closing the gap between this
+  // check and lock acquisition.
+  // ---------------------------------------------------------------------------
+  if (answer !== undefined) {
+    if (typeof body.expected_revision !== "number") {
       return NextResponse.json(
         {
-          error: "no_pending_question",
-          message: "Nincs megválaszolatlan kérdés.",
+          error: "missing_expected_revision",
+          message: "A válasznak tartalmaznia kell, melyik állapotra vonatkozik.",
+        },
+        { status: 400 }
+      );
+    }
+    if (body.expected_revision !== game.revision) {
+      return staleTurn(game);
+    }
+  }
+
+  const pending = findPendingEntry(game);
+
+  if (answer === undefined && pending) {
+    // -----------------------------------------------------------------------
+    // Idempotency guard. A pending question with no answer supplied means a
+    // duplicate request — React strict-mode double-effect, a double click, a
+    // client retry. Return what is already there instead of burning a model
+    // call and desynchronising question_count. No mutation happens here, so
+    // no lock is needed.
+    // -----------------------------------------------------------------------
+    return respond(game);
+  }
+
+  // ---------------------------------------------------------------------------
+  // V2.8.1 — every mutation below (recording an answer, generating the next
+  // turn) happens only while holding this game's turn lock. This is what
+  // stops two concurrent requests — the true-concurrency case, distinct from
+  // a sequential stale retry — from both paying for a Racer call against the
+  // same pending question. The revision CAS at every save below is the
+  // actual data-integrity guarantee; this lock exists only to avoid wasting
+  // a paid LLM call on a request that CAS would discard anyway.
+  // ---------------------------------------------------------------------------
+  const lockAcquired = await acquireTurnLock(gameId, TURN_LOCK_TTL_SECONDS);
+  if (!lockAcquired) {
+    return NextResponse.json(
+      {
+        error: "turn_in_progress",
+        message: "Már folyamatban van egy kör ebben a játékban. Próbáld újra röviden.",
+        game,
+      },
+      { status: 409 }
+    );
+  }
+
+  try {
+    // Re-fetch canonical state now that the lock is held, closing any gap
+    // between the read above and lock acquisition.
+    const game = await getGame(gameId);
+    if (!game) {
+      return NextResponse.json(
+        { error: "not_found", message: "Nincs ilyen játék, vagy már lejárt." },
+        { status: 404 }
+      );
+    }
+    if (game.phase !== "questioning") {
+      return NextResponse.json(
+        {
+          error: "wrong_phase",
+          message: `Ez a játék "${game.phase}" állapotban van, nem fogad több kört.`,
           game,
         },
         { status: 409 }
       );
     }
-
-    pending.composer_response = answer;
-    // V2.5 — `timestamp` is when the Racer's question was created; this is when
-    // the human answered it. Without both, the only derivable quantity was the
-    // interval to the next turn, which also contains the model call, so think
-    // time and model latency were inseparable.
-    pending.answered_at = new Date().toISOString();
-
-    if (answer === "AMBIGUOUS") {
-      pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
-      // Unlimited in COUNT — there is no quota — but not free. ambiguous_count
-      // is tracked separately as the input to later abuse analysis, never as a
-      // discount on the Racer's budget.
-      game.ambiguous_count += 1;
-    } else {
-      pending.ambiguous_explanation = null;
+    if (answer !== undefined && body.expected_revision !== game.revision) {
+      return staleTurn(game);
     }
 
-    // Every question the Racer asks costs one of its 20, whatever answer comes
-    // back. YES, NO and AMBIGUOUS are all worth exactly one question.
-    game.question_count += 1;
-  } else if (pending) {
-    // -----------------------------------------------------------------------
-    // Idempotency guard. A pending question with no answer supplied means a
-    // duplicate request — React strict-mode double-effect, a double click, a
-    // client retry. Return what is already there instead of burning a model
-    // call and desynchronising question_count. KV has no compare-and-swap, so
-    // this guard is the only thing standing between a double-fire and a
-    // corrupted log.
-    // -----------------------------------------------------------------------
-    return respond(game);
-  }
+    const pending = findPendingEntry(game);
+    if (answer === undefined && pending) {
+      // Someone else's request produced the next question while this one
+      // waited for the lock. Same idempotency case as above, just discovered
+      // after acquiring the lock instead of before it.
+      return respond(game);
+    }
 
-  // -------------------------------------------------------------------------
-  // Step 1b — an outstanding clue request blocks the Racer.
-  //
-  // When the Racer spends a credit it is waiting on a human, exactly as it
-  // waits on an answer. findPendingEntry only recognises unanswered QUESTIONS,
-  // so without this the Racer would take another turn immediately and the
-  // Composer would never get to write the clue.
-  // -------------------------------------------------------------------------
-  if (pendingClueRequest(game)) {
-    await saveGame(game);
-    return respond(game);
-  }
+    // The revision every save in this request must be conditioned on. Fixed
+    // once, at the moment the lock was confirmed to guard a consistent
+    // snapshot — every exit path below saves against this same value.
+    const revisionAtLockTime = game.revision;
 
-  // -------------------------------------------------------------------------
-  // Step 2 — global spend ceiling. Checked before every model call, fails closed.
-  // -------------------------------------------------------------------------
-  const budget = await consumeModelCall("racer");
-  if (!budget.allowed) {
-    await saveGame(game); // the answer recorded above must not be lost
-    return NextResponse.json(
-      {
-        error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-        message: budget.failedClosed
-          ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
-          : "A Barkóba elérte az AI-körökre szánt napi globális határát. Próbáld újra holnap.",
-        game,
-      },
-      { status: budget.failedClosed ? 503 : 429 }
-    );
-  }
+    // -------------------------------------------------------------------------
+    // Step 1 — record the Composer's answer, if one was supplied.
+    // -------------------------------------------------------------------------
+    if (answer) {
+      if (!pending) {
+        return NextResponse.json(
+          {
+            error: "no_pending_question",
+            message: "Nincs megválaszolatlan kérdés.",
+            game,
+          },
+          { status: 409 }
+        );
+      }
 
-  // -------------------------------------------------------------------------
-  // Step 3 — the Racer's turn, on narrowed public state only.
-  // -------------------------------------------------------------------------
-  const forceFinal = game.question_count >= game.max_questions;
-  const racerState = toRacerPublicState(game);
+      pending.composer_response = answer;
+      // V2.5 — `timestamp` is when the Racer's question was created; this is
+      // when the human answered it. Without both, the only derivable
+      // quantity was the interval to the next turn, which also contains the
+      // model call, so think time and model latency were inseparable.
+      pending.answered_at = new Date().toISOString();
 
-  // V2.5-B3 — WHO is playing this seat, read from the game and not from the
-  // request. Fixed at creation; every turn of a game reaches the same provider.
-  //
-  // A stored value that is no longer a registered provider REFUSES the turn.
-  // The alternative — quietly playing the rest of the game on Anthropic — would
-  // produce one game whose turns were played by two different models while the
-  // transcript read as one continuous player. That is worse than a stalled
-  // game: it is evidence that looks correct and is not.
-  let racerProvider: ModelProviderId;
-  if (game.racer_provider === null || game.racer_provider === undefined) {
-    racerProvider = DEFAULT_RACER_PROVIDER;
-  } else if (isModelProviderId(game.racer_provider)) {
-    racerProvider = game.racer_provider;
-  } else {
-    // eslint-disable-next-line no-console
-    console.error(
-      `[barkoba] game ${game.game_id} names unknown racer_provider ` +
-        `"${game.racer_provider}" — refusing rather than substituting a model.`
-    );
-    return NextResponse.json(
-      {
-        error: "racer_unavailable",
-        message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
-        game,
-      },
-      { status: 502 }
-    );
-  }
-
-  let turn;
-  let provenance;
-  try {
-    const racerResult = await runRacerTurn(racerState, {
-      forceFinal,
-      provider: racerProvider,
-    });
-    turn = racerResult.output;
-    provenance = racerResult.provenance;
-  } catch (err) {
-    // eslint-disable-next-line no-console
-    console.error("[barkoba] Racer call failed:", err);
-    await saveGame(game); // preserve the recorded answer
-    return NextResponse.json(
-      {
-        error: "racer_unavailable",
-        message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
-        game,
-      },
-      { status: 502 }
-    );
-  }
-
-  // -------------------------------------------------------------------------
-  // Step 4 — Guess Detector, then internal intent resolution if it fires.
-  //
-  // The flag is never surfaced to the human Composer. In V1 the Racer is an AI
-  // with forced structured output, so the party whose intent is in question is
-  // the one re-prompted. See docs/DESIGN-NOTES.md for the Phase 2 human-Racer
-  // variant, which is documented and deliberately not built.
-  // -------------------------------------------------------------------------
-  let flagged = false;
-  let intentOutcome: GuessIntentOutcome | null = null;
-  // V2.5 — the question as the Racer FIRST emitted it.
-  //
-  // Both resolution branches below destroy it: confirm_guess nulls
-  // question_text, continue_questioning replaces it with the revision. Until
-  // 2.5.0.0 the corpus recorded the second question as though it were the
-  // first, next to guess_detector_flagged=true with no evidence of what was
-  // actually flagged — which made the §18-B question/guess-boundary benchmark
-  // unmeasurable by construction. Captured BEFORE either branch can run.
-  let preRevisionQuestion: string | null = null;
-
-  if (turn.action === "question" && turn.question_text) {
-    const detection = detectGuess(turn.question_text);
-    if (detection.flagged) {
-      flagged = true;
-      preRevisionQuestion = turn.question_text;
-
-      const resolutionBudget = await consumeModelCall("racer");
-      if (!resolutionBudget.allowed) {
-        // Budget ran out mid-turn. Fail safe for the player: treat the flagged
-        // question as a question rather than silently converting it to a guess.
-        intentOutcome = "continue_questioning";
+      if (answer === "AMBIGUOUS") {
+        pending.ambiguous_explanation = (body.ambiguous_explanation || "").trim() || null;
+        // Unlimited in COUNT — there is no quota — but not free.
+        // ambiguous_count is tracked separately as the input to later abuse
+        // analysis, never as a discount on the Racer's budget.
+        game.ambiguous_count += 1;
       } else {
-        try {
-          const resolution = await resolveGuessIntent(
-            racerState,
-            turn.question_text,
-            racerProvider
-          );
-          intentOutcome = resolution.resolution;
+        pending.ambiguous_explanation = null;
+      }
 
-          if (resolution.resolution === "confirm_guess") {
-            turn = {
-              ...turn,
-              action: "guess" as const,
-              guess_text: resolution.guess_text ?? turn.question_text,
-              question_text: null,
-            };
-          } else if (resolution.revised_question) {
-            turn = { ...turn, question_text: resolution.revised_question };
-          }
-        } catch (err) {
-          // eslint-disable-next-line no-console
-          console.error("[barkoba] Guess-intent resolution failed:", err);
-          // Same fail-safe: an unresolved flag stays a question.
+      // Every question the Racer asks costs one of its 20, whatever answer
+      // comes back. YES, NO and AMBIGUOUS are all worth exactly one question.
+      game.question_count += 1;
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 1b — an outstanding clue request blocks the Racer.
+    //
+    // When the Racer spends a credit it is waiting on a human, exactly as it
+    // waits on an answer. findPendingEntry only recognises unanswered
+    // QUESTIONS, so without this the Racer would take another turn
+    // immediately and the Composer would never get to write the clue.
+    // -------------------------------------------------------------------------
+    if (pendingClueRequest(game)) {
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+      if (!saved.ok) {
+        // Structurally shouldn't happen while holding the lock — see the
+        // final revision-CAS save below for the same defensive check.
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+        );
+        const canonical = await getGame(gameId);
+        return staleTurn(canonical ?? game);
+      }
+      game.revision = saved.revision;
+      return respond(game);
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 2 — global spend ceiling. Checked before every model call, fails closed.
+    // -------------------------------------------------------------------------
+    const budget = await consumeModelCall("racer");
+    if (!budget.allowed) {
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // the answer recorded above must not be lost
+      if (!saved.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+        );
+        const canonical = await getGame(gameId);
+        return staleTurn(canonical ?? game);
+      }
+      game.revision = saved.revision;
+      return NextResponse.json(
+        {
+          error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+          message: budget.failedClosed
+            ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
+            : "A Barkóba elérte az AI-körökre szánt napi globális határát. Próbáld újra holnap.",
+          game,
+        },
+        { status: budget.failedClosed ? 503 : 429 }
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 3 — the Racer's turn, on narrowed public state only.
+    // -------------------------------------------------------------------------
+    const forceFinal = game.question_count >= game.max_questions;
+    const racerState = toRacerPublicState(game);
+
+    // V2.5-B3 — WHO is playing this seat, read from the game and not from the
+    // request. Fixed at creation; every turn of a game reaches the same provider.
+    //
+    // A stored value that is no longer a registered provider REFUSES the turn.
+    // The alternative — quietly playing the rest of the game on Anthropic — would
+    // produce one game whose turns were played by two different models while the
+    // transcript read as one continuous player. That is worse than a stalled
+    // game: it is evidence that looks correct and is not.
+    let racerProvider: ModelProviderId;
+    if (game.racer_provider === null || game.racer_provider === undefined) {
+      racerProvider = DEFAULT_RACER_PROVIDER;
+    } else if (isModelProviderId(game.racer_provider)) {
+      racerProvider = game.racer_provider;
+    } else {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] game ${game.game_id} names unknown racer_provider ` +
+          `"${game.racer_provider}" — refusing rather than substituting a model.`
+      );
+      return NextResponse.json(
+        {
+          error: "racer_unavailable",
+          message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
+          game,
+        },
+        { status: 502 }
+      );
+    }
+
+    let turn;
+    let provenance;
+    try {
+      const racerResult = await runRacerTurn(racerState, {
+        forceFinal,
+        provider: racerProvider,
+      });
+      turn = racerResult.output;
+      provenance = racerResult.provenance;
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] Racer call failed:", err);
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // preserve the recorded answer
+      if (!saved.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+        );
+        const canonical = await getGame(gameId);
+        return staleTurn(canonical ?? game);
+      }
+      game.revision = saved.revision;
+      return NextResponse.json(
+        {
+          error: "racer_unavailable",
+          message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
+          game,
+        },
+        { status: 502 }
+      );
+    }
+
+    // -------------------------------------------------------------------------
+    // Step 4 — Guess Detector, then internal intent resolution if it fires.
+    //
+    // The flag is never surfaced to the human Composer. In V1 the Racer is an AI
+    // with forced structured output, so the party whose intent is in question is
+    // the one re-prompted. See docs/DESIGN-NOTES.md for the Phase 2 human-Racer
+    // variant, which is documented and deliberately not built.
+    // -------------------------------------------------------------------------
+    let flagged = false;
+    let intentOutcome: GuessIntentOutcome | null = null;
+    // V2.5 — the question as the Racer FIRST emitted it.
+    //
+    // Both resolution branches below destroy it: confirm_guess nulls
+    // question_text, continue_questioning replaces it with the revision. Until
+    // 2.5.0.0 the corpus recorded the second question as though it were the
+    // first, next to guess_detector_flagged=true with no evidence of what was
+    // actually flagged — which made the §18-B question/guess-boundary benchmark
+    // unmeasurable by construction. Captured BEFORE either branch can run.
+    let preRevisionQuestion: string | null = null;
+
+    if (turn.action === "question" && turn.question_text) {
+      const detection = detectGuess(turn.question_text);
+      if (detection.flagged) {
+        flagged = true;
+        preRevisionQuestion = turn.question_text;
+
+        const resolutionBudget = await consumeModelCall("racer");
+        if (!resolutionBudget.allowed) {
+          // Budget ran out mid-turn. Fail safe for the player: treat the
+          // flagged question as a question rather than silently converting
+          // it to a guess.
           intentOutcome = "continue_questioning";
+        } else {
+          try {
+            const resolution = await resolveGuessIntent(
+              racerState,
+              turn.question_text,
+              racerProvider
+            );
+            intentOutcome = resolution.resolution;
+
+            if (resolution.resolution === "confirm_guess") {
+              turn = {
+                ...turn,
+                action: "guess" as const,
+                guess_text: resolution.guess_text ?? turn.question_text,
+                question_text: null,
+              };
+            } else if (resolution.revised_question) {
+              turn = { ...turn, question_text: resolution.revised_question };
+            }
+          } catch (err) {
+            // eslint-disable-next-line no-console
+            console.error("[barkoba] Guess-intent resolution failed:", err);
+            // Same fail-safe: an unresolved flag stays a question.
+            intentOutcome = "continue_questioning";
+          }
         }
       }
     }
+
+    // -------------------------------------------------------------------------
+    // Step 5 — append the turn and transition.
+    // -------------------------------------------------------------------------
+    const entry = newLogEntry(game.qa_log.length + 1);
+    entry.turn_type = turn.action;
+    entry.racer_output_raw = JSON.stringify(turn);
+    entry.question_text = turn.question_text;
+    entry.guess_text = turn.guess_text;
+    entry.guess_detector_flagged = flagged;
+    entry.guess_detector_method = flagged ? "heuristic" : null;
+    entry.guess_intent_outcome = intentOutcome;
+    entry.pre_revision_question_text = preRevisionQuestion;
+    // V2.5 — who produced this turn, under which prompt. The provenance of the
+    // PRIMARY turn call; the guess-intent sub-call above uses the same model and
+    // is deliberately not given a second provenance triple.
+    entry.model_id = provenance.model_id;
+    entry.model_provider = provenance.model_provider;
+    entry.prompt_version = provenance.prompt_version;
+    // latency_ms and the other dormant fields stay null. They are schema-ready,
+    // not implemented — populating them is a separate, explicit decision.
+
+    game.qa_log.push(entry);
+
+    if (turn.action === "guess" || turn.action === "concede") {
+      game.phase = "resolving";
+      game.final_action = turn.action;
+      game.final_guess_text = turn.guess_text;
+    }
+
+    const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+    if (!saved.ok) {
+      // Structurally shouldn't happen: this whole block runs while holding
+      // the per-game turn lock, so nothing else could have advanced the
+      // revision since revisionAtLockTime was read. Reaching this means the
+      // lock was somehow bypassed or its TTL expired mid-request — a defect
+      // worth investigating, not a normal user-facing outcome. Fail exactly
+      // like an ordinary stale request rather than silently overwriting
+      // whatever DID land.
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}); ` +
+          `expected ${revisionAtLockTime}, actual ${saved.revision}`
+      );
+      const canonical = await getGame(gameId);
+      return staleTurn(canonical ?? game);
+    }
+    game.revision = saved.revision;
+    return respond(game);
+  } finally {
+    await releaseTurnLock(gameId);
   }
-
-  // -------------------------------------------------------------------------
-  // Step 5 — append the turn and transition.
-  // -------------------------------------------------------------------------
-  const entry = newLogEntry(game.qa_log.length + 1);
-  entry.turn_type = turn.action;
-  entry.racer_output_raw = JSON.stringify(turn);
-  entry.question_text = turn.question_text;
-  entry.guess_text = turn.guess_text;
-  entry.guess_detector_flagged = flagged;
-  entry.guess_detector_method = flagged ? "heuristic" : null;
-  entry.guess_intent_outcome = intentOutcome;
-  entry.pre_revision_question_text = preRevisionQuestion;
-  // V2.5 — who produced this turn, under which prompt. The provenance of the
-  // PRIMARY turn call; the guess-intent sub-call above uses the same model and
-  // is deliberately not given a second provenance triple.
-  entry.model_id = provenance.model_id;
-  entry.model_provider = provenance.model_provider;
-  entry.prompt_version = provenance.prompt_version;
-  // latency_ms and the other dormant fields stay null. They are schema-ready,
-  // not implemented — populating them is a separate, explicit decision.
-
-  game.qa_log.push(entry);
-
-  if (turn.action === "guess" || turn.action === "concede") {
-    game.phase = "resolving";
-    game.final_action = turn.action;
-    game.final_guess_text = turn.guess_text;
-  }
-
-  await saveGame(game);
-  return respond(game);
 }

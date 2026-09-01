@@ -294,6 +294,23 @@ export type GameResult =
 export interface GameRecord {
   game_id: string;
   /**
+   * V2.8.1 — monotonic write counter, the My Car Key integrity hotfix.
+   *
+   * Bumped atomically by lib/gameStore.ts's saveGameIfRevisionMatches on
+   * every successful write through that path — currently /turn and
+   * /correct, the two routes that can advance or rewrite the question log.
+   * Always freshly re-read from its own KV key on every getGame() call, so
+   * it is never stale relative to what THIS server process can observe,
+   * regardless of what is baked into the stored JSON blob.
+   *
+   * The client echoes the value it last saw back as `expected_revision` on
+   * every answer submission; the server accepts the answer only if it still
+   * matches. This is what makes a stale, retried, or duplicated /turn
+   * request provably unable to answer a question it never saw, rather than
+   * relying on timing to make that unlikely.
+   */
+  revision: number;
+  /**
    * V2.1.1 — the anonymous Player who started this game, or null.
    *
    * A REFERENCE, not a foreign key: there is no players table for it to point

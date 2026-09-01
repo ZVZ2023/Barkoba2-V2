@@ -37,7 +37,7 @@ function entry(o: Partial<QuestionLogEntry> = {}): QuestionLogEntry {
 
 function hhGame(o: Partial<GameRecord> = {}): GameRecord {
   return {
-    game_id: randomUUID(), player_id: COMPOSER,
+    game_id: randomUUID(), revision: 0, player_id: COMPOSER,
     composer_player_id: COMPOSER, racer_player_id: RACER, join_code: "ABCD2345",
     phase: "questioning", created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(), max_questions: 20, game_language: "hu",
