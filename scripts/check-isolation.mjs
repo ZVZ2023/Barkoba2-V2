@@ -60,6 +60,14 @@ const QUARANTINED = [
   "lib/corpus/db.ts",
   "lib/corpus/pendingQueue.ts",
   "lib/corpus/sqlStatements.ts",
+  // TEMPORARY — read-only full-transcript reconstruction for a one-off
+  // player-facing evidence pull. Same reasoning as gameCorpus.ts above:
+  // reads target metadata only from corpus.game_targets, which is itself
+  // populated only from the revealed_* fields at the single declassification
+  // point. Every query is a SELECT; no INSERT/UPDATE/DELETE anywhere in the
+  // module. Delete alongside app/api/internal/benchmark/export-transcript/
+  // once this pull is complete.
+  "lib/corpus/transcriptExport.ts",
   // V2.6 — Contest Verdict. A contest snapshot is a participant-readable
   // artefact assembled from the corpus, so the module that builds it must be
   // structurally incapable of reaching the secret. The target text it does

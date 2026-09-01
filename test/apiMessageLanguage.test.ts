@@ -37,7 +37,13 @@ const ENGLISH_GIVEAWAY =
  *
  * Deliberately a narrow, named exemption rather than a loosening of the rule.
  */
-const MACHINE_FACING = new Set(["app/api/entitlement/grant/route.ts"]);
+const MACHINE_FACING = new Set([
+  "app/api/entitlement/grant/route.ts",
+  // TEMPORARY — Preview-only, BENCHMARK_INGRESS_SECRET-gated evidence-export
+  // route. No browser reaches it and no client reads its body; its audience
+  // is whoever holds the secret. Same reasoning as the grant endpoint above.
+  "app/api/internal/benchmark/export-transcript/route.ts",
+]);
 
 for (const file of routeFiles("app/api")) {
   if (MACHINE_FACING.has(file.split(sep).join("/"))) continue;
