@@ -1,0 +1,2011 @@
+{
+  "fixture": "d2-grok",
+  "steps": [
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a person?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 56,
+          "reasoningTokens": 724,
+          "totalTokens": 2612,
+          "latencyMs": 10849,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 56,
+            "total_tokens": 2612,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 724,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 28960000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an animal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1639
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1835,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 69,
+          "reasoningTokens": 1005,
+          "totalTokens": 2909,
+          "latencyMs": 17140,
+          "rawUsage": {
+            "prompt_tokens": 1835,
+            "completion_tokens": 69,
+            "total_tokens": 2909,
+            "prompt_tokens_details": {
+              "text_tokens": 1835,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1005,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 36347500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a physical object?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1786
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1849,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 72,
+          "reasoningTokens": 1814,
+          "totalTokens": 3735,
+          "latencyMs": 31852,
+          "rawUsage": {
+            "prompt_tokens": 1849,
+            "completion_tokens": 72,
+            "total_tokens": 3735,
+            "prompt_tokens_details": {
+              "text_tokens": 1849,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1814,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 56822500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target man-made?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1509
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1864,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 80,
+          "reasoningTokens": 454,
+          "totalTokens": 2398,
+          "latencyMs": 8595,
+          "rawUsage": {
+            "prompt_tokens": 1864,
+            "completion_tokens": 80,
+            "total_tokens": 2398,
+            "prompt_tokens_details": {
+              "text_tokens": 1864,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 454,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 23210000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target bigger than a breadbox?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1538
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1878,
+          "cachedPromptTokens": 128,
+          "completionTokens": 73,
+          "reasoningTokens": 1337,
+          "totalTokens": 3288,
+          "latencyMs": 31460,
+          "rawUsage": {
+            "prompt_tokens": 1878,
+            "completion_tokens": 73,
+            "total_tokens": 3288,
+            "prompt_tokens_details": {
+              "text_tokens": 1878,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1337,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 57381000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a vehicle?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1385
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1895,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 71,
+          "reasoningTokens": 1228,
+          "totalTokens": 3194,
+          "latencyMs": 31024,
+          "rawUsage": {
+            "prompt_tokens": 1895,
+            "completion_tokens": 71,
+            "total_tokens": 3194,
+            "prompt_tokens_details": {
+              "text_tokens": 1895,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1228,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 42722500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a piece of furniture?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1284
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1909,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 83,
+          "reasoningTokens": 1121,
+          "totalTokens": 3113,
+          "latencyMs": 31020,
+          "rawUsage": {
+            "prompt_tokens": 1909,
+            "completion_tokens": 83,
+            "total_tokens": 3113,
+            "prompt_tokens_details": {
+              "text_tokens": 1909,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1121,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 40522500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target powered by electricity?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2197
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1925,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 82,
+          "reasoningTokens": 1828,
+          "totalTokens": 3835,
+          "latencyMs": 51998,
+          "rawUsage": {
+            "prompt_tokens": 1925,
+            "completion_tokens": 82,
+            "total_tokens": 3835,
+            "prompt_tokens_details": {
+              "text_tokens": 1925,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1828,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 58372500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target typically located or used indoors?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2130
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1940,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 1878,
+          "totalTokens": 3911,
+          "latencyMs": 62573,
+          "rawUsage": {
+            "prompt_tokens": 1940,
+            "completion_tokens": 93,
+            "total_tokens": 3911,
+            "prompt_tokens_details": {
+              "text_tokens": 1940,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1878,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 60085000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target something that people can travel on?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1892
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1957,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 81,
+          "reasoningTokens": 4105,
+          "totalTokens": 6143,
+          "latencyMs": 121029,
+          "rawUsage": {
+            "prompt_tokens": 1957,
+            "completion_tokens": 81,
+            "total_tokens": 6143,
+            "prompt_tokens_details": {
+              "text_tokens": 1957,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4105,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 115672500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target's main purpose to be artistic or decorative?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2776
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1975,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 78,
+          "reasoningTokens": 2696,
+          "totalTokens": 4749,
+          "latencyMs": 53551,
+          "rawUsage": {
+            "prompt_tokens": 1975,
+            "completion_tokens": 78,
+            "total_tokens": 4749,
+            "prompt_tokens_details": {
+              "text_tokens": 1975,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2696,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 80597500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the target have moving parts?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2053
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1994,
+          "cachedPromptTokens": 128,
+          "completionTokens": 88,
+          "reasoningTokens": 2247,
+          "totalTokens": 4329,
+          "latencyMs": 43185,
+          "rawUsage": {
+            "prompt_tokens": 1994,
+            "completion_tokens": 88,
+            "total_tokens": 4329,
+            "prompt_tokens_details": {
+              "text_tokens": 1994,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2247,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 81956000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target's main purpose to inform, warn, or direct people?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2492
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2009,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 92,
+          "reasoningTokens": 3121,
+          "totalTokens": 5222,
+          "latencyMs": 61095,
+          "rawUsage": {
+            "prompt_tokens": 2009,
+            "completion_tokens": 92,
+            "total_tokens": 5222,
+            "prompt_tokens_details": {
+              "text_tokens": 2009,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3121,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 91997500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target's main purpose related to containing, storing or holding something?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2533
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2031,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 2945,
+          "totalTokens": 5066,
+          "latencyMs": 53507,
+          "rawUsage": {
+            "prompt_tokens": 2031,
+            "completion_tokens": 90,
+            "total_tokens": 5066,
+            "prompt_tokens_details": {
+              "text_tokens": 2031,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2945,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 87822500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used in sports or athletics?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1912
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2053,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 91,
+          "reasoningTokens": 6636,
+          "totalTokens": 8780,
+          "latencyMs": 117023,
+          "rawUsage": {
+            "prompt_tokens": 2053,
+            "completion_tokens": 91,
+            "total_tokens": 8780,
+            "prompt_tokens_details": {
+              "text_tokens": 2053,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 6636,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 180397500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a tool?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2195
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2070,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 92,
+          "reasoningTokens": 5629,
+          "totalTokens": 7791,
+          "latencyMs": 88883,
+          "rawUsage": {
+            "prompt_tokens": 2070,
+            "completion_tokens": 92,
+            "total_tokens": 7791,
+            "prompt_tokens_details": {
+              "text_tokens": 2070,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 5629,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 155460000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a weapon?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2815
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2084,
+          "cachedPromptTokens": 128,
+          "completionTokens": 99,
+          "reasoningTokens": 4471,
+          "totalTokens": 6654,
+          "latencyMs": 60448,
+          "rawUsage": {
+            "prompt_tokens": 2084,
+            "completion_tokens": 99,
+            "total_tokens": 6654,
+            "prompt_tokens_details": {
+              "text_tokens": 2084,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4471,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 138956000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target primarily made of metal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 17,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1853
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2098,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 6411,
+          "totalTokens": 8599,
+          "latencyMs": 86467,
+          "rawUsage": {
+            "prompt_tokens": 2098,
+            "completion_tokens": 90,
+            "total_tokens": 8599,
+            "prompt_tokens_details": {
+              "text_tokens": 2098,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 6411,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 175310000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 18,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target typically located on or beside a road or street?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 18,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1577
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 19,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2114,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 92,
+          "reasoningTokens": 6150,
+          "totalTokens": 8356,
+          "latencyMs": 72201,
+          "rawUsage": {
+            "prompt_tokens": 2114,
+            "completion_tokens": 92,
+            "total_tokens": 8356,
+            "prompt_tokens_details": {
+              "text_tokens": 2114,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 6150,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 169035000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 19,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target attached to or part of a building?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 19,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1915
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 20,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2135,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 83,
+          "reasoningTokens": 8186,
+          "totalTokens": 10404,
+          "latencyMs": 99810,
+          "rawUsage": {
+            "prompt_tokens": 2135,
+            "completion_tokens": 83,
+            "total_tokens": 10404,
+            "prompt_tokens_details": {
+              "text_tokens": 2135,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 8186,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 219972500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 20,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target taller than an adult human?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 20,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1966
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 21,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2154,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 98,
+          "reasoningTokens": 6708,
+          "totalTokens": 8960,
+          "latencyMs": 74154,
+          "rawUsage": {
+            "prompt_tokens": 2154,
+            "completion_tokens": 98,
+            "total_tokens": 8960,
+            "prompt_tokens_details": {
+              "text_tokens": 2154,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 6708,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 183635000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 21,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used to fly or display a flag?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 21,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1708
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 22,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2171,
+          "cachedPromptTokens": 128,
+          "completionTokens": 69,
+          "reasoningTokens": 3927,
+          "totalTokens": 6167,
+          "latencyMs": 40107,
+          "rawUsage": {
+            "prompt_tokens": 2171,
+            "completion_tokens": 69,
+            "total_tokens": 6167,
+            "prompt_tokens_details": {
+              "text_tokens": 2171,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3927,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 125693500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 22,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used to support or carry electrical power lines?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 22,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 3005
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 23,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2190,
+          "cachedPromptTokens": 128,
+          "completionTokens": 74,
+          "reasoningTokens": 3294,
+          "totalTokens": 5558,
+          "latencyMs": 33294,
+          "rawUsage": {
+            "prompt_tokens": 2190,
+            "completion_tokens": 74,
+            "total_tokens": 5558,
+            "prompt_tokens_details": {
+              "text_tokens": 2190,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3294,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 110231000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 23,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a tower?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 23,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1651
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 24,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2210,
+          "cachedPromptTokens": 128,
+          "completionTokens": 104,
+          "reasoningTokens": 5287,
+          "totalTokens": 7601,
+          "latencyMs": 63495,
+          "rawUsage": {
+            "prompt_tokens": 2210,
+            "completion_tokens": 104,
+            "total_tokens": 7601,
+            "prompt_tokens_details": {
+              "text_tokens": 2210,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 5287,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 161056000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 24,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used for telecommunications or broadcasting?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 24,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1701
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 25,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2224,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 3072,
+          "totalTokens": 5389,
+          "latencyMs": 33450,
+          "rawUsage": {
+            "prompt_tokens": 2224,
+            "completion_tokens": 93,
+            "total_tokens": 5389,
+            "prompt_tokens_details": {
+              "text_tokens": 2224,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3072,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 93485000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 25,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used in the oil or petroleum industry?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 25,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2847
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 26,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2241,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 75,
+          "reasoningTokens": 4447,
+          "totalTokens": 6763,
+          "latencyMs": 52643,
+          "rawUsage": {
+            "prompt_tokens": 2241,
+            "completion_tokens": 75,
+            "total_tokens": 6763,
+            "prompt_tokens_details": {
+              "text_tokens": 2241,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4447,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 127622500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 26,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used to provide a high vantage point for viewing the surroundings?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 26,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1651
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 27,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2260,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 87,
+          "reasoningTokens": 4149,
+          "totalTokens": 6496,
+          "latencyMs": 49836,
+          "rawUsage": {
+            "prompt_tokens": 2260,
+            "completion_tokens": 87,
+            "total_tokens": 6496,
+            "prompt_tokens_details": {
+              "text_tokens": 2260,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4149,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 120710000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 27,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target primarily used for recreational or tourist viewing?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 27,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1837
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 28,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2283,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 2195,
+          "totalTokens": 4571,
+          "latencyMs": 27129,
+          "rawUsage": {
+            "prompt_tokens": 2283,
+            "completion_tokens": 93,
+            "total_tokens": 4571,
+            "prompt_tokens_details": {
+              "text_tokens": 2283,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2195,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 72297500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 28,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in North America?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 28,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1781
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 29,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2302,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 85,
+          "reasoningTokens": 3144,
+          "totalTokens": 5531,
+          "latencyMs": 34553,
+          "rawUsage": {
+            "prompt_tokens": 2302,
+            "completion_tokens": 85,
+            "total_tokens": 5531,
+            "prompt_tokens_details": {
+              "text_tokens": 2302,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3144,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 96060000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 29,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in Europe?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 29,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1470
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 30,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2318,
+          "cachedPromptTokens": 128,
+          "completionTokens": 72,
+          "reasoningTokens": 1789,
+          "totalTokens": 4179,
+          "latencyMs": 21412,
+          "rawUsage": {
+            "prompt_tokens": 2318,
+            "completion_tokens": 72,
+            "total_tokens": 4179,
+            "prompt_tokens_details": {
+              "text_tokens": 2318,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1789,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 74156000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 30,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in France?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 30,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1480
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 31,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2333,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 95,
+          "reasoningTokens": 2509,
+          "totalTokens": 4937,
+          "latencyMs": 30152,
+          "rawUsage": {
+            "prompt_tokens": 2333,
+            "completion_tokens": 95,
+            "total_tokens": 4937,
+            "prompt_tokens_details": {
+              "text_tokens": 2333,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2509,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 80822500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "questioning",
+      "question_count": 31,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in Paris?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 31,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1624
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 32,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2348,
+          "cachedPromptTokens": 128,
+          "completionTokens": 86,
+          "reasoningTokens": 1585,
+          "totalTokens": 4019,
+          "latencyMs": 18858,
+          "rawUsage": {
+            "prompt_tokens": 2348,
+            "completion_tokens": 86,
+            "total_tokens": 4019,
+            "prompt_tokens_details": {
+              "text_tokens": 2348,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1585,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 69781000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "resolving",
+      "question_count": 32,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [
+        {
+          "turn_index": 33,
+          "proposed_guess": "Eiffel Tower",
+          "required_grain": "unset",
+          "decision": "no_check_unset",
+          "grain_ok": null,
+          "reasoning": "required_target_grain was never established from play evidence; no comparison is possible.",
+          "retried": false,
+          "retry_guess": null,
+          "retry_decision": null
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 32,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1611
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 33,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2363,
+          "cachedPromptTokens": 128,
+          "completionTokens": 83,
+          "reasoningTokens": 2095,
+          "totalTokens": 4541,
+          "latencyMs": 22225,
+          "rawUsage": {
+            "prompt_tokens": 2363,
+            "completion_tokens": 83,
+            "total_tokens": 4541,
+            "prompt_tokens_details": {
+              "text_tokens": 2363,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2095,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 82643500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "e5427fe7-5999-4b9a-9990-72930a472847",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-grain-state",
+      "benchmark_run_id": "83e5b3f4-dd88-4c14-8d49-eb523d7de287",
+      "phase": "complete",
+      "question_count": 32,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
