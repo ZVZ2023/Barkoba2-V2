@@ -1,0 +1,86 @@
+{
+  "fixture": "disc-08-chess",
+  "steps": [
+    {
+      "game_id": "4c853908-bdec-4bee-b7d7-d8c82b18cf8c",
+      "benchmark_case_id": "v2.8-discovery-08-chess-grain-state",
+      "benchmark_run_id": "5f5562ba-c00e-49b2-9d2b-09082dbc76ac",
+      "phase": "resolving",
+      "question_count": 50,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "concede",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 50,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2845
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 51,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2743,
+          "cachedPromptTokens": 128,
+          "completionTokens": 136,
+          "reasoningTokens": 2919,
+          "totalTokens": 5798,
+          "latencyMs": 33008,
+          "rawUsage": {
+            "prompt_tokens": 2743,
+            "completion_tokens": 136,
+            "total_tokens": 5798,
+            "prompt_tokens_details": {
+              "text_tokens": 2743,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2919,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 109318500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "4c853908-bdec-4bee-b7d7-d8c82b18cf8c",
+      "benchmark_case_id": "v2.8-discovery-08-chess-grain-state",
+      "benchmark_run_id": "5f5562ba-c00e-49b2-9d2b-09082dbc76ac",
+      "phase": "complete",
+      "question_count": 50,
+      "max_questions": 50,
+      "done": true,
+      "result": "composer_win_integrity_upheld",
+      "final_action": "concede",
+      "adjudicator_verdict": null,
+      "integrity_verdict": "upheld",
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
