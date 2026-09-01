@@ -156,6 +156,7 @@ export const xaiAdapter: ProviderAdapter = {
         : {}),
     };
 
+    const startedAt = Date.now();
     const response = await fetch(XAI_ENDPOINT, {
       method: "POST",
       headers: {
@@ -164,6 +165,7 @@ export const xaiAdapter: ProviderAdapter = {
       },
       body: JSON.stringify(body),
     });
+    const latencyMs = Date.now() - startedAt;
 
     if (!response.ok) {
       const errText = await response.text();
@@ -240,6 +242,7 @@ export const xaiAdapter: ProviderAdapter = {
         promptTokens: data.usage?.prompt_tokens,
         cachedPromptTokens: data.usage?.prompt_tokens_details?.cached_tokens,
         totalTokens: data.usage?.total_tokens,
+        latencyMs,
         // NOT populated here: whatever unit cost_in_usd_ticks/cost turn out to
         // be, converting it correctly needs a real response to check against
         // first (see rawUsage below) — a guessed divisor would look

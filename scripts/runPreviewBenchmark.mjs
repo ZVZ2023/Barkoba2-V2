@@ -44,6 +44,7 @@ const FIXTURES = {
   "xai-smoke": { route: "xai-smoke-test", confirm: "run-xai-smoke-test-once" },
   "d1-grok": { route: "d1-grok-calibration", confirm: "run-d1-grok-calibration-once" },
   "d2-grok": { route: "d2-grok-calibration", confirm: "run-d2-grok-calibration-once" },
+  "gate-smoke": { route: "gate-smoke-test", confirm: "run-gate-smoke-test-once" },
 };
 
 function usageAndExit(message) {
@@ -194,6 +195,105 @@ async function runGrokLoop(fixtureKey, baseUrl, shareToken, maxSteps = 120, resu
   console.log(JSON.stringify(status, null, 2));
 }
 
+const GROK_CANDIDATE_FIXTURES = new Set([
+  "disc-02-guitar",
+  "disc-06-golden-gate-bridge",
+  "disc-08-chess",
+  "disc-05-platypus",
+  "d2-grok",
+]);
+
+/**
+ * V2.8.x candidate-validation-gate experiment. Same shape as runGrokLoop
+ * above, pointed at the sibling grok-step-candidate route instead — every
+ * raw step status (including gate_activations_this_step and
+ * step_diagnostics) is accumulated and written to
+ * <outDir>/<fixtureKey>.candidate-evidence.json after EVERY step, not only
+ * at the end, so an interrupted run (the discovery batch hit several
+ * Vercel Deployment Protection session expiries) never loses gate/telemetry
+ * evidence already collected.
+ */
+async function runGrokLoopCandidate(fixtureKey, baseUrl, shareToken, outDir, maxSteps = 120, resumeGameId = null) {
+  if (!GROK_CANDIDATE_FIXTURES.has(fixtureKey))
+    usageAndExit(`unknown grok-loop-candidate fixture "${fixtureKey}"`);
+
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `${fixtureKey}.candidate-evidence.json`);
+
+  const cookie = await establishBypassCookie(baseUrl, shareToken);
+  const url = `${baseUrl}/api/internal/benchmark/grok-step-candidate`;
+
+  const allSteps = [];
+  function persist() {
+    fs.writeFileSync(outFile, JSON.stringify({ fixture: fixtureKey, steps: allSteps }, null, 2));
+  }
+
+  async function post(body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Non-JSON response (HTTP ${res.status}): ${text.slice(0, 500)}`);
+    }
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    return json;
+  }
+
+  let status;
+  if (resumeGameId) {
+    console.log(`[resume] continuing existing game_id=${resumeGameId}`);
+    status = await post({ confirm: "run-grok-step-candidate-continue", fixture: fixtureKey, gameId: resumeGameId });
+    allSteps.push(status);
+    persist();
+    console.log(`[step] phase=${status.phase} q=${status.question_count}/${status.max_questions} gate_activations=${status.gate_activations_this_step.length}`);
+  } else {
+    status = await post({ confirm: "run-grok-step-candidate-start", fixture: fixtureKey });
+    allSteps.push(status);
+    persist();
+    console.log(
+      `[start] game_id=${status.game_id} benchmark_run_id=${status.benchmark_run_id} candidate_case_id=${status.candidate_benchmark_case_id} q=${status.question_count}/${status.max_questions}`
+    );
+  }
+
+  let steps = 0;
+  while (!status.done) {
+    steps += 1;
+    if (steps > maxSteps) {
+      throw new Error(`Exceeded ${maxSteps} steps without the game completing. Last status: ${JSON.stringify(status)}`);
+    }
+    status = await post({ confirm: "run-grok-step-candidate-continue", fixture: fixtureKey, gameId: status.game_id });
+    allSteps.push(status);
+    persist();
+    const gateNote = status.gate_activations_this_step.length
+      ? ` GATE=${status.gate_activations_this_step.map((g) => g.decision).join(",")}`
+      : "";
+    console.log(
+      `[step ${steps}] phase=${status.phase} q=${status.question_count}/${status.max_questions}` +
+        (status.last_question ? ` last_q="${status.last_question.slice(0, 60)}..." -> ${status.last_answer}` : "") +
+        gateNote
+    );
+    if (status.phase === "resolving" && !status.done) {
+      status = await post({ confirm: "run-grok-step-candidate-continue", fixture: fixtureKey, gameId: status.game_id });
+      allSteps.push(status);
+      persist();
+      console.log(`[resolve] result=${status.result} final_action=${status.final_action}`);
+    }
+  }
+
+  console.log(`\nFINAL (evidence written to ${outFile}):`);
+  console.log(JSON.stringify(status, null, 2));
+}
+
 async function runExport(benchmarkRunId, baseUrl, shareToken) {
   const cookie = await establishBypassCookie(baseUrl, shareToken);
   const url = `${baseUrl}/api/internal/benchmark/export-transcript?benchmarkRunId=${encodeURIComponent(benchmarkRunId)}`;
@@ -222,6 +322,15 @@ async function main() {
         "grok-loop mode needs: grok-loop <d1-grok|d2-grok> <baseUrl> <shareToken> [resumeGameId]"
       );
     await runGrokLoop(second, third, fourth, 120, args[4] ?? null);
+    return;
+  }
+
+  if (first === "grok-loop-candidate") {
+    if (args.length < 5 || args.length > 6)
+      usageAndExit(
+        "grok-loop-candidate mode needs: grok-loop-candidate <fixture> <baseUrl> <shareToken> <outDir> [resumeGameId]"
+      );
+    await runGrokLoopCandidate(second, third, fourth, args[4], 120, args[5] ?? null);
     return;
   }
 

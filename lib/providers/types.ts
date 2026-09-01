@@ -113,6 +113,13 @@ export interface ToolCallResult<T> {
     totalTokens?: number;
     costUsd?: number;
     /**
+     * V2.8.x — candidate-validation-gate experiment. Wall-clock time for this
+     * single call, measured by the adapter around its own request only (excludes
+     * whatever the caller does before/after). Populated by every adapter that
+     * has been updated to record it; absent means not yet measured, never zero.
+     */
+    latencyMs?: number;
+    /**
      * TEMPORARY, AUDIT-ONLY. The whole provider usage object, unprocessed,
      * so the smoke test can show exactly what a given API actually returns
      * before any field name here is trusted. Remove once the structured

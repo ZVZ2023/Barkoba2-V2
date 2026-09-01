@@ -82,6 +82,15 @@ const PERMITTED_SECRET_IMPORTERS = [
   // a whole game no longer fits inside one Vercel function invocation at
   // Grok's reasoning latency. Remove alongside the two entries above.
   "scripts/runGrokStep.ts",
+  // V2.8.x — CANDIDATE-VALIDATION-GATE EXPERIMENT, TEMPORARY. Sibling
+  // turn-by-turn driver (app/api/internal/benchmark/grok-step-candidate/
+  // route.ts) for the bounded candidate-validation-gate regression run —
+  // same createSecret/lockSecret/getSecretForAdjudication sequence as
+  // scripts/runGrokStep.ts above, replicated rather than shared so the file
+  // that produced the frozen discovery-batch evidence is never touched by
+  // this experiment. Remove alongside runGrokStep.ts's own entry once this
+  // experiment's evidence is durably captured.
+  "scripts/runGrokStepCandidate.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */

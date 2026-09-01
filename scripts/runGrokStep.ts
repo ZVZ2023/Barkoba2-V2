@@ -89,7 +89,14 @@ export type GrokFixtureKey =
   | "disc-09-rubber-duck"
   | "disc-10-antarctica";
 
-interface FixtureSpec {
+/**
+ * Exported so scripts/runGrokStepCandidate.ts (V2.8.x candidate-validation
+ * experiment) can reuse the exact same fixture table rather than
+ * redeclaring target/definition text a second time — see that file's own
+ * header comment. Read-only reuse; nothing here changes this file's own
+ * control-path behavior.
+ */
+export interface FixtureSpec {
   benchmarkCaseId: string;
   target: string;
   definition: string;
@@ -102,7 +109,7 @@ interface FixtureSpec {
   pinnedModel: string;
 }
 
-const SPECS: Record<GrokFixtureKey, FixtureSpec> = {
+export const SPECS: Record<GrokFixtureKey, FixtureSpec> = {
   "d1-grok": {
     benchmarkCaseId: D1_BENCHMARK_CASE_ID,
     target: D1_TARGET,
@@ -287,7 +294,7 @@ export interface GrokStepStatus {
   last_answer: string | null;
 }
 
-function newLogEntry(turnIndex: number): QuestionLogEntry {
+export function newLogEntry(turnIndex: number): QuestionLogEntry {
   return {
     id: randomUUID(),
     turn_index: turnIndex,
@@ -320,7 +327,7 @@ function newLogEntry(turnIndex: number): QuestionLogEntry {
   };
 }
 
-async function requireModelBudget(kind: "racer" | "resolve", context: string): Promise<void> {
+export async function requireModelBudget(kind: "racer" | "resolve", context: string): Promise<void> {
   const budget = await consumeModelCall(kind);
   if (!budget.allowed) {
     throw new GrokStepError(`Model call budget exhausted (${kind}) while ${context}. failedClosed=${budget.failedClosed}`);
@@ -380,7 +387,7 @@ async function appendRacerTurn(
   return game;
 }
 
-async function resolveGame(game: GameRecord, gameId: string): Promise<GameRecord> {
+export async function resolveGame(game: GameRecord, gameId: string): Promise<GameRecord> {
   const secret = await getSecretForAdjudication(gameId);
   if (!secret) {
     throw new GrokStepError(`Secret unavailable at resolution for game_id=${gameId}`);
@@ -440,7 +447,7 @@ async function resolveGame(game: GameRecord, gameId: string): Promise<GameRecord
   return game;
 }
 
-function toStatus(game: GameRecord, spec: FixtureSpec): GrokStepStatus {
+export function toStatus(game: GameRecord, spec: FixtureSpec): GrokStepStatus {
   const last = game.qa_log[game.qa_log.length - 1];
   return {
     game_id: game.game_id,

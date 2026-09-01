@@ -353,7 +353,14 @@ const GUESS_INTENT_SCHEMA: Record<string, unknown> = {
   required: ["resolution", "guess_text", "revised_question"],
 };
 
-function renderTranscript(state: RacerPublicState): string {
+/**
+ * Exported for reuse by lib/prompts/candidateValidationGate.ts (V2.8.x
+ * candidate-validation experiment) — the gate call needs the exact same
+ * transcript/language/budget rendering the Racer itself sees, so the two
+ * calls describe the same game state in the same words. Behavior unchanged;
+ * this only widens visibility of an existing helper.
+ */
+export function renderTranscript(state: RacerPublicState): string {
   if (state.transcript.length === 0) {
     return "No questions asked yet. This is your opening move.";
   }
@@ -375,7 +382,7 @@ const LANGUAGE_NAMES: Record<string, string> = {
   en: "English",
 };
 
-function renderLanguage(state: RacerPublicState): string {
+export function renderLanguage(state: RacerPublicState): string {
   const name = LANGUAGE_NAMES[state.game_language] ?? "English";
   return `Language of this game: ${name}. Write your question, guess, and rationale in ${name}.`;
 }
@@ -386,7 +393,7 @@ function renderClues(state: RacerPublicState): string {
   return ["Clues the Composer has given you — treat these as reliable:", ...rows].join("\n");
 }
 
-function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
+export function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
   if (forceFinal) {
     return `You have used all ${state.max_questions} questions. This is your final turn: guess or concede.`;
   }
