@@ -1,0 +1,1171 @@
+{
+  "fixture": "disc-02-guitar",
+  "steps": [
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target real or has it ever really existed — that is, not invented or fictional?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 128,
+          "completionTokens": 75,
+          "reasoningTokens": 1204,
+          "totalTokens": 3111,
+          "latencyMs": 19725,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 75,
+            "total_tokens": 3111,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1204,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 53531000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a human being?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1620
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1848,
+          "cachedPromptTokens": 128,
+          "completionTokens": 73,
+          "reasoningTokens": 487,
+          "totalTokens": 2408,
+          "latencyMs": 10976,
+          "rawUsage": {
+            "prompt_tokens": 1848,
+            "completion_tokens": 73,
+            "total_tokens": 2408,
+            "prompt_tokens_details": {
+              "text_tokens": 1848,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 487,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 35756000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it an animal?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1522
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1862,
+          "cachedPromptTokens": 128,
+          "completionTokens": 65,
+          "reasoningTokens": 511,
+          "totalTokens": 2438,
+          "latencyMs": 8663,
+          "rawUsage": {
+            "prompt_tokens": 1862,
+            "completion_tokens": 65,
+            "total_tokens": 2438,
+            "prompt_tokens_details": {
+              "text_tokens": 1862,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 511,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 36331000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a living organism?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1150
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1875,
+          "cachedPromptTokens": 128,
+          "completionTokens": 79,
+          "reasoningTokens": 750,
+          "totalTokens": 2704,
+          "latencyMs": 12770,
+          "rawUsage": {
+            "prompt_tokens": 1875,
+            "completion_tokens": 79,
+            "total_tokens": 2704,
+            "prompt_tokens_details": {
+              "text_tokens": 1875,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 750,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 42818500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a physical object?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1117
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1889,
+          "cachedPromptTokens": 128,
+          "completionTokens": 91,
+          "reasoningTokens": 1512,
+          "totalTokens": 3492,
+          "latencyMs": 20667,
+          "rawUsage": {
+            "prompt_tokens": 1889,
+            "completion_tokens": 91,
+            "total_tokens": 3492,
+            "prompt_tokens_details": {
+              "text_tokens": 1889,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1512,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 62343500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Was it made by humans?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1565
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1903,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 72,
+          "reasoningTokens": 661,
+          "totalTokens": 2636,
+          "latencyMs": 7883,
+          "rawUsage": {
+            "prompt_tokens": 1903,
+            "completion_tokens": 72,
+            "total_tokens": 2636,
+            "prompt_tokens_details": {
+              "text_tokens": 1903,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 661,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 28672500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it bigger than a breadbox?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1148
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1917,
+          "cachedPromptTokens": 128,
+          "completionTokens": 73,
+          "reasoningTokens": 1334,
+          "totalTokens": 3324,
+          "latencyMs": 18972,
+          "rawUsage": {
+            "prompt_tokens": 1917,
+            "completion_tokens": 73,
+            "total_tokens": 3324,
+            "prompt_tokens_details": {
+              "text_tokens": 1917,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1334,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 57793500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a vehicle or used for transportation?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2066
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1933,
+          "cachedPromptTokens": 128,
+          "completionTokens": 81,
+          "reasoningTokens": 1078,
+          "totalTokens": 3092,
+          "latencyMs": 18388,
+          "rawUsage": {
+            "prompt_tokens": 1933,
+            "completion_tokens": 81,
+            "total_tokens": 3092,
+            "prompt_tokens_details": {
+              "text_tokens": 1933,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1078,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 51793500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a piece of furniture?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1518
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1950,
+          "cachedPromptTokens": 128,
+          "completionTokens": 75,
+          "reasoningTokens": 1347,
+          "totalTokens": 3372,
+          "latencyMs": 19391,
+          "rawUsage": {
+            "prompt_tokens": 1950,
+            "completion_tokens": 75,
+            "total_tokens": 3372,
+            "prompt_tokens_details": {
+              "text_tokens": 1950,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1347,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 58581000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it powered by electricity?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1621
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1965,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 3424,
+          "totalTokens": 5462,
+          "latencyMs": 47610,
+          "rawUsage": {
+            "prompt_tokens": 1965,
+            "completion_tokens": 73,
+            "total_tokens": 5462,
+            "prompt_tokens_details": {
+              "text_tokens": 1965,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3424,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 98547500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it typically located or found outdoors?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1747
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1979,
+          "cachedPromptTokens": 128,
+          "completionTokens": 92,
+          "reasoningTokens": 2461,
+          "totalTokens": 4532,
+          "latencyMs": 32808,
+          "rawUsage": {
+            "prompt_tokens": 1979,
+            "completion_tokens": 92,
+            "total_tokens": 4532,
+            "prompt_tokens_details": {
+              "text_tokens": 1979,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2461,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 87218500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a musical instrument?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1961
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1995,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 2743,
+          "totalTokens": 4828,
+          "latencyMs": 40824,
+          "rawUsage": {
+            "prompt_tokens": 1995,
+            "completion_tokens": 90,
+            "total_tokens": 4828,
+            "prompt_tokens_details": {
+              "text_tokens": 1995,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2743,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 82322500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it produce sound primarily by vibrating strings?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1580
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2009,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 86,
+          "reasoningTokens": 1205,
+          "totalTokens": 3300,
+          "latencyMs": 17194,
+          "rawUsage": {
+            "prompt_tokens": 2009,
+            "completion_tokens": 86,
+            "total_tokens": 3300,
+            "prompt_tokens_details": {
+              "text_tokens": 2009,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1205,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 43947500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it have a keyboard?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1672
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2026,
+          "cachedPromptTokens": 128,
+          "completionTokens": 85,
+          "reasoningTokens": 1411,
+          "totalTokens": 3522,
+          "latencyMs": 20243,
+          "rawUsage": {
+            "prompt_tokens": 2026,
+            "completion_tokens": 85,
+            "total_tokens": 3522,
+            "prompt_tokens_details": {
+              "text_tokens": 2026,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1411,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 61381000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it played with a bow?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1746
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2040,
+          "cachedPromptTokens": 128,
+          "completionTokens": 68,
+          "reasoningTokens": 590,
+          "totalTokens": 2698,
+          "latencyMs": 8397,
+          "rawUsage": {
+            "prompt_tokens": 2040,
+            "completion_tokens": 68,
+            "total_tokens": 2698,
+            "prompt_tokens_details": {
+              "text_tokens": 2040,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 590,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 40606000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it have frets?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2116
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2055,
+          "cachedPromptTokens": 128,
+          "completionTokens": 61,
+          "reasoningTokens": 1609,
+          "totalTokens": 3725,
+          "latencyMs": 20902,
+          "rawUsage": {
+            "prompt_tokens": 2055,
+            "completion_tokens": 61,
+            "total_tokens": 3725,
+            "prompt_tokens_details": {
+              "text_tokens": 2055,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1609,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 66093500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the player press the strings against a neck or fretboard to change the pitch?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2256
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2093,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 91,
+          "reasoningTokens": 4118,
+          "totalTokens": 6302,
+          "latencyMs": 53727,
+          "rawUsage": {
+            "prompt_tokens": 2093,
+            "completion_tokens": 91,
+            "total_tokens": 6302,
+            "prompt_tokens_details": {
+              "text_tokens": 2093,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4118,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 117947500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "questioning",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it typically have six strings?",
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 17,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2443
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2118,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 3334,
+          "totalTokens": 5529,
+          "latencyMs": 42062,
+          "rawUsage": {
+            "prompt_tokens": 2118,
+            "completion_tokens": 77,
+            "total_tokens": 5529,
+            "prompt_tokens_details": {
+              "text_tokens": 2118,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3334,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 110406000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "resolving",
+      "question_count": 18,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [
+        {
+          "turn_index": 19,
+          "proposed_guess": "guitar",
+          "required_grain": "unset",
+          "decision": "no_check_unset",
+          "grain_ok": null,
+          "reasoning": "required_target_grain was never established from play evidence; no comparison is possible.",
+          "retried": false,
+          "retry_guess": null,
+          "retry_decision": null
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 18,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1653
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 19,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2133,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 99,
+          "reasoningTokens": 1811,
+          "totalTokens": 4043,
+          "latencyMs": 24812,
+          "rawUsage": {
+            "prompt_tokens": 2133,
+            "completion_tokens": 99,
+            "total_tokens": 4043,
+            "prompt_tokens_details": {
+              "text_tokens": 2133,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1811,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 60972500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "2906ad4d-66e7-4813-bf7c-58dfcf5cf46e",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-grain-state",
+      "benchmark_run_id": "b94e5601-cb67-4cd3-889c-d09e02e1300b",
+      "phase": "complete",
+      "question_count": 18,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "current_required_grain": "unset",
+      "grain_established_this_step": null,
+      "grain_checks_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
