@@ -294,6 +294,105 @@ async function runGrokLoopCandidate(fixtureKey, baseUrl, shareToken, outDir, max
   console.log(JSON.stringify(status, null, 2));
 }
 
+const GROK_GRAIN_FIXTURES = new Set([
+  "disc-02-guitar",
+  "disc-06-golden-gate-bridge",
+  "disc-08-chess",
+  "disc-05-platypus",
+  "d2-grok",
+]);
+
+/**
+ * V2.8.x required-target-grain state experiment. Same shape as
+ * runGrokLoopCandidate above, pointed at the sibling grok-step-grain route
+ * instead — every raw step status (including grain_checks_this_step,
+ * grain_established_this_step, and step_diagnostics) is persisted after
+ * EVERY step.
+ */
+async function runGrokLoopGrain(fixtureKey, baseUrl, shareToken, outDir, maxSteps = 120, resumeGameId = null) {
+  if (!GROK_GRAIN_FIXTURES.has(fixtureKey)) usageAndExit(`unknown grok-loop-grain fixture "${fixtureKey}"`);
+
+  const fs = await import("node:fs");
+  const path = await import("node:path");
+  fs.mkdirSync(outDir, { recursive: true });
+  const outFile = path.join(outDir, `${fixtureKey}.grain-evidence.json`);
+
+  const cookie = await establishBypassCookie(baseUrl, shareToken);
+  const url = `${baseUrl}/api/internal/benchmark/grok-step-grain`;
+
+  const allSteps = [];
+  function persist() {
+    fs.writeFileSync(outFile, JSON.stringify({ fixture: fixtureKey, steps: allSteps }, null, 2));
+  }
+
+  async function post(body) {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Cookie: cookie },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    let json;
+    try {
+      json = JSON.parse(text);
+    } catch {
+      throw new Error(`Non-JSON response (HTTP ${res.status}): ${text.slice(0, 500)}`);
+    }
+    if (res.status !== 200) {
+      throw new Error(`HTTP ${res.status}: ${text.slice(0, 500)}`);
+    }
+    return json;
+  }
+
+  let status;
+  if (resumeGameId) {
+    console.log(`[resume] continuing existing game_id=${resumeGameId}`);
+    status = await post({ confirm: "run-grok-step-grain-continue", fixture: fixtureKey, gameId: resumeGameId });
+    allSteps.push(status);
+    persist();
+    console.log(`[step] phase=${status.phase} q=${status.question_count}/${status.max_questions} grain=${status.current_required_grain}`);
+  } else {
+    status = await post({ confirm: "run-grok-step-grain-start", fixture: fixtureKey });
+    allSteps.push(status);
+    persist();
+    console.log(
+      `[start] game_id=${status.game_id} benchmark_run_id=${status.benchmark_run_id} q=${status.question_count}/${status.max_questions}`
+    );
+  }
+
+  let steps = 0;
+  while (!status.done) {
+    steps += 1;
+    if (steps > maxSteps) {
+      throw new Error(`Exceeded ${maxSteps} steps without the game completing. Last status: ${JSON.stringify(status)}`);
+    }
+    status = await post({ confirm: "run-grok-step-grain-continue", fixture: fixtureKey, gameId: status.game_id });
+    allSteps.push(status);
+    persist();
+    const grainNote = status.grain_established_this_step
+      ? ` GRAIN_ESTABLISHED=${status.grain_established_this_step.grain}`
+      : "";
+    const checkNote = status.grain_checks_this_step.length
+      ? ` CHECK=${status.grain_checks_this_step.map((g) => g.decision).join(",")}`
+      : "";
+    console.log(
+      `[step ${steps}] phase=${status.phase} q=${status.question_count}/${status.max_questions} grain=${status.current_required_grain}` +
+        (status.last_question ? ` last_q="${status.last_question.slice(0, 60)}..." -> ${status.last_answer}` : "") +
+        grainNote +
+        checkNote
+    );
+    if (status.phase === "resolving" && !status.done) {
+      status = await post({ confirm: "run-grok-step-grain-continue", fixture: fixtureKey, gameId: status.game_id });
+      allSteps.push(status);
+      persist();
+      console.log(`[resolve] result=${status.result} final_action=${status.final_action}`);
+    }
+  }
+
+  console.log(`\nFINAL (evidence written to ${outFile}):`);
+  console.log(JSON.stringify(status, null, 2));
+}
+
 async function runExport(benchmarkRunId, baseUrl, shareToken) {
   const cookie = await establishBypassCookie(baseUrl, shareToken);
   const url = `${baseUrl}/api/internal/benchmark/export-transcript?benchmarkRunId=${encodeURIComponent(benchmarkRunId)}`;
@@ -331,6 +430,15 @@ async function main() {
         "grok-loop-candidate mode needs: grok-loop-candidate <fixture> <baseUrl> <shareToken> <outDir> [resumeGameId]"
       );
     await runGrokLoopCandidate(second, third, fourth, args[4], 120, args[5] ?? null);
+    return;
+  }
+
+  if (first === "grok-loop-grain") {
+    if (args.length < 5 || args.length > 6)
+      usageAndExit(
+        "grok-loop-grain mode needs: grok-loop-grain <fixture> <baseUrl> <shareToken> <outDir> [resumeGameId]"
+      );
+    await runGrokLoopGrain(second, third, fourth, args[4], 120, args[5] ?? null);
     return;
   }
 

@@ -91,6 +91,13 @@ const PERMITTED_SECRET_IMPORTERS = [
   // this experiment. Remove alongside runGrokStep.ts's own entry once this
   // experiment's evidence is durably captured.
   "scripts/runGrokStepCandidate.ts",
+  // V2.8.x — REQUIRED-TARGET-GRAIN STATE EXPERIMENT, TEMPORARY. Sibling
+  // turn-by-turn driver (app/api/internal/benchmark/grok-step-grain/
+  // route.ts), same createSecret/lockSecret/getSecretForAdjudication
+  // sequence as scripts/runGrokStep.ts, replicated for the same
+  // never-touch-the-frozen-evidence-file reason. Remove alongside the two
+  // entries above once this experiment's evidence is durably captured.
+  "scripts/runGrokStepGrainState.ts",
 ];
 
 /** Modules that must be structurally incapable of reaching the secret. */
