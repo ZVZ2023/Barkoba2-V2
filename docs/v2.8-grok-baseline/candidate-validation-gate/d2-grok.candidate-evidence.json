@@ -1,0 +1,1144 @@
+{
+  "fixture": "d2-grok",
+  "steps": [
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target real, or has it ever existed in reality — that is, not invented or fictional?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 1792,
+          "completionTokens": 69,
+          "reasoningTokens": 1213,
+          "totalTokens": 3114,
+          "latencyMs": 19607,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 69,
+            "total_tokens": 3114,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1792
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1213,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 36134000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a human being?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1621
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1850,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 87,
+          "reasoningTokens": 652,
+          "totalTokens": 2589,
+          "latencyMs": 10084,
+          "rawUsage": {
+            "prompt_tokens": 1850,
+            "completion_tokens": 87,
+            "total_tokens": 2589,
+            "prompt_tokens_details": {
+              "text_tokens": 1850,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 652,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 28160000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an animal?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1647
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1865,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 809,
+          "totalTokens": 2751,
+          "latencyMs": 11052,
+          "rawUsage": {
+            "prompt_tokens": 1865,
+            "completion_tokens": 77,
+            "total_tokens": 2751,
+            "prompt_tokens_details": {
+              "text_tokens": 1865,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 809,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 44118500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a plant?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1453
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1879,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 74,
+          "reasoningTokens": 1555,
+          "totalTokens": 3508,
+          "latencyMs": 21220,
+          "rawUsage": {
+            "prompt_tokens": 1879,
+            "completion_tokens": 74,
+            "total_tokens": 3508,
+            "prompt_tokens_details": {
+              "text_tokens": 1879,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1555,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 50772500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target created by humans?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1462
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1893,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 86,
+          "reasoningTokens": 1865,
+          "totalTokens": 3844,
+          "latencyMs": 25569,
+          "rawUsage": {
+            "prompt_tokens": 1893,
+            "completion_tokens": 86,
+            "total_tokens": 3844,
+            "prompt_tokens_details": {
+              "text_tokens": 1893,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1865,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 58997500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a physical object that can be touched?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1706
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1908,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 104,
+          "reasoningTokens": 1682,
+          "totalTokens": 3694,
+          "latencyMs": 20208,
+          "rawUsage": {
+            "prompt_tokens": 1908,
+            "completion_tokens": 104,
+            "total_tokens": 3694,
+            "prompt_tokens_details": {
+              "text_tokens": 1908,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1682,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 55060000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a vehicle or used for transportation?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1656
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1927,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 89,
+          "reasoningTokens": 1046,
+          "totalTokens": 3062,
+          "latencyMs": 15158,
+          "rawUsage": {
+            "prompt_tokens": 1927,
+            "completion_tokens": 89,
+            "total_tokens": 3062,
+            "prompt_tokens_details": {
+              "text_tokens": 1927,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1046,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 39022500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a building or other large permanent structure?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1808
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1945,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 83,
+          "reasoningTokens": 1401,
+          "totalTokens": 3429,
+          "latencyMs": 17090,
+          "rawUsage": {
+            "prompt_tokens": 1945,
+            "completion_tokens": 83,
+            "total_tokens": 3429,
+            "prompt_tokens_details": {
+              "text_tokens": 1945,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1401,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 47972500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a religious structure or primarily used for religious purposes?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1981
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1964,
+          "cachedPromptTokens": 128,
+          "completionTokens": 98,
+          "reasoningTokens": 2307,
+          "totalTokens": 4369,
+          "latencyMs": 33748,
+          "rawUsage": {
+            "prompt_tokens": 1964,
+            "completion_tokens": 98,
+            "total_tokens": 4369,
+            "prompt_tokens_details": {
+              "text_tokens": 1964,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2307,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 83331000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Was the target built before 1900?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2097
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1985,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 83,
+          "reasoningTokens": 1491,
+          "totalTokens": 3559,
+          "latencyMs": 21554,
+          "rawUsage": {
+            "prompt_tokens": 1985,
+            "completion_tokens": 83,
+            "total_tokens": 3559,
+            "prompt_tokens_details": {
+              "text_tokens": 1985,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1491,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 50722500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in Europe?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1458
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2002,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 1576,
+          "totalTokens": 3668,
+          "latencyMs": 18760,
+          "rawUsage": {
+            "prompt_tokens": 2002,
+            "completion_tokens": 90,
+            "total_tokens": 3668,
+            "prompt_tokens_details": {
+              "text_tokens": 2002,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1576,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 53235000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a palace, castle, or fortress?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1373
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2017,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 94,
+          "reasoningTokens": 2285,
+          "totalTokens": 4396,
+          "latencyMs": 29459,
+          "rawUsage": {
+            "prompt_tokens": 2017,
+            "completion_tokens": 94,
+            "total_tokens": 4396,
+            "prompt_tokens_details": {
+              "text_tokens": 2017,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2285,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 71247500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Was the target built before 1500 AD?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1414
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2036,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 80,
+          "reasoningTokens": 2652,
+          "totalTokens": 4768,
+          "latencyMs": 34032,
+          "rawUsage": {
+            "prompt_tokens": 2036,
+            "completion_tokens": 80,
+            "total_tokens": 4768,
+            "prompt_tokens_details": {
+              "text_tokens": 2036,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2652,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 80310000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in France?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1230
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2054,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 2353,
+          "totalTokens": 4497,
+          "latencyMs": 27298,
+          "rawUsage": {
+            "prompt_tokens": 2054,
+            "completion_tokens": 90,
+            "total_tokens": 4497,
+            "prompt_tokens_details": {
+              "text_tokens": 2054,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2353,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 73310000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target located in Paris?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1159
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2069,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 128,
+          "reasoningTokens": 1749,
+          "totalTokens": 3946,
+          "latencyMs": 21788,
+          "rawUsage": {
+            "prompt_tokens": 2069,
+            "completion_tokens": 128,
+            "total_tokens": 3946,
+            "prompt_tokens_details": {
+              "text_tokens": 2069,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1749,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 59347500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target primarily made of iron?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1591
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2084,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 88,
+          "reasoningTokens": 3067,
+          "totalTokens": 5239,
+          "latencyMs": 32460,
+          "rawUsage": {
+            "prompt_tokens": 2084,
+            "completion_tokens": 88,
+            "total_tokens": 5239,
+            "prompt_tokens_details": {
+              "text_tokens": 2084,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3067,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 91485000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "questioning",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a tower?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1318
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2100,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 1691,
+          "totalTokens": 3884,
+          "latencyMs": 20141,
+          "rawUsage": {
+            "prompt_tokens": 2100,
+            "completion_tokens": 93,
+            "total_tokens": 3884,
+            "prompt_tokens_details": {
+              "text_tokens": 2100,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1691,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 57410000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "resolving",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 18,
+          "proposed_guess": "Eiffel Tower",
+          "decision": "allow",
+          "grain_ok": true,
+          "unused_discriminator": null,
+          "hard_evidence_violation": null,
+          "replacement_question": null,
+          "reasoning": "The specific name \"Eiffel Tower\" matches the exact required grain as the unique referent fitting all facts (iron tower in Paris, built 1500-1900, etc.); no high-value unasked discriminator remains that would separate it from any other plausible candidate in the narrowed family, and it is fully compatible with every prior answer.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 17,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1433
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2114,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 954,
+          "totalTokens": 3141,
+          "latencyMs": 11738,
+          "rawUsage": {
+            "prompt_tokens": 2114,
+            "completion_tokens": 73,
+            "total_tokens": 3141,
+            "prompt_tokens_details": {
+              "text_tokens": 2114,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 954,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 38660000
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1466,
+          "cachedPromptTokens": 128,
+          "completionTokens": 118,
+          "reasoningTokens": 1174,
+          "totalTokens": 2758,
+          "latencyMs": 12553,
+          "rawUsage": {
+            "prompt_tokens": 1466,
+            "completion_tokens": 118,
+            "total_tokens": 2758,
+            "prompt_tokens_details": {
+              "text_tokens": 1466,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1174,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 49281000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b04c741d-75d4-4b96-b8e6-1cd36d0ab06b",
+      "benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "benchmark_run_id": "35acd390-9987-4bbf-be2f-cfac31cab678",
+      "phase": "complete",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-grok-calib-d2-eiffel-tower-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}

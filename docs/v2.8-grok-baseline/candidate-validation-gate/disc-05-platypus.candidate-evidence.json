@@ -1,0 +1,904 @@
+{
+  "fixture": "disc-05-platypus",
+  "steps": [
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a physical object?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 1792,
+          "completionTokens": 69,
+          "reasoningTokens": 672,
+          "totalTokens": 2573,
+          "latencyMs": 7849,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 69,
+            "total_tokens": 2573,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1792
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 672,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 22609000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a living thing?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1986
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1835,
+          "cachedPromptTokens": 1792,
+          "completionTokens": 84,
+          "reasoningTokens": 1599,
+          "totalTokens": 3518,
+          "latencyMs": 22946,
+          "rawUsage": {
+            "prompt_tokens": 1835,
+            "completion_tokens": 84,
+            "total_tokens": 3518,
+            "prompt_tokens_details": {
+              "text_tokens": 1835,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1792
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1599,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 46196500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a human?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1648
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1849,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 942,
+          "totalTokens": 2864,
+          "latencyMs": 13210,
+          "rawUsage": {
+            "prompt_tokens": 1849,
+            "completion_tokens": 73,
+            "total_tokens": 2864,
+            "prompt_tokens_details": {
+              "text_tokens": 1849,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 942,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 35047500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it an animal?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1695
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1862,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 62,
+          "reasoningTokens": 392,
+          "totalTokens": 2316,
+          "latencyMs": 5099,
+          "rawUsage": {
+            "prompt_tokens": 1862,
+            "completion_tokens": 62,
+            "total_tokens": 2316,
+            "prompt_tokens_details": {
+              "text_tokens": 1862,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 392,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 21185000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a mammal?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1651
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1875,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 671,
+          "totalTokens": 2619,
+          "latencyMs": 8012,
+          "rawUsage": {
+            "prompt_tokens": 1875,
+            "completion_tokens": 73,
+            "total_tokens": 2619,
+            "prompt_tokens_details": {
+              "text_tokens": 1875,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 671,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 28597500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a domesticated animal?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1359
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1888,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 75,
+          "reasoningTokens": 1497,
+          "totalTokens": 3460,
+          "latencyMs": 22118,
+          "rawUsage": {
+            "prompt_tokens": 1888,
+            "completion_tokens": 75,
+            "total_tokens": 3460,
+            "prompt_tokens_details": {
+              "text_tokens": 1888,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1497,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 49460000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it larger than an adult human?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1159
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1902,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 88,
+          "reasoningTokens": 4142,
+          "totalTokens": 6132,
+          "latencyMs": 58688,
+          "rawUsage": {
+            "prompt_tokens": 1902,
+            "completion_tokens": 88,
+            "total_tokens": 6132,
+            "prompt_tokens_details": {
+              "text_tokens": 1902,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4142,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 116085000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a rodent?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2411
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1918,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 64,
+          "reasoningTokens": 994,
+          "totalTokens": 2976,
+          "latencyMs": 16189,
+          "rawUsage": {
+            "prompt_tokens": 1918,
+            "completion_tokens": 64,
+            "total_tokens": 2976,
+            "prompt_tokens_details": {
+              "text_tokens": 1918,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 994,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 36985000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Can it fly?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1668
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1931,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 89,
+          "reasoningTokens": 2394,
+          "totalTokens": 4414,
+          "latencyMs": 38173,
+          "rawUsage": {
+            "prompt_tokens": 1931,
+            "completion_tokens": 89,
+            "total_tokens": 4414,
+            "prompt_tokens_details": {
+              "text_tokens": 1931,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2394,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 72772500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it an herbivore?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1468
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1943,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 86,
+          "reasoningTokens": 2505,
+          "totalTokens": 4534,
+          "latencyMs": 35179,
+          "rawUsage": {
+            "prompt_tokens": 1943,
+            "completion_tokens": 86,
+            "total_tokens": 4534,
+            "prompt_tokens_details": {
+              "text_tokens": 1943,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2505,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 75622500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it belong to the order Carnivora?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1660
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1957,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 4920,
+          "totalTokens": 6970,
+          "latencyMs": 65111,
+          "rawUsage": {
+            "prompt_tokens": 1957,
+            "completion_tokens": 93,
+            "total_tokens": 6970,
+            "prompt_tokens_details": {
+              "text_tokens": 1957,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4920,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 136347500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it lay eggs?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1824
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1975,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 90,
+          "reasoningTokens": 3562,
+          "totalTokens": 5627,
+          "latencyMs": 46170,
+          "rawUsage": {
+            "prompt_tokens": 1975,
+            "completion_tokens": 90,
+            "total_tokens": 5627,
+            "prompt_tokens_details": {
+              "text_tokens": 1975,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3562,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 102547500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it have a duck-like bill?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1981
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1988,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 78,
+          "reasoningTokens": 1487,
+          "totalTokens": 3553,
+          "latencyMs": 18646,
+          "rawUsage": {
+            "prompt_tokens": 1988,
+            "completion_tokens": 78,
+            "total_tokens": 3553,
+            "prompt_tokens_details": {
+              "text_tokens": 1988,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1487,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 50535000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "resolving",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 14,
+          "proposed_guess": "platypus",
+          "decision": "allow",
+          "grain_ok": true,
+          "unused_discriminator": null,
+          "hard_evidence_violation": null,
+          "replacement_question": null,
+          "reasoning": "The proposed guess \"platypus\" is a specific referent at the required grain, matches every established fact in the transcript (mammal that lays eggs with a duck-like bill, not in Carnivora, etc.) with no contradictions, and no unasked yes/no question remains that could meaningfully separate it from any other plausible candidate.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1604
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2004,
+          "cachedPromptTokens": 128,
+          "completionTokens": 87,
+          "reasoningTokens": 1292,
+          "totalTokens": 3383,
+          "latencyMs": 16537,
+          "rawUsage": {
+            "prompt_tokens": 2004,
+            "completion_tokens": 87,
+            "total_tokens": 3383,
+            "prompt_tokens_details": {
+              "text_tokens": 2004,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1292,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 58181000
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1356,
+          "cachedPromptTokens": 128,
+          "completionTokens": 119,
+          "reasoningTokens": 794,
+          "totalTokens": 2269,
+          "latencyMs": 10741,
+          "rawUsage": {
+            "prompt_tokens": 1356,
+            "completion_tokens": 119,
+            "total_tokens": 2269,
+            "prompt_tokens_details": {
+              "text_tokens": 1356,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 794,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 38431000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "45d8a498-7616-44a8-8a40-99b2a64b9535",
+      "benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "benchmark_run_id": "2d074e1a-7b01-46d9-8262-d377135a3f6d",
+      "phase": "complete",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-05-platypus-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
