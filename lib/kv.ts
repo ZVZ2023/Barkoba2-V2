@@ -34,6 +34,47 @@ export interface KVClient {
    * non-null result for a given key, by construction, not by timing luck.
    */
   getdel<T>(key: string): Promise<T | null>;
+
+  /**
+   * V2.8.1 — a short-lived advisory lock. True if THIS caller now holds it,
+   * false if someone else already does. One native `SET key val NX EX`
+   * (atomic on Redis itself; no script needed) — see lib/gameStore.ts's
+   * acquireTurnLock, the My Car Key integrity hotfix's guard against two
+   * concurrent /turn requests both paying for a Racer call for the same
+   * pending question.
+   */
+  acquireLock(key: string, ttlSeconds: number): Promise<boolean>;
+  /** Release a lock this caller previously acquired. Always safe to call. */
+  releaseLock(key: string): Promise<void>;
+
+  /**
+   * V2.8.1 — atomic compare-and-swap, keyed on a monotonic revision counter.
+   *
+   * Succeeds ONLY if the integer currently stored at `revisionKey` equals
+   * `expectedRevision`; on success, both the revision bump and the
+   * `newValue` write land together, atomically, as one Redis Lua script —
+   * immune to interleaving from any other caller, unlike a JS-level
+   * "read, compare, then write" (two separate HTTP round trips against
+   * Upstash, with a window between them any other request can land in).
+   *
+   * Deliberately uses ONLY `redis.call('GET'|'SET', ...)` inside the script
+   * — no external Lua library (no cjson, no bit ops) — so it needs nothing
+   * beyond what any Redis-compatible EVAL already guarantees, Upstash's
+   * REST-backed EVAL included.
+   *
+   * This is THE primitive the My Car Key integrity hotfix is built on: see
+   * lib/gameStore.ts's saveGameIfRevisionMatches. A stale/retried/duplicate
+   * caller's expected revision can never match after a legitimate write has
+   * already advanced it, so a stale write can never land, by construction —
+   * not by a timing assumption.
+   */
+  casSetWithRevision<T>(
+    dataKey: string,
+    revisionKey: string,
+    expectedRevision: number,
+    newValue: T,
+    ttlSeconds: number
+  ): Promise<{ ok: true; revision: number } | { ok: false; currentRevision: number }>;
 }
 
 class UpstashKV implements KVClient {
@@ -73,6 +114,48 @@ class UpstashKV implements KVClient {
     const val = await this.client.getdel<T>(key);
     return val ?? null;
   }
+
+  async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    const result = await this.client.set(key, "1", { nx: true, ex: ttlSeconds });
+    return result === "OK";
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    await this.client.del(key);
+  }
+
+  async casSetWithRevision<T>(
+    dataKey: string,
+    revisionKey: string,
+    expectedRevision: number,
+    newValue: T,
+    ttlSeconds: number
+  ): Promise<{ ok: true; revision: number } | { ok: false; currentRevision: number }> {
+    // Pure redis.call GET/SET — deliberately no cjson or other library, so
+    // this runs on any Redis-compatible EVAL, Upstash's REST-backed one
+    // included. current defaults to '0' for a never-initialized key so a
+    // caller that legitimately expects revision 0 (a freshly created game)
+    // is not rejected by a missing key.
+    const script =
+      "local current = redis.call('GET', KEYS[1])\n" +
+      "if current == false then current = '0' end\n" +
+      "if current ~= ARGV[1] then\n" +
+      "  return {0, current}\n" +
+      "end\n" +
+      "local newRevision = tostring(tonumber(ARGV[1]) + 1)\n" +
+      "redis.call('SET', KEYS[1], newRevision, 'EX', ARGV[3])\n" +
+      "redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])\n" +
+      "return {1, newRevision}";
+
+    const [ok, revision] = await this.client.eval<[string, string, string], [number, string]>(
+      script,
+      [revisionKey, dataKey],
+      [String(expectedRevision), JSON.stringify(newValue), String(ttlSeconds)]
+    );
+
+    if (ok === 1) return { ok: true, revision: Number(revision) };
+    return { ok: false, currentRevision: Number(revision) };
+  }
 }
 
 type InMemoryEntry = { value: unknown; expiresAt: number | null };
@@ -93,6 +176,20 @@ class InMemoryKV implements KVClient {
   private store: Map<string, InMemoryEntry> =
     (devStore.__barkobaDevKV ??= new Map<string, InMemoryEntry>());
 
+  /**
+   * Real Upstash always returns a freshly-deserialized value on every GET —
+   * there is no way for one caller's mutation of what it read back to reach
+   * another caller, or to reach what is actually stored, since an HTTP round
+   * trip sits in between. Returning `entry.value` directly here would make
+   * this dev-only fallback hand out a SHARED, MUTABLE object reference
+   * instead — two independent `getGame()` calls could silently alias the
+   * same in-memory GameRecord, so a mutation either side makes (before its
+   * own save) would leak into the other's view. That is a fine-in-a-single-
+   * process illusion of isolation that real infrastructure never provides,
+   * and would make a correctness bug (or a test asserting on it) here and
+   * only here. structuredClone makes this fallback match Upstash's actual
+   * independent-copy semantics.
+   */
   async get<T>(key: string): Promise<T | null> {
     const entry = this.store.get(key);
     if (!entry) return null;
@@ -100,12 +197,15 @@ class InMemoryKV implements KVClient {
       this.store.delete(key);
       return null;
     }
-    return entry.value as T;
+    return structuredClone(entry.value) as T;
   }
 
   async set<T>(key: string, value: T, ttlSeconds?: number): Promise<void> {
+    // Cloned on the way in too — otherwise a caller mutating its own
+    // in-memory object AFTER calling set() would silently mutate what is
+    // "stored", which real serialize-over-HTTP storage can never do either.
     this.store.set(key, {
-      value,
+      value: structuredClone(value),
       expiresAt: ttlSeconds ? Date.now() + ttlSeconds * 1000 : null,
     });
   }
@@ -136,7 +236,48 @@ class InMemoryKV implements KVClient {
     if (!entry) return null;
     this.store.delete(key);
     if (entry.expiresAt && entry.expiresAt < Date.now()) return null;
-    return entry.value as T;
+    return structuredClone(entry.value) as T; // see get()'s comment on why
+  }
+
+  /**
+   * No `await` between the read and the write below — safe under Node's
+   * single-threaded execution for the same reason getdel's comment gives:
+   * nothing else can run between two synchronous statements in one turn of
+   * the event loop. Real concurrent-request atomicity is UpstashKV's job
+   * (native SET NX); this dev-only fallback just needs to behave the same
+   * way for a single process.
+   */
+  async acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    const entry = this.store.get(key);
+    const live = entry && (!entry.expiresAt || entry.expiresAt >= Date.now());
+    if (live) return false;
+    this.store.set(key, { value: "1", expiresAt: Date.now() + ttlSeconds * 1000 });
+    return true;
+  }
+
+  async releaseLock(key: string): Promise<void> {
+    this.store.delete(key);
+  }
+
+  async casSetWithRevision<T>(
+    dataKey: string,
+    revisionKey: string,
+    expectedRevision: number,
+    newValue: T,
+    ttlSeconds: number
+  ): Promise<{ ok: true; revision: number } | { ok: false; currentRevision: number }> {
+    const currentEntry = this.store.get(revisionKey);
+    const current = typeof currentEntry?.value === "number" ? currentEntry.value : 0;
+    if (current !== expectedRevision) {
+      return { ok: false, currentRevision: current };
+    }
+    const newRevision = current + 1;
+    const expiresAt = Date.now() + ttlSeconds * 1000;
+    this.store.set(revisionKey, { value: newRevision, expiresAt });
+    // Cloned in, same as set() — the caller's in-memory object must not
+    // remain aliased to what is now "stored". See get()'s comment.
+    this.store.set(dataKey, { value: structuredClone(newValue), expiresAt });
+    return { ok: true, revision: newRevision };
   }
 }
 
@@ -200,6 +341,30 @@ class NamespacedKV implements KVClient {
 
   getdel<T>(key: string): Promise<T | null> {
     return this.inner.getdel<T>(namespacedKey(key));
+  }
+
+  acquireLock(key: string, ttlSeconds: number): Promise<boolean> {
+    return this.inner.acquireLock(namespacedKey(key), ttlSeconds);
+  }
+
+  releaseLock(key: string): Promise<void> {
+    return this.inner.releaseLock(namespacedKey(key));
+  }
+
+  casSetWithRevision<T>(
+    dataKey: string,
+    revisionKey: string,
+    expectedRevision: number,
+    newValue: T,
+    ttlSeconds: number
+  ): Promise<{ ok: true; revision: number } | { ok: false; currentRevision: number }> {
+    return this.inner.casSetWithRevision(
+      namespacedKey(dataKey),
+      namespacedKey(revisionKey),
+      expectedRevision,
+      newValue,
+      ttlSeconds
+    );
   }
 }
 

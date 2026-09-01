@@ -14,6 +14,22 @@ function gameKey(gameId: string): string {
   return `state:${gameId}`;
 }
 
+/** V2.8.1 — the revision counter's own KV key. See GameRecord.revision. */
+function revisionKey(gameId: string): string {
+  return `state:${gameId}:rev`;
+}
+
+/**
+ * V2.8.1 — the short-lived advisory lock a /turn (or /correct) request holds
+ * while it owns the right to mutate this game. Its ONLY purpose is to stop
+ * two concurrent requests from both paying for a Racer call for the same
+ * pending question; the revision CAS below is what actually protects the
+ * data even if this were somehow bypassed.
+ */
+function turnLockKey(gameId: string): string {
+  return `state:${gameId}:turnlock`;
+}
+
 export async function createGame(
   gameId: string,
   overrides: Partial<GameRecord> = {}
@@ -65,10 +81,18 @@ export async function createGame(
     // header. Ordinary play never sets these.
     benchmark_case_id: null,
     benchmark_run_id: null,
+    // V2.8.1 — placeholder only; getGame() always overwrites this with the
+    // live value from revisionKey below, which is what every route actually
+    // reads. See GameRecord.revision.
+    revision: 0,
     ...overrides,
   };
 
   await getKV().set(gameKey(gameId), record, env.gameTtlSeconds());
+  // Every game, whatever mode created it, gets a revision counter — not just
+  // the human-Composer/AI-Racer path /turn protects, so a future write path
+  // can adopt the same CAS without a second initialization site to remember.
+  await getKV().set(revisionKey(gameId), 0, env.gameTtlSeconds());
   return record;
 }
 
@@ -139,7 +163,74 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   if (record.racer_kind !== "human" && record.racer_kind !== "ai") {
     record.racer_kind = "ai";
   }
+  // V2.8.1 — always the live value from its own key, never whatever was
+  // baked into the blob at the last write. A game created before this field
+  // existed has no revision key yet; getGameRevision's own default (0) is
+  // the correct backfill, matching every other pre-existing-field normalize
+  // above.
+  record.revision = await getGameRevision(gameId);
   return record;
+}
+
+/** The live value of a game's revision counter — 0 if never initialized. */
+export async function getGameRevision(gameId: string): Promise<number> {
+  const value = await getKV().get<number>(revisionKey(gameId));
+  return typeof value === "number" ? value : 0;
+}
+
+/**
+ * V2.8.1 — acquire the per-game turn lock. Returns false if another request
+ * already holds it; the caller must not proceed to a Racer call in that
+ * case. Always release with releaseTurnLock, in a finally.
+ */
+export async function acquireTurnLock(gameId: string, ttlSeconds: number): Promise<boolean> {
+  return getKV().acquireLock(turnLockKey(gameId), ttlSeconds);
+}
+
+export async function releaseTurnLock(gameId: string): Promise<void> {
+  await getKV().releaseLock(turnLockKey(gameId));
+}
+
+export interface SaveIfRevisionMatchesResult {
+  ok: boolean;
+  /** The revision the write landed at (if ok), or the current canonical revision (if not — the caller's snapshot was stale). */
+  revision: number;
+}
+
+/**
+ * V2.8.1 — the ONLY write path that binds a mutation to the exact
+ * server-side state it was computed against. Persists `record` only if the
+ * game's revision is still exactly `expectedRevision` — see lib/kv.ts's
+ * casSetWithRevision for the atomicity guarantee. Every other saveGame()
+ * caller remains a blind overwrite and must not be used for anything that
+ * needs this guarantee.
+ *
+ * Mirrors saveGame()'s own corpus-mirroring contract: Redis first and
+ * awaited, corpus write-behind and never throws into the caller.
+ */
+export async function saveGameIfRevisionMatches(
+  record: GameRecord,
+  expectedRevision: number
+): Promise<SaveIfRevisionMatchesResult> {
+  const result = await getKV().casSetWithRevision(
+    gameKey(record.game_id),
+    revisionKey(record.game_id),
+    expectedRevision,
+    record,
+    env.gameTtlSeconds()
+  );
+
+  if (!result.ok) {
+    return { ok: false, revision: result.currentRevision };
+  }
+
+  try {
+    await recordGameState(record);
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] corpus hook raised unexpectedly (this is a defect):", err);
+  }
+  return { ok: true, revision: result.revision };
 }
 
 /**

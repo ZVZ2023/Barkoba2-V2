@@ -155,6 +155,7 @@ function entry(overrides: Partial<QuestionLogEntry> = {}): QuestionLogEntry {
 function game(qa: QuestionLogEntry[]): GameRecord {
   return {
     game_id: randomUUID(),
+    revision: 0,
     player_id: null,
     composer_player_id: null,
     racer_player_id: null,

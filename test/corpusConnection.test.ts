@@ -169,7 +169,7 @@ function entry(): QuestionLogEntry {
 
 function game(): GameRecord {
   return {
-    game_id: randomUUID(), player_id: null,
+    game_id: randomUUID(), revision: 0, player_id: null,
     composer_player_id: null, racer_player_id: null, join_code: null,
     phase: "questioning",
     created_at: new Date().toISOString(), expires_at: new Date().toISOString(),

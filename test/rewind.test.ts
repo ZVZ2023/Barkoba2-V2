@@ -258,6 +258,7 @@ import type { GameRecord } from "../lib/types";
 function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): GameRecord {
   return {
     game_id: "g",
+    revision: 0,
     player_id: null,
     // V2.3 seats. A single-human game records no seats until creation does it.
     composer_player_id: null,

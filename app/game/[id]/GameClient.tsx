@@ -138,7 +138,15 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(
             answer
-              ? { answer, ambiguous_explanation: ambiguousExplanation }
+              ? {
+                  answer,
+                  ambiguous_explanation: ambiguousExplanation,
+                  // V2.8.1 — the My Car Key integrity hotfix. Binds this
+                  // answer to the exact state this screen was showing, so a
+                  // stale retry can never land on a question the human never
+                  // saw. See lib/types.ts's GameRecord.revision.
+                  expected_revision: game.revision,
+                }
               : {}
           ),
         });
@@ -151,14 +159,32 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           setGame(data.game as GameRecord);
         }
         if (!res.ok) {
-          setError(data.message || "Valami hiba történt.");
-          // V2.5-B4. Both halves matter and neither works alone:
-          //   the ref is cleared so a stale qa_log length can never wedge the
-          //   game again — the GROK-03 stall;
-          //   turnFailed suspends the automatic path so clearing the ref does
-          //   not turn one failure into a loop against a failing provider.
-          autoTurnFor.current = null;
-          setTurnFailed(true);
+          if (data.error === "stale_turn") {
+            // V2.8.1 — a synchronization event, not a gameplay failure: the
+            // game already moved on (setGame above just reconciled this
+            // screen to the real current question). The stale answer was
+            // never applied to anything — do not say it was, and do not
+            // treat this like a failure the human needs to retry, since
+            // retrying the SAME stale answer would only be rejected again.
+            // The now-current question is already on screen; they answer
+            // that one normally. autoTurnFor.current is deliberately left
+            // as-is: it is keyed on qa_log.length, and the fresh `game` this
+            // reconciled to has a different length than what the ref holds,
+            // so the auto-turn effect already fires correctly without
+            // needing to clear anything — unlike the two failure paths
+            // below, where the length does NOT change on failure.
+            setError(null);
+            setTurnFailed(false);
+          } else {
+            setError(data.message || "Valami hiba történt.");
+            // V2.5-B4. Both halves matter and neither works alone:
+            //   the ref is cleared so a stale qa_log length can never wedge the
+            //   game again — the GROK-03 stall;
+            //   turnFailed suspends the automatic path so clearing the ref does
+            //   not turn one failure into a loop against a failing provider.
+            autoTurnFor.current = null;
+            setTurnFailed(true);
+          }
         } else {
           setTurnFailed(false);
         }
@@ -176,7 +202,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         setExplanation("");
       }
     },
-    [game.game_id]
+    [game.game_id, game.revision]
   );
 
   /**
