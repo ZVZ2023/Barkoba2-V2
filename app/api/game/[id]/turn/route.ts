@@ -12,13 +12,17 @@ import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
 import type { ModelProviderId } from "@/lib/providers/types";
 import { detectGuess } from "@/lib/guessDetector";
+import { priorAskedQuestions, runWithDuplicateQuestionGuard } from "@/lib/duplicateQuestionGuard";
 import { consumeModelCall } from "@/lib/callBudget";
 import { env } from "@/lib/env";
 import type {
   ComposerAnswer,
   GameRecord,
   GuessIntentOutcome,
+  ModelProvenance,
   QuestionLogEntry,
+  RacerPublicState,
+  RacerTurnOutput,
 } from "@/lib/types";
 
 // This route deliberately imports neither lib/secretStore.ts nor anything that
@@ -38,6 +42,15 @@ export const maxDuration = 60;
 // risking a stale answer landing on the wrong question — see
 // docs/DESIGN-NOTES.md for the incident this closes.
 const TURN_LOCK_TTL_SECONDS = maxDuration;
+
+// V2.8.2 — the exact-duplicate question pre-emission guard. A "small bounded
+// retry cap" per the intervention ticket: 1 initial attempt plus 2
+// regenerations. Each attempt below is a full, real LLM call (its own
+// consumeModelCall check, same as any other Racer call), not a cheap retry —
+// the cap stays small on purpose. See lib/duplicateQuestionGuard.ts for the
+// detector itself and the forensic report for why this exact mechanism (and
+// no other) was chosen.
+const MAX_DUPLICATE_QUESTION_ATTEMPTS = 3;
 
 interface TurnBody {
   answer?: ComposerAnswer;
@@ -116,6 +129,173 @@ function newLogEntry(turnIndex: number): QuestionLogEntry {
     integrity_flag: null,
     confidence: null,
     latency_ms: null,
+  };
+}
+
+interface RacerAttempt {
+  turn: RacerTurnOutput;
+  provenance: ModelProvenance;
+  flagged: boolean;
+  intentOutcome: GuessIntentOutcome | null;
+  preRevisionQuestion: string | null;
+}
+
+type RacerAttemptOutcome =
+  | { ok: true; attempt: RacerAttempt }
+  | { ok: false; response: NextResponse };
+
+/**
+ * One full attempt at a Racer turn: the spend-ceiling check, the LLM call,
+ * and (if the Guess Detector fires) intent resolution. Extracted so the
+ * duplicate-question guard below can call it more than once without
+ * duplicating any of Steps 2–4's logic — byte-identical to what a single
+ * unguarded attempt does, just callable in a loop.
+ *
+ * V2.8.2, revised from the original V2.8.x guard: every `ok: false` branch
+ * now preserves the Composer's answer via the SAME revision-CAS save the
+ * My Car Key hotfix requires (`saveGameIfRevisionMatches`), not a blind
+ * `saveGame` — this function runs entirely inside POST's turn-lock section,
+ * so it must honor the same "never mutate outside the CAS" invariant every
+ * other exit path in that section does. `revisionAtLockTime` is the value
+ * fixed once when the lock was confirmed; `gameId` is only needed for the
+ * re-fetch-on-mismatch defensive log path, matching every other save site
+ * in this route.
+ */
+async function runOneRacerAttempt(
+  game: GameRecord,
+  racerState: RacerPublicState,
+  forceFinal: boolean,
+  racerProvider: ModelProviderId,
+  gameId: string,
+  revisionAtLockTime: number
+): Promise<RacerAttemptOutcome> {
+  // Step 2 — global spend ceiling. Checked before every model call, fails closed.
+  const budget = await consumeModelCall("racer");
+  if (!budget.allowed) {
+    const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // the answer recorded in Step 1 must not be lost
+    if (!saved.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+      );
+      const canonical = await getGame(gameId);
+      return { ok: false, response: staleTurn(canonical ?? game) };
+    }
+    game.revision = saved.revision;
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+          message: budget.failedClosed
+            ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
+            : "A Barkóba elérte az AI-körökre szánt napi globális határát. Próbáld újra holnap.",
+          game,
+        },
+        { status: budget.failedClosed ? 503 : 429 }
+      ),
+    };
+  }
+
+  // Step 3 — the Racer's turn, on narrowed public state only.
+  let turn: RacerTurnOutput;
+  let provenance: ModelProvenance;
+  try {
+    const racerResult = await runRacerTurn(racerState, {
+      forceFinal,
+      provider: racerProvider,
+    });
+    turn = racerResult.output;
+    provenance = racerResult.provenance;
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] Racer call failed:", err);
+    const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // preserve the recorded answer
+    if (!saved.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+      );
+      const canonical = await getGame(gameId);
+      return { ok: false, response: staleTurn(canonical ?? game) };
+    }
+    game.revision = saved.revision;
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "racer_unavailable",
+          message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
+          game,
+        },
+        { status: 502 }
+      ),
+    };
+  }
+
+  // -------------------------------------------------------------------------
+  // Step 4 — Guess Detector, then internal intent resolution if it fires.
+  //
+  // The flag is never surfaced to the human Composer. In V1 the Racer is an AI
+  // with forced structured output, so the party whose intent is in question is
+  // the one re-prompted. See docs/DESIGN-NOTES.md for the Phase 2 human-Racer
+  // variant, which is documented and deliberately not built.
+  // -------------------------------------------------------------------------
+  let flagged = false;
+  let intentOutcome: GuessIntentOutcome | null = null;
+  // V2.5 — the question as the Racer FIRST emitted it.
+  //
+  // Both resolution branches below destroy it: confirm_guess nulls
+  // question_text, continue_questioning replaces it with the revision. Until
+  // 2.5.0.0 the corpus recorded the second question as though it were the
+  // first, next to guess_detector_flagged=true with no evidence of what was
+  // actually flagged — which made the §18-B question/guess-boundary benchmark
+  // unmeasurable by construction. Captured BEFORE either branch can run.
+  let preRevisionQuestion: string | null = null;
+
+  if (turn.action === "question" && turn.question_text) {
+    const detection = detectGuess(turn.question_text);
+    if (detection.flagged) {
+      flagged = true;
+      preRevisionQuestion = turn.question_text;
+
+      const resolutionBudget = await consumeModelCall("racer");
+      if (!resolutionBudget.allowed) {
+        // Budget ran out mid-turn. Fail safe for the player: treat the flagged
+        // question as a question rather than silently converting it to a guess.
+        intentOutcome = "continue_questioning";
+      } else {
+        try {
+          const resolution = await resolveGuessIntent(
+            racerState,
+            turn.question_text,
+            racerProvider
+          );
+          intentOutcome = resolution.resolution;
+
+          if (resolution.resolution === "confirm_guess") {
+            turn = {
+              ...turn,
+              action: "guess" as const,
+              guess_text: resolution.guess_text ?? turn.question_text,
+              question_text: null,
+            };
+          } else if (resolution.revised_question) {
+            turn = { ...turn, question_text: resolution.revised_question };
+          }
+        } catch (err) {
+          // eslint-disable-next-line no-console
+          console.error("[barkoba] Guess-intent resolution failed:", err);
+          // Same fail-safe: an unresolved flag stays a question.
+          intentOutcome = "continue_questioning";
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    attempt: { turn, provenance, flagged, intentOutcome, preRevisionQuestion },
   };
 }
 
@@ -328,34 +508,7 @@ export async function POST(
     }
 
     // -------------------------------------------------------------------------
-    // Step 2 — global spend ceiling. Checked before every model call, fails closed.
-    // -------------------------------------------------------------------------
-    const budget = await consumeModelCall("racer");
-    if (!budget.allowed) {
-      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // the answer recorded above must not be lost
-      if (!saved.ok) {
-        // eslint-disable-next-line no-console
-        console.error(
-          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
-        );
-        const canonical = await getGame(gameId);
-        return staleTurn(canonical ?? game);
-      }
-      game.revision = saved.revision;
-      return NextResponse.json(
-        {
-          error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-          message: budget.failedClosed
-            ? "Most nem tudjuk ellenőrizni a keretet. Próbáld újra hamarosan."
-            : "A Barkóba elérte az AI-körökre szánt napi globális határát. Próbáld újra holnap.",
-          game,
-        },
-        { status: budget.failedClosed ? 503 : 429 }
-      );
-    }
-
-    // -------------------------------------------------------------------------
-    // Step 3 — the Racer's turn, on narrowed public state only.
+    // Step 2/3/4 setup — the Racer's turn, on narrowed public state only.
     // -------------------------------------------------------------------------
     const forceFinal = game.question_count >= game.max_questions;
     const racerState = toRacerPublicState(game);
@@ -389,19 +542,60 @@ export async function POST(
       );
     }
 
-    let turn;
-    let provenance;
-    try {
-      const racerResult = await runRacerTurn(racerState, {
-        forceFinal,
-        provider: racerProvider,
-      });
-      turn = racerResult.output;
-      provenance = racerResult.provenance;
-    } catch (err) {
+    // -------------------------------------------------------------------------
+    // Steps 2–4, retried on an exact-duplicate question. This calls the exact
+    // same loop implementation (lib/duplicateQuestionGuard.ts) that
+    // test/duplicateQuestionGuard.test.ts exercises against a mock producer —
+    // there is one implementation of the guard, not a route copy and a tested
+    // description of it. The prior main-branch questions are captured once,
+    // before the loop: no attempt is persisted to qa_log until one is accepted
+    // below, so the comparison set is stable across retries. Every attempt
+    // (including the duplicate-guard's own failure/exhaustion exits) runs
+    // inside the SAME turn-lock section as Step 1 above, and saves through
+    // the SAME revision-CAS primitive — the guard and the My Car Key
+    // integrity binding are not two independently-protected mechanisms
+    // bolted together, they share the one save path that actually holds the
+    // integrity invariant.
+    // -------------------------------------------------------------------------
+    const priorQuestions = priorAskedQuestions(game.qa_log);
+
+    const guardResult = await runWithDuplicateQuestionGuard<RacerAttempt, NextResponse>(
+      priorQuestions,
+      MAX_DUPLICATE_QUESTION_ATTEMPTS,
+      async () => {
+        const outcome = await runOneRacerAttempt(
+          game,
+          racerState,
+          forceFinal,
+          racerProvider,
+          gameId,
+          revisionAtLockTime
+        );
+        return outcome.ok ? { ok: true, candidate: outcome.attempt } : { ok: false, failure: outcome.response };
+      },
+      (attempt) => attempt.turn
+    );
+
+    for (const blockedQuestion of guardResult.blockedQuestions) {
       // eslint-disable-next-line no-console
-      console.error("[barkoba] Racer call failed:", err);
-      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // preserve the recorded answer
+      console.warn(
+        `[barkoba] duplicate-question guard: blocked exact-repeat candidate on game ` +
+          `${game.game_id}: "${blockedQuestion}"`
+      );
+    }
+
+    if (guardResult.status === "attempt_failed") {
+      return guardResult.failure;
+    }
+
+    if (guardResult.status === "exhausted") {
+      // Retry cap exhausted and every candidate was an exact duplicate. Reuse
+      // the existing safe non-emission path unchanged: preserve the recorded
+      // answer, emit nothing to the Composer, never fabricate a turn or invent
+      // a new gameplay outcome to make this pass. Never a concede, never a
+      // consumed final guess — nothing below appends a turn or transitions
+      // phase.
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
       if (!saved.ok) {
         // eslint-disable-next-line no-console
         console.error(
@@ -421,66 +615,7 @@ export async function POST(
       );
     }
 
-    // -------------------------------------------------------------------------
-    // Step 4 — Guess Detector, then internal intent resolution if it fires.
-    //
-    // The flag is never surfaced to the human Composer. In V1 the Racer is an AI
-    // with forced structured output, so the party whose intent is in question is
-    // the one re-prompted. See docs/DESIGN-NOTES.md for the Phase 2 human-Racer
-    // variant, which is documented and deliberately not built.
-    // -------------------------------------------------------------------------
-    let flagged = false;
-    let intentOutcome: GuessIntentOutcome | null = null;
-    // V2.5 — the question as the Racer FIRST emitted it.
-    //
-    // Both resolution branches below destroy it: confirm_guess nulls
-    // question_text, continue_questioning replaces it with the revision. Until
-    // 2.5.0.0 the corpus recorded the second question as though it were the
-    // first, next to guess_detector_flagged=true with no evidence of what was
-    // actually flagged — which made the §18-B question/guess-boundary benchmark
-    // unmeasurable by construction. Captured BEFORE either branch can run.
-    let preRevisionQuestion: string | null = null;
-
-    if (turn.action === "question" && turn.question_text) {
-      const detection = detectGuess(turn.question_text);
-      if (detection.flagged) {
-        flagged = true;
-        preRevisionQuestion = turn.question_text;
-
-        const resolutionBudget = await consumeModelCall("racer");
-        if (!resolutionBudget.allowed) {
-          // Budget ran out mid-turn. Fail safe for the player: treat the
-          // flagged question as a question rather than silently converting
-          // it to a guess.
-          intentOutcome = "continue_questioning";
-        } else {
-          try {
-            const resolution = await resolveGuessIntent(
-              racerState,
-              turn.question_text,
-              racerProvider
-            );
-            intentOutcome = resolution.resolution;
-
-            if (resolution.resolution === "confirm_guess") {
-              turn = {
-                ...turn,
-                action: "guess" as const,
-                guess_text: resolution.guess_text ?? turn.question_text,
-                question_text: null,
-              };
-            } else if (resolution.revised_question) {
-              turn = { ...turn, question_text: resolution.revised_question };
-            }
-          } catch (err) {
-            // eslint-disable-next-line no-console
-            console.error("[barkoba] Guess-intent resolution failed:", err);
-            // Same fail-safe: an unresolved flag stays a question.
-            intentOutcome = "continue_questioning";
-          }
-        }
-      }
-    }
+    const { turn, provenance, flagged, intentOutcome, preRevisionQuestion } = guardResult.candidate;
 
     // -------------------------------------------------------------------------
     // Step 5 — append the turn and transition.
