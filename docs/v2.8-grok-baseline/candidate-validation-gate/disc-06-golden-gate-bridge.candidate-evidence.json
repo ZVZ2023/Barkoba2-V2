@@ -1,0 +1,1084 @@
+{
+  "fixture": "disc-06-golden-gate-bridge",
+  "steps": [
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a physical object?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 1792,
+          "completionTokens": 62,
+          "reasoningTokens": 738,
+          "totalTokens": 2632,
+          "latencyMs": 7467,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 62,
+            "total_tokens": 2632,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1792
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 738,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 24084000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it man-made?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1739
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1835,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 68,
+          "reasoningTokens": 785,
+          "totalTokens": 2688,
+          "latencyMs": 11914,
+          "rawUsage": {
+            "prompt_tokens": 1835,
+            "completion_tokens": 68,
+            "total_tokens": 2688,
+            "prompt_tokens_details": {
+              "text_tokens": 1835,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 785,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 30822500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it bigger than a breadbox?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1380
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1848,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 74,
+          "reasoningTokens": 1464,
+          "totalTokens": 3386,
+          "latencyMs": 14966,
+          "rawUsage": {
+            "prompt_tokens": 1848,
+            "completion_tokens": 74,
+            "total_tokens": 3386,
+            "prompt_tokens_details": {
+              "text_tokens": 1848,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1464,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 48110000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a vehicle?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1612
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1864,
+          "cachedPromptTokens": 128,
+          "completionTokens": 68,
+          "reasoningTokens": 904,
+          "totalTokens": 2836,
+          "latencyMs": 11195,
+          "rawUsage": {
+            "prompt_tokens": 1864,
+            "completion_tokens": 68,
+            "total_tokens": 2836,
+            "prompt_tokens_details": {
+              "text_tokens": 1864,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 904,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 46256000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does it require electricity to function?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1845
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1877,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 2419,
+          "totalTokens": 4373,
+          "latencyMs": 25653,
+          "rawUsage": {
+            "prompt_tokens": 1877,
+            "completion_tokens": 77,
+            "total_tokens": 4373,
+            "prompt_tokens_details": {
+              "text_tokens": 1877,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2419,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 84518500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a piece of furniture?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1935
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1892,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 774,
+          "totalTokens": 2759,
+          "latencyMs": 9091,
+          "rawUsage": {
+            "prompt_tokens": 1892,
+            "completion_tokens": 93,
+            "total_tokens": 2759,
+            "prompt_tokens_details": {
+              "text_tokens": 1892,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 774,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 31885000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Would you typically find one inside a typical house?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1488
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1907,
+          "cachedPromptTokens": 128,
+          "completionTokens": 80,
+          "reasoningTokens": 1919,
+          "totalTokens": 3906,
+          "latencyMs": 21959,
+          "rawUsage": {
+            "prompt_tokens": 1907,
+            "completion_tokens": 80,
+            "total_tokens": 3906,
+            "prompt_tokens_details": {
+              "text_tokens": 1907,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1919,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 72468500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it typically found in a backyard or garden?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1713
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1925,
+          "cachedPromptTokens": 128,
+          "completionTokens": 82,
+          "reasoningTokens": 2024,
+          "totalTokens": 4031,
+          "latencyMs": 21600,
+          "rawUsage": {
+            "prompt_tokens": 1925,
+            "completion_tokens": 82,
+            "total_tokens": 4031,
+            "prompt_tokens_details": {
+              "text_tokens": 1925,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2024,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 75368500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it typically found outdoors?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1750
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1943,
+          "cachedPromptTokens": 128,
+          "completionTokens": 89,
+          "reasoningTokens": 4447,
+          "totalTokens": 6479,
+          "latencyMs": 47740,
+          "rawUsage": {
+            "prompt_tokens": 1943,
+            "completion_tokens": 89,
+            "total_tokens": 6479,
+            "prompt_tokens_details": {
+              "text_tokens": 1943,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4447,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 136343500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is its primary purpose decorative, artistic, or commemorative?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1564
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1957,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 94,
+          "reasoningTokens": 2528,
+          "totalTokens": 4579,
+          "latencyMs": 27706,
+          "rawUsage": {
+            "prompt_tokens": 1957,
+            "completion_tokens": 94,
+            "total_tokens": 4579,
+            "prompt_tokens_details": {
+              "text_tokens": 1957,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2528,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 76572500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it large enough for a person to enter or go inside?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2047
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1977,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 84,
+          "reasoningTokens": 5603,
+          "totalTokens": 7664,
+          "latencyMs": 63799,
+          "rawUsage": {
+            "prompt_tokens": 1977,
+            "completion_tokens": 84,
+            "total_tokens": 7664,
+            "prompt_tokens_details": {
+              "text_tokens": 1977,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 5603,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 153447500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is its primary purpose to provide or display information?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2004
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1998,
+          "cachedPromptTokens": 128,
+          "completionTokens": 74,
+          "reasoningTokens": 2887,
+          "totalTokens": 4959,
+          "latencyMs": 36047,
+          "rawUsage": {
+            "prompt_tokens": 1998,
+            "completion_tokens": 74,
+            "total_tokens": 4959,
+            "prompt_tokens_details": {
+              "text_tokens": 1998,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2887,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 97656000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it primarily used to contain, store, or hold something?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1726
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2016,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 87,
+          "reasoningTokens": 4040,
+          "totalTokens": 6143,
+          "latencyMs": 50890,
+          "rawUsage": {
+            "prompt_tokens": 2016,
+            "completion_tokens": 87,
+            "total_tokens": 6143,
+            "prompt_tokens_details": {
+              "text_tokens": 2016,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4040,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 114935000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is its primary purpose related to recreation, sports, or play?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2189
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2037,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 104,
+          "reasoningTokens": 3433,
+          "totalTokens": 5574,
+          "latencyMs": 47074,
+          "rawUsage": {
+            "prompt_tokens": 2037,
+            "completion_tokens": 104,
+            "total_tokens": 5574,
+            "prompt_tokens_details": {
+              "text_tokens": 2037,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3433,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 100447500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is its primary purpose related to transportation or travel?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1935
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2058,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 4998,
+          "totalTokens": 7149,
+          "latencyMs": 60985,
+          "rawUsage": {
+            "prompt_tokens": 2058,
+            "completion_tokens": 93,
+            "total_tokens": 7149,
+            "prompt_tokens_details": {
+              "text_tokens": 2058,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4998,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 139560000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it designed to span across a river, road, or other obstacle?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1604
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2076,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 2663,
+          "totalTokens": 4816,
+          "latencyMs": 33143,
+          "rawUsage": {
+            "prompt_tokens": 2076,
+            "completion_tokens": 77,
+            "total_tokens": 4816,
+            "prompt_tokens_details": {
+              "text_tokens": 2076,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2663,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 93106000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "resolving",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 17,
+          "proposed_guess": "bridge",
+          "decision": "allow",
+          "grain_ok": true,
+          "unused_discriminator": null,
+          "hard_evidence_violation": null,
+          "replacement_question": null,
+          "reasoning": "The proposed guess \"bridge\" is at the correct grain given that the questions and answers align precisely with the characteristics and purpose of a bridge (outdoors, man-made, spans obstacles for transportation purposes, not a vehicle or container, etc.). It does not contradict any established fact, and no unasked yes/no question would still usefully distinguish it from other remaining possibilities at this point.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1953
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2099,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 84,
+          "reasoningTokens": 1344,
+          "totalTokens": 3527,
+          "latencyMs": 16786,
+          "rawUsage": {
+            "prompt_tokens": 2099,
+            "completion_tokens": 84,
+            "total_tokens": 3527,
+            "prompt_tokens_details": {
+              "text_tokens": 2099,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1344,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 48497500
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1449,
+          "cachedPromptTokens": 128,
+          "completionTokens": 128,
+          "reasoningTokens": 5061,
+          "totalTokens": 6638,
+          "latencyMs": 58410,
+          "rawUsage": {
+            "prompt_tokens": 1449,
+            "completion_tokens": 128,
+            "total_tokens": 6638,
+            "prompt_tokens_details": {
+              "text_tokens": 1449,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 5061,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 146493500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "0296c279-2dc3-455c-a55e-1e825fa5b40b",
+      "benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "benchmark_run_id": "7c38d539-e58c-4334-b65d-97a2f388aef8",
+      "phase": "complete",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_incorrect",
+      "final_action": "guess",
+      "adjudicator_verdict": "incorrect",
+      "integrity_verdict": "upheld",
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-06-golden-gate-bridge-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}

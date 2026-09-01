@@ -1,0 +1,949 @@
+{
+  "fixture": "disc-02-guitar",
+  "steps": [
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target real or has it ever existed in reality (as opposed to being purely fictional or imaginary)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 128,
+          "completionTokens": 71,
+          "reasoningTokens": 902,
+          "totalTokens": 2805,
+          "latencyMs": 12821,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 71,
+            "total_tokens": 2805,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 902,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 45881000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a person (or was it ever)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1815
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1850,
+          "cachedPromptTokens": 128,
+          "completionTokens": 73,
+          "reasoningTokens": 584,
+          "totalTokens": 2507,
+          "latencyMs": 9931,
+          "rawUsage": {
+            "prompt_tokens": 1850,
+            "completion_tokens": 73,
+            "total_tokens": 2507,
+            "prompt_tokens_details": {
+              "text_tokens": 1850,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 584,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 38206000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an animal (or was it ever)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1621
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1869,
+          "cachedPromptTokens": 128,
+          "completionTokens": 83,
+          "reasoningTokens": 593,
+          "totalTokens": 2545,
+          "latencyMs": 8146,
+          "rawUsage": {
+            "prompt_tokens": 1869,
+            "completion_tokens": 83,
+            "total_tokens": 2545,
+            "prompt_tokens_details": {
+              "text_tokens": 1869,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 593,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 38918500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a plant (or was it ever)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1434
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1888,
+          "cachedPromptTokens": 128,
+          "completionTokens": 77,
+          "reasoningTokens": 550,
+          "totalTokens": 2515,
+          "latencyMs": 7580,
+          "rawUsage": {
+            "prompt_tokens": 1888,
+            "completion_tokens": 77,
+            "total_tokens": 2515,
+            "prompt_tokens_details": {
+              "text_tokens": 1888,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 550,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 37931000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a tangible physical object (something that can be touched or held)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1798
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1907,
+          "cachedPromptTokens": 128,
+          "completionTokens": 95,
+          "reasoningTokens": 893,
+          "totalTokens": 2895,
+          "latencyMs": 12750,
+          "rawUsage": {
+            "prompt_tokens": 1907,
+            "completion_tokens": 95,
+            "total_tokens": 2895,
+            "prompt_tokens_details": {
+              "text_tokens": 1907,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 893,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 47193500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target man-made (created or manufactured by humans)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1904
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1931,
+          "cachedPromptTokens": 128,
+          "completionTokens": 82,
+          "reasoningTokens": 914,
+          "totalTokens": 2927,
+          "latencyMs": 12344,
+          "rawUsage": {
+            "prompt_tokens": 1931,
+            "completion_tokens": 82,
+            "total_tokens": 2927,
+            "prompt_tokens_details": {
+              "text_tokens": 1931,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 914,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 47693500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target larger than a breadbox?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1687
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1951,
+          "cachedPromptTokens": 128,
+          "completionTokens": 100,
+          "reasoningTokens": 1343,
+          "totalTokens": 3394,
+          "latencyMs": 16183,
+          "rawUsage": {
+            "prompt_tokens": 1951,
+            "completion_tokens": 100,
+            "total_tokens": 3394,
+            "prompt_tokens_details": {
+              "text_tokens": 1951,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1343,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 59118500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target typically worn on a person's body?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2546
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1999,
+          "cachedPromptTokens": 128,
+          "completionTokens": 94,
+          "reasoningTokens": 3734,
+          "totalTokens": 5827,
+          "latencyMs": 53535,
+          "rawUsage": {
+            "prompt_tokens": 1999,
+            "completion_tokens": 94,
+            "total_tokens": 5827,
+            "prompt_tokens_details": {
+              "text_tokens": 1999,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3734,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 119343500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target used to make or produce music?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2306
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2017,
+          "cachedPromptTokens": 128,
+          "completionTokens": 89,
+          "reasoningTokens": 6691,
+          "totalTokens": 8797,
+          "latencyMs": 89425,
+          "rawUsage": {
+            "prompt_tokens": 2017,
+            "completion_tokens": 89,
+            "total_tokens": 8797,
+            "prompt_tokens_details": {
+              "text_tokens": 2017,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 6691,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 193368500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a string instrument?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 10,
+          "proposed_guess": "musical instrument",
+          "decision": "block",
+          "grain_ok": false,
+          "unused_discriminator": "Is the target a string instrument?",
+          "hard_evidence_violation": null,
+          "replacement_question": "Is the target a string instrument?",
+          "reasoning": "The proposed guess \"musical instrument\" is a bare parent category rather than a specific member or exact referent (per the instructions' explicit example), so grain_ok is false. A high-value unused discriminator also exists to split the broad family of instruments. No contradiction with the transcript.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1730
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2035,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 74,
+          "reasoningTokens": 2538,
+          "totalTokens": 4647,
+          "latencyMs": 28362,
+          "rawUsage": {
+            "prompt_tokens": 2035,
+            "completion_tokens": 74,
+            "total_tokens": 4647,
+            "prompt_tokens_details": {
+              "text_tokens": 2035,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2538,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 77297500
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1387,
+          "cachedPromptTokens": 128,
+          "completionTokens": 119,
+          "reasoningTokens": 2987,
+          "totalTokens": 4493,
+          "latencyMs": 26492,
+          "rawUsage": {
+            "prompt_tokens": 1387,
+            "completion_tokens": 119,
+            "total_tokens": 4493,
+            "prompt_tokens_details": {
+              "text_tokens": 1387,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2987,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 93643500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target typically played with a bow?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1338
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2050,
+          "cachedPromptTokens": 128,
+          "completionTokens": 71,
+          "reasoningTokens": 717,
+          "totalTokens": 2838,
+          "latencyMs": 7151,
+          "rawUsage": {
+            "prompt_tokens": 2050,
+            "completion_tokens": 71,
+            "total_tokens": 2838,
+            "prompt_tokens_details": {
+              "text_tokens": 2050,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 717,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 43981000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the target have frets?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2033
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2067,
+          "cachedPromptTokens": 128,
+          "completionTokens": 80,
+          "reasoningTokens": 3686,
+          "totalTokens": 5833,
+          "latencyMs": 41082,
+          "rawUsage": {
+            "prompt_tokens": 2067,
+            "completion_tokens": 80,
+            "total_tokens": 5833,
+            "prompt_tokens_details": {
+              "text_tokens": 2067,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3686,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 118643500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the target typically have six strings?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2837
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2114,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 72,
+          "reasoningTokens": 4738,
+          "totalTokens": 6924,
+          "latencyMs": 49094,
+          "rawUsage": {
+            "prompt_tokens": 2114,
+            "completion_tokens": 72,
+            "total_tokens": 6924,
+            "prompt_tokens_details": {
+              "text_tokens": 2114,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 4738,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 133235000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "resolving",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 14,
+          "proposed_guess": "guitar",
+          "decision": "allow",
+          "grain_ok": true,
+          "unused_discriminator": null,
+          "hard_evidence_violation": null,
+          "replacement_question": null,
+          "reasoning": "\"guitar\" is a specific member of the string instrument family that fits every established fact (including the sources of ambiguity around size and frets); no obvious unasked discriminator remains that would separate it from other plausible referents at this grain.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2246
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2130,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 87,
+          "reasoningTokens": 3450,
+          "totalTokens": 5667,
+          "latencyMs": 34474,
+          "rawUsage": {
+            "prompt_tokens": 2130,
+            "completion_tokens": 87,
+            "total_tokens": 5667,
+            "prompt_tokens_details": {
+              "text_tokens": 2130,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3450,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 101610000
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1481,
+          "cachedPromptTokens": 128,
+          "completionTokens": 99,
+          "reasoningTokens": 1456,
+          "totalTokens": 3036,
+          "latencyMs": 16971,
+          "rawUsage": {
+            "prompt_tokens": 1481,
+            "completion_tokens": 99,
+            "total_tokens": 3036,
+            "prompt_tokens_details": {
+              "text_tokens": 1481,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1456,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 56043500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "c574298a-1f4f-4952-9887-119a08bb17c3",
+      "benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "benchmark_run_id": "517f8002-21b8-4abb-b973-52a6ca51a944",
+      "phase": "complete",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-02-guitar-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}

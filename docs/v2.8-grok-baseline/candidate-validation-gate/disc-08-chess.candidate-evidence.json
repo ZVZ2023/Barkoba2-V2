@@ -1,0 +1,1804 @@
+{
+  "fixture": "disc-08-chess",
+  "steps": [
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 0,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target real or has it ever really existed (not invented or fictional)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "racer_turn",
+          "turn_index": 1,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1832,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 1013,
+          "totalTokens": 2918,
+          "latencyMs": 16624,
+          "rawUsage": {
+            "prompt_tokens": 1832,
+            "completion_tokens": 73,
+            "total_tokens": 2918,
+            "prompt_tokens_details": {
+              "text_tokens": 1832,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1013,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 36610000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 1,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a person?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 1,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2157
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 2,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1845,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 68,
+          "reasoningTokens": 471,
+          "totalTokens": 2384,
+          "latencyMs": 7459,
+          "rawUsage": {
+            "prompt_tokens": 1845,
+            "completion_tokens": 68,
+            "total_tokens": 2384,
+            "prompt_tokens_details": {
+              "text_tokens": 1845,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 471,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 23097500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 2,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an animal?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 2,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1729
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 3,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1859,
+          "cachedPromptTokens": 128,
+          "completionTokens": 82,
+          "reasoningTokens": 872,
+          "totalTokens": 2813,
+          "latencyMs": 13081,
+          "rawUsage": {
+            "prompt_tokens": 1859,
+            "completion_tokens": 82,
+            "total_tokens": 2813,
+            "prompt_tokens_details": {
+              "text_tokens": 1859,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 872,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 45743500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 3,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a plant?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 3,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1488
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 4,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1873,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 88,
+          "reasoningTokens": 485,
+          "totalTokens": 2446,
+          "latencyMs": 7859,
+          "rawUsage": {
+            "prompt_tokens": 1873,
+            "completion_tokens": 88,
+            "total_tokens": 2446,
+            "prompt_tokens_details": {
+              "text_tokens": 1873,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 485,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 24297500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 4,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a physical object?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 4,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1433
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 5,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1887,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 102,
+          "reasoningTokens": 2433,
+          "totalTokens": 4422,
+          "latencyMs": 37507,
+          "rawUsage": {
+            "prompt_tokens": 1887,
+            "completion_tokens": 102,
+            "total_tokens": 4422,
+            "prompt_tokens_details": {
+              "text_tokens": 1887,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2433,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 73522500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 5,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a place or location?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 5,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2113
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 6,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1902,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 85,
+          "reasoningTokens": 894,
+          "totalTokens": 2881,
+          "latencyMs": 13264,
+          "rawUsage": {
+            "prompt_tokens": 1902,
+            "completion_tokens": 85,
+            "total_tokens": 2881,
+            "prompt_tokens_details": {
+              "text_tokens": 1902,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 894,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 34810000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 6,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a natural phenomenon?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 6,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1792
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 7,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1918,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 86,
+          "reasoningTokens": 2433,
+          "totalTokens": 4437,
+          "latencyMs": 29014,
+          "rawUsage": {
+            "prompt_tokens": 1918,
+            "completion_tokens": 86,
+            "total_tokens": 4437,
+            "prompt_tokens_details": {
+              "text_tokens": 1918,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2433,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 73510000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 7,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an abstract idea, concept, or notion?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 7,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1493
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 8,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1933,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 68,
+          "reasoningTokens": 1346,
+          "totalTokens": 3347,
+          "latencyMs": 19181,
+          "rawUsage": {
+            "prompt_tokens": 1933,
+            "completion_tokens": 68,
+            "total_tokens": 3347,
+            "prompt_tokens_details": {
+              "text_tokens": 1933,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1346,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 46072500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 8,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a mathematical concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 8,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2405
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 9,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1953,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 92,
+          "reasoningTokens": 579,
+          "totalTokens": 2624,
+          "latencyMs": 10148,
+          "rawUsage": {
+            "prompt_tokens": 1953,
+            "completion_tokens": 92,
+            "total_tokens": 2624,
+            "prompt_tokens_details": {
+              "text_tokens": 1953,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 579,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 27747500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 9,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an emotion or feeling?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 9,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1933
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 10,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1968,
+          "cachedPromptTokens": 128,
+          "completionTokens": 66,
+          "reasoningTokens": 594,
+          "totalTokens": 2628,
+          "latencyMs": 11125,
+          "rawUsage": {
+            "prompt_tokens": 1968,
+            "completion_tokens": 66,
+            "total_tokens": 2628,
+            "prompt_tokens_details": {
+              "text_tokens": 1968,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 594,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 39756000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 10,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a philosophical concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 10,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1590
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 11,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1984,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 70,
+          "reasoningTokens": 971,
+          "totalTokens": 3025,
+          "latencyMs": 15159,
+          "rawUsage": {
+            "prompt_tokens": 1984,
+            "completion_tokens": 70,
+            "total_tokens": 3025,
+            "prompt_tokens_details": {
+              "text_tokens": 1984,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 971,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 37385000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 11,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a scientific concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 11,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2064
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 12,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1999,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 73,
+          "reasoningTokens": 1888,
+          "totalTokens": 3960,
+          "latencyMs": 25377,
+          "rawUsage": {
+            "prompt_tokens": 1999,
+            "completion_tokens": 73,
+            "total_tokens": 3960,
+            "prompt_tokens_details": {
+              "text_tokens": 1999,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1888,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 60572500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 12,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a religious or spiritual concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 12,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2473
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 13,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2014,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 87,
+          "reasoningTokens": 948,
+          "totalTokens": 3049,
+          "latencyMs": 13313,
+          "rawUsage": {
+            "prompt_tokens": 2014,
+            "completion_tokens": 87,
+            "total_tokens": 3049,
+            "prompt_tokens_details": {
+              "text_tokens": 2014,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 948,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 37610000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 13,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a legal or juridical concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 13,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1876
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 14,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2031,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 70,
+          "reasoningTokens": 827,
+          "totalTokens": 2928,
+          "latencyMs": 13593,
+          "rawUsage": {
+            "prompt_tokens": 2031,
+            "completion_tokens": 70,
+            "total_tokens": 2928,
+            "prompt_tokens_details": {
+              "text_tokens": 2031,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 827,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 34372500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 14,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a concept related to society, politics, economics, or human behavior?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 14,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1462
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 15,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2049,
+          "cachedPromptTokens": 128,
+          "completionTokens": 96,
+          "reasoningTokens": 948,
+          "totalTokens": 3093,
+          "latencyMs": 27684,
+          "rawUsage": {
+            "prompt_tokens": 2049,
+            "completion_tokens": 96,
+            "total_tokens": 3093,
+            "prompt_tokens_details": {
+              "text_tokens": 2049,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 948,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 50368500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 15,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a linguistic or literary concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 15,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2208
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 16,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2074,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 80,
+          "reasoningTokens": 1856,
+          "totalTokens": 4010,
+          "latencyMs": 24977,
+          "rawUsage": {
+            "prompt_tokens": 2074,
+            "completion_tokens": 80,
+            "total_tokens": 4010,
+            "prompt_tokens_details": {
+              "text_tokens": 2074,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1856,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 60885000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 16,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target an artistic or aesthetic concept?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 16,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2134
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 17,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2091,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 88,
+          "reasoningTokens": 2574,
+          "totalTokens": 4753,
+          "latencyMs": 34680,
+          "rawUsage": {
+            "prompt_tokens": 2091,
+            "completion_tokens": 88,
+            "total_tokens": 4753,
+            "prompt_tokens_details": {
+              "text_tokens": 2091,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2574,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 79247500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 17,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target related to random events or chance occurrences?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 17,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1848
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 18,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2108,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 94,
+          "reasoningTokens": 8136,
+          "totalTokens": 10338,
+          "latencyMs": 84669,
+          "rawUsage": {
+            "prompt_tokens": 2108,
+            "completion_tokens": 94,
+            "total_tokens": 10338,
+            "prompt_tokens_details": {
+              "text_tokens": 2108,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 8136,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 218660000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 18,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a concept related to computing or digital technology?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 18,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2579
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 19,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2127,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 95,
+          "reasoningTokens": 7958,
+          "totalTokens": 10180,
+          "latencyMs": 99751,
+          "rawUsage": {
+            "prompt_tokens": 2127,
+            "completion_tokens": 95,
+            "total_tokens": 10180,
+            "prompt_tokens_details": {
+              "text_tokens": 2127,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 7958,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 214472500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 19,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target related to a sport, game, or competition?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 19,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2119
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 20,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2147,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 93,
+          "reasoningTokens": 12244,
+          "totalTokens": 14484,
+          "latencyMs": 144145,
+          "rawUsage": {
+            "prompt_tokens": 2147,
+            "completion_tokens": 93,
+            "total_tokens": 14484,
+            "prompt_tokens_details": {
+              "text_tokens": 2147,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 12244,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 321822500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 20,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target related to the outcome or result of a competition, game, or sport (such as winning, losing, or tying)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 20,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1931
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 21,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2168,
+          "cachedPromptTokens": 128,
+          "completionTokens": 124,
+          "reasoningTokens": 2423,
+          "totalTokens": 4715,
+          "latencyMs": 33530,
+          "rawUsage": {
+            "prompt_tokens": 2168,
+            "completion_tokens": 124,
+            "total_tokens": 4715,
+            "prompt_tokens_details": {
+              "text_tokens": 2168,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2423,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 89431000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 21,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a rule or regulation in a sport, game, or competition?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 21,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 2116
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 22,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2203,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 88,
+          "reasoningTokens": 1512,
+          "totalTokens": 3803,
+          "latencyMs": 17303,
+          "rawUsage": {
+            "prompt_tokens": 2203,
+            "completion_tokens": 88,
+            "total_tokens": 3803,
+            "prompt_tokens_details": {
+              "text_tokens": 2203,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1512,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 54097500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 22,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target a specific sport or game (such as soccer, chess, or basketball)?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 22,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1941
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 23,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2227,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 104,
+          "reasoningTokens": 3229,
+          "totalTokens": 5560,
+          "latencyMs": 42269,
+          "rawUsage": {
+            "prompt_tokens": 2227,
+            "completion_tokens": 104,
+            "total_tokens": 5560,
+            "prompt_tokens_details": {
+              "text_tokens": 2227,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 3229,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 97722500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 23,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is it a sport or game played with a ball?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 23,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1280
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 24,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2253,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 85,
+          "reasoningTokens": 1221,
+          "totalTokens": 3559,
+          "latencyMs": 14433,
+          "rawUsage": {
+            "prompt_tokens": 2253,
+            "completion_tokens": 85,
+            "total_tokens": 3559,
+            "prompt_tokens_details": {
+              "text_tokens": 2253,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1221,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 47372500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 24,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the target played on a board?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 24,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1591
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 25,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2272,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 94,
+          "reasoningTokens": 2246,
+          "totalTokens": 4612,
+          "latencyMs": 27545,
+          "rawUsage": {
+            "prompt_tokens": 2272,
+            "completion_tokens": 94,
+            "total_tokens": 4612,
+            "prompt_tokens_details": {
+              "text_tokens": 2272,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2246,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 73460000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 25,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Does the game feature multiple types of pieces that each move in distinct ways?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 25,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1664
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 26,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2288,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 86,
+          "reasoningTokens": 1669,
+          "totalTokens": 4043,
+          "latencyMs": 19415,
+          "rawUsage": {
+            "prompt_tokens": 2288,
+            "completion_tokens": 86,
+            "total_tokens": 4043,
+            "prompt_tokens_details": {
+              "text_tokens": 2288,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 1669,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 59035000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 26,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the objective of the game to checkmate the opponent's king?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 26,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1621
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 27,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2311,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 76,
+          "reasoningTokens": 2131,
+          "totalTokens": 4518,
+          "latencyMs": 24632,
+          "rawUsage": {
+            "prompt_tokens": 2311,
+            "completion_tokens": 76,
+            "total_tokens": 4518,
+            "prompt_tokens_details": {
+              "text_tokens": 2311,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2131,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 70622500
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "questioning",
+      "question_count": 27,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": null,
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": "Is the board an 8x8 grid?",
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 27,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1642
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 28,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2332,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 68,
+          "reasoningTokens": 2042,
+          "totalTokens": 4442,
+          "latencyMs": 21419,
+          "rawUsage": {
+            "prompt_tokens": 2332,
+            "completion_tokens": 68,
+            "total_tokens": 4442,
+            "prompt_tokens_details": {
+              "text_tokens": 2332,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 2042,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 68460000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "resolving",
+      "question_count": 28,
+      "max_questions": 50,
+      "done": false,
+      "result": null,
+      "final_action": "guess",
+      "adjudicator_verdict": null,
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [
+        {
+          "turn_index": 29,
+          "proposed_guess": "chess",
+          "decision": "allow",
+          "grain_ok": true,
+          "unused_discriminator": null,
+          "hard_evidence_violation": null,
+          "replacement_question": null,
+          "reasoning": "The guess names the exact specific game matching all details (board, pieces, checkmate, 8x8), not a higher category. All transcript facts align without contradiction, and no unasked yes/no question could further separate it from any other plausible candidate.",
+          "gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai"
+        }
+      ],
+      "step_diagnostics": [
+        {
+          "event": "composer_answer",
+          "turn_index": 28,
+          "model_id": null,
+          "model_provider": "anthropic",
+          "latencyMs": 1516
+        },
+        {
+          "event": "racer_turn",
+          "turn_index": 29,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 2350,
+          "cachedPromptTokens": 1280,
+          "completionTokens": 114,
+          "reasoningTokens": 500,
+          "totalTokens": 2964,
+          "latencyMs": 5598,
+          "rawUsage": {
+            "prompt_tokens": 2350,
+            "completion_tokens": 114,
+            "total_tokens": 2964,
+            "prompt_tokens_details": {
+              "text_tokens": 2350,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 1280
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 500,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 31285000
+          }
+        },
+        {
+          "event": "gate_check",
+          "turn_index": 29,
+          "model_id": "grok-4.20-0309-reasoning",
+          "model_provider": "xai",
+          "promptTokens": 1700,
+          "cachedPromptTokens": 128,
+          "completionTokens": 103,
+          "reasoningTokens": 633,
+          "totalTokens": 2436,
+          "latencyMs": 8593,
+          "rawUsage": {
+            "prompt_tokens": 1700,
+            "completion_tokens": 103,
+            "total_tokens": 2436,
+            "prompt_tokens_details": {
+              "text_tokens": 1700,
+              "audio_tokens": 0,
+              "image_tokens": 0,
+              "cached_tokens": 128
+            },
+            "completion_tokens_details": {
+              "reasoning_tokens": 633,
+              "audio_tokens": 0,
+              "accepted_prediction_tokens": 0,
+              "rejected_prediction_tokens": 0
+            },
+            "num_sources_used": 0,
+            "cost_in_usd_ticks": 38306000
+          }
+        }
+      ]
+    },
+    {
+      "game_id": "b1c81e38-a180-4ed4-82cc-79cadb176a45",
+      "benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "benchmark_run_id": "383aa1cb-9996-4c4a-a70d-491b0cdcaefd",
+      "phase": "complete",
+      "question_count": 28,
+      "max_questions": 50,
+      "done": true,
+      "result": "racer_correct",
+      "final_action": "guess",
+      "adjudicator_verdict": "correct",
+      "integrity_verdict": null,
+      "prompt_version": "racer/4.0.0",
+      "pinned_model": "grok-4.20-0309-reasoning",
+      "last_question": null,
+      "last_answer": null,
+      "candidate_gate_version": "candidate-validation-gate/0.1.0-CANDIDATE-NOT-PROMOTED",
+      "candidate_benchmark_case_id": "v2.8-discovery-08-chess-candidate-gate",
+      "gate_activations_this_step": [],
+      "step_diagnostics": []
+    }
+  ]
+}
