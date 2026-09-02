@@ -1,0 +1,304 @@
+import { test } from "node:test";
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { NextRequest } from "next/server";
+import { POST as createPOST } from "../app/api/game/create/route";
+import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
+import { getGame } from "../lib/gameStore";
+import { xaiAdapter } from "../lib/providers/xai";
+import type { ToolCallResult } from "../lib/providers/types";
+
+// The public creation path pins every ordinary game's Racer seat to "xai"
+// (see PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a real-flow
+// test that goes through the actual create route needs xai "available" and
+// must mock xaiAdapter, not anthropicAdapter, to observe the Racer's turn.
+// ANTHROPIC_API_KEY is required too: lib/prompts/validator.ts always calls
+// the real Anthropic transport (mocked below via global.fetch), and the
+// transport reads the key before the mocked fetch is ever reached.
+process.env.XAI_API_KEY = "test-key";
+process.env.ANTHROPIC_API_KEY = "test-key";
+// This file creates several games from the same synthetic guest identity —
+// the per-hour creation rate limit is an anonymous-abuse safeguard unrelated
+// to what this file tests, so it is disabled exactly as lib/rateLimit.ts's
+// own doc comment says to for a non-production environment.
+process.env.RATE_LIMIT_DISABLED = "true";
+
+// ---------------------------------------------------------------------------
+// V2.8.4 PHASE ONE — FINAL LANGUAGE-GATE CORRECTION.
+//
+// REAL FLOW, not inference from constants. These tests drive the actual
+// /api/game/create route (the same one ComposerEntry.tsx posts to) and the
+// actual /turn route, with only the network boundary (Anthropic's raw fetch,
+// used by lib/prompts/validator.ts, and the Racer's anthropicAdapter) mocked.
+//
+// THE BUG THIS PROVES: app/game/[id]/GameClient.tsx hardcodes the answer
+// controls in Hungarian unconditionally (YES/NO/AMBIGUOUS render as
+// "IGEN"/"NEM"/"IS-IS" regardless of game_language — see the grep-based
+// assertion below). The Hungarian shell offers a language selector that
+// defaults to "auto" ("Automatikus"). Before this fix, leaving it on "auto"
+// while typing an English-detectable target let the Validator's own
+// language detection silently pick "en" for game_language, which Phase One
+// then used to select its own question language — producing English
+// questions beside permanently-Hungarian buttons. Explicit "hu"/"en"
+// selections were never affected; only AUTO was.
+// ---------------------------------------------------------------------------
+
+function mockValidatorFetch(detectedLanguage: "en" | "hu") {
+  const original = global.fetch;
+  global.fetch = (async (url: unknown) => {
+    if (typeof url === "string" && url.includes("api.anthropic.com")) {
+      const input = {
+        status: "VALID",
+        message: "ok",
+        difficulty_warning: null,
+        private_knowledge: false,
+        game_language: detectedLanguage,
+      };
+      return {
+        ok: true,
+        json: async () => ({ model: "claude-mock", content: [{ type: "tool_use", input }] }),
+        text: async () => "",
+      } as unknown as Response;
+    }
+    throw new Error(`unexpected fetch in test: ${String(url)}`);
+  }) as typeof fetch;
+  return {
+    restore: () => {
+      global.fetch = original;
+    },
+  };
+}
+
+async function createGameViaRoute(body: Record<string, unknown>) {
+  const req = new NextRequest("http://localhost/api/game/create", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const res = await createPOST(req);
+  const data = await res.json();
+  return { status: res.status, data };
+}
+
+async function callTurn(gameId: string, body?: Record<string, unknown>) {
+  const json = body === undefined ? "" : JSON.stringify(body);
+  const req = new NextRequest(`http://localhost/api/game/${gameId}/turn`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+    },
+    body: body === undefined ? undefined : json,
+  });
+  const res = await turnPOST(req, { params: { id: gameId } });
+  const data = await res.json();
+  return { status: res.status, data };
+}
+
+async function answer(gameId: string, ans: "YES" | "NO" | "AMBIGUOUS", revision: number) {
+  const result = await callTurn(gameId, { answer: ans, expected_revision: revision });
+  assert.equal(result.status, 200, `answer(${ans}) should succeed: ${JSON.stringify(result.data)}`);
+  return result.data.game;
+}
+
+function mockRacerOnce(questionText: string) {
+  const original = xaiAdapter.callTool;
+  let calls = 0;
+  let capturedMessages: unknown[] = [];
+  xaiAdapter.callTool = (async (request: { messages: unknown[] }) => {
+    calls += 1;
+    capturedMessages = request.messages;
+    return {
+      output: { action: "question", question_text: questionText, guess_text: null, rationale: "test" },
+      resolvedModel: "stub",
+    } as ToolCallResult<unknown>;
+  }) as typeof xaiAdapter.callTool;
+  return {
+    callCount: () => calls,
+    lastMessages: () => capturedMessages,
+    restore: () => {
+      xaiAdapter.callTool = original;
+    },
+  };
+}
+
+const EN_Q1 = "Is it alive?";
+const HU_Q1 = "Élő?";
+
+// --- The hardcoded-Hungarian answer controls, proven from source -----------
+
+const GAME_CLIENT_SRC = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
+
+test("GameClient's answer controls are unconditionally Hungarian, independent of game_language", () => {
+  assert.match(GAME_CLIENT_SRC, /IGEN/);
+  assert.match(GAME_CLIENT_SRC, /NEM/);
+  assert.match(GAME_CLIENT_SRC, /IS-IS/);
+  // No conditional on game_language governs which literal is rendered — the
+  // labels are plain string literals, not looked up from a language table.
+  assert.doesNotMatch(GAME_CLIENT_SRC, /game_language[\s\S]{0,80}(IGEN|YES)/);
+});
+
+// --- REQUIRED (a): real-flow proof, HU shell + Auto + "Hole" ---------------
+
+test("REAL FLOW: HU shell + Automatikus + English-detectable target -> Hungarian Q1, matching the always-Hungarian controls", async () => {
+  const mock = mockValidatorFetch("en"); // the Validator would have read "Hole" as English
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Hole", game_language: "auto" });
+    assert.equal(created.status, 200, JSON.stringify(created.data));
+    assert.equal(created.data.status, "VALID");
+    gameId = created.data.game_id;
+
+    // Effective stored game_language must be Hungarian: the shell's own
+    // language, not the target text's detected language.
+    assert.equal(created.data.game_language, "hu", "AUTO must resolve to the shell language, not target-text detection");
+  } finally {
+    mock.restore();
+  }
+
+  const stored = await getGame(gameId!);
+  assert.equal(stored!.game_language, "hu");
+
+  const opening = await callTurn(gameId!);
+  assert.equal(opening.status, 200);
+  assert.equal(opening.data.game.qa_log[0].question_text, HU_Q1, "Q1 must be Hungarian, matching the Hungarian IGEN/NEM/IS-IS controls");
+});
+
+// --- REQUIRED (b)/(d)(2): explicit English selection is unaffected ---------
+
+test("REAL FLOW: HU shell + explicit English selection -> English Q1, regardless of target text", async () => {
+  const mock = mockValidatorFetch("hu"); // even if the Validator reads Hungarian, explicit English wins
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Lyuk", game_language: "en" });
+    assert.equal(created.status, 200, JSON.stringify(created.data));
+    gameId = created.data.game_id;
+    assert.equal(created.data.game_language, "en", "an explicit choice must still win outright");
+  } finally {
+    mock.restore();
+  }
+
+  const opening = await callTurn(gameId!);
+  assert.equal(opening.data.game.qa_log[0].question_text, EN_Q1);
+});
+
+// --- REQUIRED (c)/(d)(3): explicit Hungarian selection is unaffected -------
+
+test("REAL FLOW: HU shell + explicit Hungarian selection -> Hungarian Q1", async () => {
+  const mock = mockValidatorFetch("en");
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Hole", game_language: "hu" });
+    assert.equal(created.status, 200, JSON.stringify(created.data));
+    gameId = created.data.game_id;
+    assert.equal(created.data.game_language, "hu");
+  } finally {
+    mock.restore();
+  }
+
+  const opening = await callTurn(gameId!);
+  assert.equal(opening.data.game.qa_log[0].question_text, HU_Q1);
+});
+
+// --- REQUIRED (d)(4): Phase Two inherits the same effective language -------
+
+test("REAL FLOW: Phase Two's Racer receives the same corrected language as Phase One", async () => {
+  const mock = mockValidatorFetch("en"); // AUTO must still collapse to hu downstream too
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Hole", game_language: "auto" });
+    gameId = created.data.game_id;
+    assert.equal(created.data.game_language, "hu");
+  } finally {
+    mock.restore();
+  }
+
+  // Fast-forward all 5 spine questions (all NO -> Unclassified, no specificity
+  // question) to reach Phase Two's first real (mocked) Racer turn.
+  const opening = await callTurn(gameId!);
+  let rev = opening.data.game.revision;
+  for (let i = 0; i < 4; i += 1) {
+    const g = await answer(gameId!, "NO", rev);
+    rev = g.revision;
+  }
+
+  const racer = mockRacerOnce("Van benne elektronika?");
+  let final;
+  try {
+    final = await answer(gameId!, "NO", rev); // Q5 NO -> Unclassified -> Phase Two's first turn
+    assert.equal(racer.callCount(), 1);
+    const messages = racer.lastMessages() as Array<{ content: string }>;
+    const joined = messages.map((m) => m.content).join("\n");
+    assert.match(
+      joined,
+      /Language of this game: Hungarian \(magyar\)/,
+      "the Racer must receive the SAME effective language Phase One used, not the target-text detection"
+    );
+  } finally {
+    racer.restore();
+  }
+  assert.equal(final.qa_log[5].question_text, "Van benne elektronika?");
+});
+
+// --- REQUIRED (d)(5): no target content reaches the Racer or Phase One -----
+
+test("REAL FLOW: the secret target text never reaches Phase One's question selection or the Racer's messages", async () => {
+  const mock = mockValidatorFetch("en");
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Hole", game_language: "auto" });
+    gameId = created.data.game_id;
+  } finally {
+    mock.restore();
+  }
+
+  const opening = await callTurn(gameId!);
+  // Phase One's question text is one of the fixed, static strings -- never
+  // derived from or containing the secret target.
+  assert.doesNotMatch(opening.data.game.qa_log[0].question_text, /hole|lyuk/i);
+
+  let rev = opening.data.game.revision;
+  for (let i = 0; i < 4; i += 1) {
+    const g = await answer(gameId!, "NO", rev);
+    rev = g.revision;
+  }
+  const racer = mockRacerOnce("Van elektronikája?");
+  try {
+    await answer(gameId!, "NO", rev);
+    const messages = racer.lastMessages() as Array<{ content: string }>;
+    const joined = messages.map((m) => m.content).join("\n");
+    assert.doesNotMatch(joined, /hole|lyuk/i, "the Racer's own messages must never contain the secret target");
+  } finally {
+    racer.restore();
+  }
+});
+
+// --- REQUIRED (d)(6): Phase One still makes zero provider calls ------------
+
+test("REAL FLOW: Phase One still makes zero Racer-provider calls after the language-gate fix", async () => {
+  const mock = mockValidatorFetch("en");
+  let gameId: string;
+  try {
+    const created = await createGameViaRoute({ target: "Hole", game_language: "auto" });
+    gameId = created.data.game_id;
+  } finally {
+    mock.restore();
+  }
+
+  const original = xaiAdapter.callTool;
+  xaiAdapter.callTool = (async () => {
+    throw new Error("PROVIDER MUST NOT BE CALLED DURING PHASE ONE");
+  }) as typeof xaiAdapter.callTool;
+  try {
+    const opening = await callTurn(gameId!);
+    let rev = opening.data.game.revision;
+    for (let i = 0; i < 4; i += 1) {
+      const g = await answer(gameId!, "NO", rev);
+      rev = g.revision;
+    }
+    // Q5 not yet answered -- the 5th answer is what triggers Phase Two, so
+    // stopping short of it keeps this test a pure zero-provider-calls check.
+  } finally {
+    xaiAdapter.callTool = original;
+  }
+});

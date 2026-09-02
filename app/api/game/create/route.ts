@@ -594,17 +594,20 @@ export async function POST(req: NextRequest) {
     max_questions: maxQuestions,
     private_target: validation.private_knowledge,
     // V2.5 — the language of PLAY, which is not the language of the shell.
+    // An explicit choice from the Composer always wins.
     //
-    // An explicit choice from the Composer wins. Absent one, this is the
-    // Validator's reading of their own wording — already computed on every
-    // game, and until now silently discarded because game_language was pinned
-    // to "hu" to stop an English target turning the whole product English.
-    //
-    // Both earlier behaviours made the same mistake in opposite directions:
-    // they treated shell language and game language as one setting. They are
-    // separate. The buttons stay Hungarian; only model-generated, player-facing
-    // output follows this value. See lib/gameLanguage.ts.
-    game_language: resolveGameLanguage(body.game_language, validation.game_language),
+    // V2.8.4 — AUTO no longer reads the Validator's detection here. It did,
+    // briefly, so an English target would produce an English game — but this
+    // shell's answer controls (GameClient.tsx's IGEN/NEM/IS-IS) are hardcoded
+    // Hungarian with no language switch of their own, so target-text
+    // detection could silently hand a player Hungarian buttons beside English
+    // questions the moment they left the selector on "Automatikus" and typed
+    // an English-sounding target (e.g. "Hole"). Passing null here, exactly as
+    // the AI-Composer path below already does, makes AUTO collapse to "hu" —
+    // the shell's own language — through resolveGameLanguage's existing rule,
+    // with no change to that shared function. Explicit "hu"/"en" are
+    // untouched: they still win outright. See lib/gameLanguage.ts.
+    game_language: resolveGameLanguage(body.game_language, null),
     ...benchmark,
   });
 
