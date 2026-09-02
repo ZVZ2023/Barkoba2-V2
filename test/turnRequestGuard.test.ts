@@ -574,7 +574,7 @@ test("REQUIRED 2: runOwnedTurnRequest — a transport failure followed by /view 
 
   assert.equal(turnCalls, 1, "no automatic /turn retry");
   assert.equal(lastValueOf(calls, "setError"), NETWORK_ERROR_MESSAGE, "the network error must remain visible — the answer was lost, not accepted");
-  assert.equal(lastValueOf(calls, "setTurnFailed"), true, "turnFailed must be true so the explicit retry control is offered");
+  assert.equal(lastValueOf(calls, "setTurnFailed"), true, "the error remains visible, the pending question's controls remain available, and the player can answer again through YES/NO/IS-IS");
   assert.equal(
     getCurrentGame().qa_log[0]?.composer_response,
     null,
