@@ -5,6 +5,8 @@ import {
   recordOperationStarted,
   recordOperationCompleted,
   findPresumedKilledOperations,
+  TELEMETRY_TIMEOUT_CONFIG,
+  type OperationHandle,
 } from "../lib/corpus/turnTelemetry";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 import { splitSqlStatements } from "../lib/corpus/sqlStatements";
@@ -17,8 +19,8 @@ import { splitSqlStatements } from "../lib/corpus/sqlStatements";
 // verify what the application DOES (which statements it issues, in what
 // order, how it maps results, and how it behaves when the database refuses)
 // plus a static guard that the migration SQL is well-formed. They do NOT
-// prove Postgres's own `now() - interval` arithmetic — that requires a live
-// Neon run.
+// prove Postgres's own `now() - interval` or `ON CONFLICT` execution
+// semantics — that requires a live Neon run.
 // ---------------------------------------------------------------------------
 
 interface Recorded {
@@ -37,11 +39,8 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   calls.push({ sql: text, values });
 
   if (text.trim().startsWith("INSERT")) {
-    if (failInsert) return Promise.reject(new Error("neon unavailable"));
-    return Promise.resolve([{ operation_id: "op-" + calls.length }]);
-  }
-  if (text.trim().startsWith("UPDATE")) {
-    if (failUpdate) return Promise.reject(new Error("neon unavailable"));
+    if (text.includes("DO NOTHING") && failInsert) return Promise.reject(new Error("neon unavailable"));
+    if (text.includes("DO UPDATE") && failUpdate) return Promise.reject(new Error("neon unavailable"));
     return Promise.resolve([]);
   }
   if (text.trim().startsWith("SELECT")) {
@@ -69,8 +68,8 @@ afterEach(() => {
 
 // --- REQUIRED 9: a durable started row exists before provider fetch begins -
 
-test("REQUIRED 9: recordOperationStarted issues an INSERT and returns the new operation_id", async () => {
-  const id = await recordOperationStarted({
+test("REQUIRED 9: recordOperationStarted issues an INSERT ... ON CONFLICT DO NOTHING and always returns a usable handle", async () => {
+  const handle = await recordOperationStarted({
     gameId: "g1",
     turnIndex: 3,
     operationKind: "provider_attempt",
@@ -78,11 +77,19 @@ test("REQUIRED 9: recordOperationStarted issues an INSERT and returns the new op
     provider: "xai",
     modelId: null,
   });
-  assert.equal(id, "op-1");
+  assert.equal(typeof handle.operationId, "string");
+  assert.ok(handle.operationId.length > 0);
+  assert.equal(handle.gameId, "g1");
+  assert.equal(handle.turnIndex, 3);
+  assert.equal(handle.operationKind, "provider_attempt");
+  assert.equal(handle.attemptNumber, 1);
+  assert.equal(handle.provider, "xai");
+  assert.equal(handle.requestedModelId, null);
+
   assert.equal(calls.length, 1);
   assert.match(calls[0]!.sql, /INSERT INTO corpus\.turn_operations/);
-  assert.match(calls[0]!.sql, /VALUES/);
-  assert.deepEqual(calls[0]!.values, ["g1", 3, "provider_attempt", 1, "xai", null]);
+  assert.match(calls[0]!.sql, /ON CONFLICT \(operation_id\) DO NOTHING/);
+  assert.deepEqual(calls[0]!.values, [handle.operationId, "g1", 3, "provider_attempt", 1, "xai", null]);
 });
 
 test("REQUIRED 9: no secret-shaped fields are ever part of the insert's values", async () => {
@@ -104,46 +111,268 @@ test("REQUIRED 9: no secret-shaped fields are ever part of the insert's values",
   }
 });
 
-// --- REQUIRED 10: success/duplicate/provider-error/self-timeout update -----
+// --- REQUIRED 10: success/duplicate/provider-error/self-timeout terminal ---
+// upsert. Terminal writes now go through the SAME idempotent
+// INSERT ... ON CONFLICT DO UPDATE statement regardless of outcome.
+
+function makeHandle(overrides: Partial<OperationHandle> = {}): OperationHandle {
+  return {
+    operationId: "op-1",
+    gameId: "g1",
+    turnIndex: 3,
+    operationKind: "provider_attempt",
+    attemptNumber: 1,
+    provider: "xai",
+    requestedModelId: "grok-requested",
+    ...overrides,
+  };
+}
 
 for (const status of ["accepted", "duplicate_rejected", "provider_error", "self_timeout"] as const) {
-  test(`REQUIRED 10: recordOperationCompleted(${status}) issues the matching UPDATE`, async () => {
-    await recordOperationCompleted({
-      operationId: "op-1",
+  test(`REQUIRED 10: recordOperationCompleted(${status}) issues the idempotent terminal upsert`, async () => {
+    const handle = makeHandle();
+    await recordOperationCompleted(handle, {
       status,
       latencyMs: 4321,
       errorClass: status === "provider_error" || status === "self_timeout" ? status : null,
     });
     assert.equal(calls.length, 1);
-    assert.match(calls[0]!.sql, /UPDATE corpus\.turn_operations/);
-    assert.match(calls[0]!.sql, /WHERE operation_id/);
-    assert.match(calls[0]!.sql, /model_id = COALESCE/, "model_id must only be overwritten when a value is given");
+    assert.match(calls[0]!.sql, /INSERT INTO corpus\.turn_operations/);
+    assert.match(calls[0]!.sql, /ON CONFLICT \(operation_id\) DO UPDATE/);
+    assert.match(calls[0]!.sql, /WHERE corpus\.turn_operations\.status = 'started'/, "a terminal row must never be overwritten by a later write");
+    assert.match(calls[0]!.sql, /model_id = COALESCE\(EXCLUDED\.model_id, corpus\.turn_operations\.model_id\)/);
+    // (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class)
     assert.deepEqual(calls[0]!.values, [
+      "op-1",
+      "g1",
+      3,
+      "provider_attempt",
+      1,
+      "xai",
+      "grok-requested", // modelId omitted on completion -- falls back to the handle's requested model
       status,
       4321,
       status === "provider_error" || status === "self_timeout" ? status : null,
-      null, // modelId omitted -- COALESCE(null, model_id) leaves the existing value untouched
-      "op-1",
     ]);
   });
 }
 
-test("REQUIRED (model tracking): recordOperationCompleted overwrites model_id only when one is explicitly given (a successful attempt's resolved model)", async () => {
-  await recordOperationCompleted({
-    operationId: "op-1",
+test("REQUIRED (model tracking): recordOperationCompleted's row carries the RESOLVED model when one is explicitly given (a successful attempt)", async () => {
+  const handle = makeHandle();
+  await recordOperationCompleted(handle, {
     status: "accepted",
     latencyMs: 100,
     errorClass: null,
     modelId: "grok-4.20-0309-reasoning",
   });
-  assert.deepEqual(calls[0]!.values, ["accepted", 100, null, "grok-4.20-0309-reasoning", "op-1"]);
+  assert.deepEqual(calls[0]!.values, [
+    "op-1",
+    "g1",
+    3,
+    "provider_attempt",
+    1,
+    "xai",
+    "grok-4.20-0309-reasoning",
+    "accepted",
+    100,
+    null,
+  ]);
+});
+
+// ---------------------------------------------------------------------------
+// ROUND 2 REVIEW FIX — the orphaned-row problem, closed via a client-
+// generated operation_id and an idempotent start/terminal write pair.
+//
+// `fakeSql` above only records WHAT was asked. These tests need to verify
+// RESULTING STATE ("a late start write can never revive a terminal row"),
+// which requires actually applying the same ON CONFLICT semantics a real
+// Postgres server would to an in-memory row per operation_id. Everything
+// about TIMING here is small and controlled (a handful of milliseconds via
+// real setTimeout, never a 45–300s wait) — only the ORDER of writes is what
+// each test manipulates and asserts on.
+// ---------------------------------------------------------------------------
+
+interface FakeRow {
+  status: string;
+  latency_ms: unknown;
+  error_class: unknown;
+  model_id: unknown;
+}
+
+function statefulFakeSql(opts: { delayStartMs?: number; failStart?: boolean } = {}) {
+  const rows = new Map<string, FakeRow>();
+  const fn = Object.assign(
+    async (strings: TemplateStringsArray, ...values: SqlValue[]) => {
+      const text = strings.join("?");
+      if (text.trim().startsWith("SELECT")) {
+        // Mirrors findPresumedKilledOperations' own WHERE status = 'started'
+        // predicate; the real age comparison is Postgres-only (see the file
+        // header), so every row still 'started' is returned regardless of age
+        // — sufficient to prove a TERMINAL row is never among them.
+        return Array.from(rows.entries())
+          .filter(([, row]) => row.status === "started")
+          .map(([operationId]) => ({
+            operation_id: operationId,
+            game_id: "g1",
+            turn_index: 1,
+            operation_kind: "provider_attempt",
+            started_at: "2020-01-01T00:00:00.000Z",
+          }));
+      }
+      if (!text.trim().startsWith("INSERT INTO corpus.turn_operations")) return [];
+
+      const operationId = String(values[0]);
+      const modelId = values[6] ?? null;
+
+      if (text.includes("DO NOTHING")) {
+        if (opts.delayStartMs) {
+          await new Promise((resolve) => setTimeout(resolve, opts.delayStartMs));
+        }
+        if (opts.failStart) throw new Error("simulated start-write failure");
+        if (!rows.has(operationId)) {
+          rows.set(operationId, { status: "started", latency_ms: null, error_class: null, model_id: modelId });
+        }
+        return [];
+      }
+
+      // ON CONFLICT (operation_id) DO UPDATE ... WHERE status = 'started'
+      const status = String(values[7]);
+      const latencyMs = values[8] ?? null;
+      const errorClass = values[9] ?? null;
+      const existing = rows.get(operationId);
+      if (!existing) {
+        rows.set(operationId, { status, latency_ms: latencyMs, error_class: errorClass, model_id: modelId });
+      } else if (existing.status === "started") {
+        existing.status = status;
+        existing.latency_ms = latencyMs;
+        existing.error_class = errorClass;
+        existing.model_id = modelId ?? existing.model_id;
+      }
+      return [];
+    },
+    { transaction: (qs: Promise<Record<string, unknown>[]>[]) => Promise.all(qs), rows }
+  );
+  return fn;
+}
+
+test("ROUND 2 REQUIRED: a start write that exceeds the local ceiling and lands late (AFTER the terminal write already ran) never reverts the row to 'started'", async () => {
+  const originalTimeoutMs = TELEMETRY_TIMEOUT_CONFIG.timeoutMs;
+  TELEMETRY_TIMEOUT_CONFIG.timeoutMs = 5; // tiny, controlled ceiling -- not a real wait
+  const sql = statefulFakeSql({ delayStartMs: 40 }); // exceeds the 5ms ceiling, still small and deterministic
+  __setSqlClientForTests(sql as unknown as Parameters<typeof __setSqlClientForTests>[0]);
+  try {
+    const handle = await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 1,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "xai",
+      modelId: "requested-model",
+    });
+    // recordOperationStarted already returned (bounded by the 5ms ceiling);
+    // its own underlying write is still in flight (40ms). The provider then
+    // succeeds -- complete immediately, well before the delayed start lands.
+    await recordOperationCompleted(handle, {
+      status: "accepted",
+      latencyMs: 10,
+      errorClass: null,
+      modelId: "resolved-model",
+    });
+    assert.equal(sql.rows.get(handle.operationId)?.status, "accepted", "terminal write landed first and created the row directly");
+
+    // Now let the delayed start write actually land.
+    await new Promise((resolve) => setTimeout(resolve, 60));
+    assert.equal(
+      sql.rows.get(handle.operationId)?.status,
+      "accepted",
+      "the late start write must never revert a terminal row back to 'started'"
+    );
+    assert.equal(sql.rows.get(handle.operationId)?.model_id, "resolved-model");
+  } finally {
+    TELEMETRY_TIMEOUT_CONFIG.timeoutMs = originalTimeoutMs;
+    __setSqlClientForTests(fakeSql);
+  }
+});
+
+test("ROUND 2 REQUIRED: a start write that fails outright still lets the terminal write create the correct terminal row", async () => {
+  const sql = statefulFakeSql({ failStart: true });
+  __setSqlClientForTests(sql as unknown as Parameters<typeof __setSqlClientForTests>[0]);
+  try {
+    const handle = await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 2,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "anthropic",
+      modelId: "requested-model",
+    });
+    assert.equal(typeof handle.operationId, "string", "the handle is still usable even though the start write failed");
+    assert.equal(sql.rows.has(handle.operationId), false, "the start write never landed -- no row exists yet");
+
+    await recordOperationCompleted(handle, {
+      status: "provider_error",
+      latencyMs: 75,
+      errorClass: "provider_error",
+    });
+    const row = sql.rows.get(handle.operationId);
+    assert.ok(row, "the terminal write must create the row directly when the start write never landed");
+    assert.equal(row!.status, "provider_error");
+    assert.equal(row!.latency_ms, 75);
+    assert.equal(row!.model_id, "requested-model", "falls back to the handle's own requested model");
+  } finally {
+    __setSqlClientForTests(fakeSql);
+  }
+});
+
+test("ROUND 2 REQUIRED: findPresumedKilledOperations does not return operations that completed via either path above", async () => {
+  const sql = statefulFakeSql();
+  __setSqlClientForTests(sql as unknown as Parameters<typeof __setSqlClientForTests>[0]);
+  try {
+    const h1 = await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 1,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "xai",
+      modelId: "m1",
+    });
+    await recordOperationCompleted(h1, { status: "accepted", latencyMs: 5, errorClass: null });
+
+    const h2 = await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 2,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "xai",
+      modelId: "m2",
+    });
+    await recordOperationCompleted(h2, { status: "shared_budget_exhausted", latencyMs: 1, errorClass: "shared_budget_exhausted" });
+
+    // A genuinely abandoned operation -- started, never completed -- must
+    // still be found, or this test would trivially pass by finding nothing.
+    await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 3,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "xai",
+      modelId: "m3",
+    });
+
+    const found = await findPresumedKilledOperations(300_000);
+    assert.equal(found.length, 1, `expected exactly the one genuinely-abandoned operation; got ${JSON.stringify(found)}`);
+    assert.notEqual(found[0]!.operationId, h1.operationId);
+    assert.notEqual(found[0]!.operationId, h2.operationId);
+  } finally {
+    __setSqlClientForTests(fakeSql);
+  }
 });
 
 // --- REQUIRED 12: telemetry failure never blocks gameplay -------------------
 
-test("REQUIRED 12: an insert failure is swallowed -- returns null, does not throw", async () => {
+test("REQUIRED 12: a start write failure is swallowed -- the handle is still returned, does not throw", async () => {
   failInsert = true;
-  const id = await recordOperationStarted({
+  const handle = await recordOperationStarted({
     gameId: "g1",
     turnIndex: 1,
     operationKind: "provider_attempt",
@@ -151,20 +380,20 @@ test("REQUIRED 12: an insert failure is swallowed -- returns null, does not thro
     provider: "xai",
     modelId: null,
   });
-  assert.equal(id, null);
+  assert.equal(typeof handle.operationId, "string");
 });
 
-test("REQUIRED 12: an update failure is swallowed -- resolves, does not throw", async () => {
+test("REQUIRED 12: a terminal write failure is swallowed -- resolves, does not throw", async () => {
   failUpdate = true;
   await assert.doesNotReject(() =>
-    recordOperationCompleted({ operationId: "op-1", status: "accepted", latencyMs: 100, errorClass: null })
+    recordOperationCompleted(makeHandle(), { status: "accepted", latencyMs: 100, errorClass: null })
   );
 });
 
-test("telemetry is inert when corpus is not configured (no DATABASE_URL) -- the default test environment", async () => {
+test("telemetry is inert when corpus is not configured (no DATABASE_URL) -- the default test environment, but the handle is still usable", async () => {
   delete process.env.DATABASE_URL;
   __setSqlClientForTests(null);
-  const id = await recordOperationStarted({
+  const handle = await recordOperationStarted({
     gameId: "g1",
     turnIndex: 1,
     operationKind: "corpus_write",
@@ -172,8 +401,13 @@ test("telemetry is inert when corpus is not configured (no DATABASE_URL) -- the 
     provider: null,
     modelId: null,
   });
-  assert.equal(id, null);
+  assert.equal(typeof handle.operationId, "string");
   assert.equal(calls.length, 0, "no query should even be attempted");
+
+  await assert.doesNotReject(() =>
+    recordOperationCompleted(handle, { status: "written", latencyMs: 10, errorClass: null })
+  );
+  assert.equal(calls.length, 0, "still no query -- corpus remains unconfigured");
 });
 
 // --- REQUIRED 11: presumed_killed classification, no later request needed --
@@ -185,7 +419,7 @@ test("REQUIRED 11: findPresumedKilledOperations queries by status='started' and 
   // arithmetic, which this environment cannot execute — see the file header.
   // What this test proves is the CONTRACT: the query targets the right
   // table/status, and the function maps whatever Postgres would have
-  // filtered back into a typed result, without issuing any UPDATE.
+  // filtered back into a typed result, without issuing any write.
   seededSelectRows = [
     { operation_id: "op-orphaned", game_id: "g1", turn_index: 1, operation_kind: "provider_attempt", started_at: "2026-01-01T00:00:00.000Z" },
   ];
@@ -196,7 +430,7 @@ test("REQUIRED 11: findPresumedKilledOperations queries by status='started' and 
   assert.match(calls[0]!.sql, /SELECT .* FROM corpus\.turn_operations/s);
   assert.match(calls[0]!.sql, /status = 'started'/);
   assert.equal(
-    calls.some((c) => /UPDATE/.test(c.sql)),
+    calls.some((c) => /INSERT|UPDATE/.test(c.sql)),
     false,
     "classification must be a pure read -- no write required for a row to be discoverable"
   );

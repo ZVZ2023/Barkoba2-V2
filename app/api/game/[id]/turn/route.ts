@@ -24,7 +24,11 @@ import {
   runWithAbortTimeout,
   isLocalTimeoutError,
 } from "@/lib/turnBudget";
-import { recordOperationStarted, recordOperationCompleted } from "@/lib/corpus/turnTelemetry";
+import {
+  recordOperationStarted,
+  recordOperationCompleted,
+  type OperationHandle,
+} from "@/lib/corpus/turnTelemetry";
 import { env } from "@/lib/env";
 import type {
   ComposerAnswer,
@@ -167,14 +171,16 @@ interface RacerAttempt {
   intentOutcome: GuessIntentOutcome | null;
   preRevisionQuestion: string | null;
   /**
-   * S2 / RB-2 — the durable telemetry row for THIS attempt's provider call,
-   * or null if telemetry was unconfigured/failed (fail-open; see
-   * lib/corpus/turnTelemetry.ts). Carried out of runOneRacerAttempt because
-   * only the CALLER (POST's produceCandidate closure) knows the
-   * duplicate-guard's verdict — accepted vs duplicate_rejected — which this
-   * id is used to finalize.
+   * S2 / RB-2 — the durable-telemetry handle for THIS attempt's provider
+   * call. Always present (round-2 review fix: the id is generated
+   * client-side by recordOperationStarted regardless of whether corpus is
+   * configured or the start write itself lands — see
+   * lib/corpus/turnTelemetry.ts's module doc). Carried out of
+   * runOneRacerAttempt because only the CALLER (POST's produceCandidate
+   * closure) knows the duplicate-guard's verdict — accepted vs
+   * duplicate_rejected — which this handle is used to finalize.
    */
-  telemetryOperationId: string | null;
+  telemetryHandle: OperationHandle;
   /** Wall-clock time of the runRacerTurn() call alone, in ms. */
   attemptLatencyMs: number;
 }
@@ -303,7 +309,7 @@ async function runOneRacerAttempt(
   // duplicate-guard's verdict) may overwrite it with the RESOLVED model.
   const requestedModel = racerModelFor(racerProvider);
 
-  const telemetryOperationId = await recordOperationStarted({
+  const telemetryHandle = await recordOperationStarted({
     gameId,
     turnIndex: game.qa_log.length + 1,
     operationKind: "provider_attempt",
@@ -327,14 +333,11 @@ async function runOneRacerAttempt(
     // Recorded honestly rather than left as an indistinguishable orphaned
     // 'started' row: this operation reached telemetry but never reached the
     // model.
-    if (telemetryOperationId) {
-      await recordOperationCompleted({
-        operationId: telemetryOperationId,
-        status: "shared_budget_exhausted",
-        latencyMs: Date.now() - preProviderStartedAt,
-        errorClass: "shared_budget_exhausted",
-      });
-    }
+    await recordOperationCompleted(telemetryHandle, {
+      status: "shared_budget_exhausted",
+      latencyMs: Date.now() - preProviderStartedAt,
+      errorClass: "shared_budget_exhausted",
+    });
     return preserveAnswerAndFailRacerUnavailable(game, gameId, revisionAtLockTime);
   }
 
@@ -363,7 +366,7 @@ async function runOneRacerAttempt(
     attemptLatencyMs = Date.now() - attemptStartedAt;
     // NOT finalized here: whether this lands as "accepted" or
     // "duplicate_rejected" is the duplicate-guard's verdict, which only the
-    // caller (POST's produceCandidate closure) knows. telemetryOperationId
+    // caller (POST's produceCandidate closure) knows. telemetryHandle
     // and attemptLatencyMs travel with the returned attempt for exactly
     // that purpose — see the RacerAttempt field docs.
   } catch (err) {
@@ -374,18 +377,16 @@ async function runOneRacerAttempt(
       `[barkoba] Racer call failed${localTimeout ? " (local timeout — Barkóba stopped waiting; the remote call may still be running)" : ""}:`,
       err
     );
-    if (telemetryOperationId) {
-      // modelId deliberately omitted — COALESCE(new, existing) in
-      // recordOperationCompleted keeps the REQUESTED model this row was
-      // inserted with; a failed/timed-out attempt never learned a resolved
-      // model to overwrite it with.
-      await recordOperationCompleted({
-        operationId: telemetryOperationId,
-        status: localTimeout ? "self_timeout" : "provider_error",
-        latencyMs: attemptLatencyMs,
-        errorClass: localTimeout ? "self_timeout" : "provider_error",
-      });
-    }
+    // modelId deliberately omitted — COALESCE(new, existing) in
+    // recordOperationCompleted keeps the REQUESTED model this row was
+    // inserted with (or created with directly, if the start write never
+    // landed); a failed/timed-out attempt never learned a resolved model to
+    // overwrite it with.
+    await recordOperationCompleted(telemetryHandle, {
+      status: localTimeout ? "self_timeout" : "provider_error",
+      latencyMs: attemptLatencyMs,
+      errorClass: localTimeout ? "self_timeout" : "provider_error",
+    });
     return preserveAnswerAndFailRacerUnavailable(game, gameId, revisionAtLockTime);
   }
 
@@ -457,7 +458,7 @@ async function runOneRacerAttempt(
       flagged,
       intentOutcome,
       preRevisionQuestion,
-      telemetryOperationId,
+      telemetryHandle,
       attemptLatencyMs,
     },
   };
@@ -762,20 +763,17 @@ export async function POST(
         const { action, question_text } = outcome.attempt.turn;
         const isDuplicate =
           action === "question" && !!question_text && isDuplicateQuestion(question_text, priorQuestions);
-        if (outcome.attempt.telemetryOperationId) {
-          await recordOperationCompleted({
-            operationId: outcome.attempt.telemetryOperationId,
-            status: isDuplicate ? "duplicate_rejected" : "accepted",
-            latencyMs: outcome.attempt.attemptLatencyMs,
-            errorClass: null,
-            // S2 review fix — a successful call is the first point the
-            // RESOLVED model is known; overwrite the requested-model value
-            // this row was inserted with. resolvedModel differs from the
-            // requested id whenever a configured alias resolves to a dated
-            // snapshot (see racer.ts's own provenance doc).
-            modelId: outcome.attempt.provenance.model_id,
-          });
-        }
+        await recordOperationCompleted(outcome.attempt.telemetryHandle, {
+          status: isDuplicate ? "duplicate_rejected" : "accepted",
+          latencyMs: outcome.attempt.attemptLatencyMs,
+          errorClass: null,
+          // S2 review fix — a successful call is the first point the
+          // RESOLVED model is known; overwrite the requested-model value
+          // this row was inserted with. resolvedModel differs from the
+          // requested id whenever a configured alias resolves to a dated
+          // snapshot (see racer.ts's own provenance doc).
+          modelId: outcome.attempt.provenance.model_id,
+        });
 
         return { ok: true, candidate: outcome.attempt };
       },

@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import { getSql, isCorpusConfigured } from "./db";
 
 // ---------------------------------------------------------------------------
@@ -21,16 +22,43 @@ import { getSql, isCorpusConfigured } from "./db";
 // first rule ("it never throws. A corpus failure must never break a game."),
 // and identically inert when corpus is unconfigured (this test environment
 // has no DATABASE_URL; every call below is then a no-op returning
-// null/[]/void, exactly like recordGameState's own disabled path).
+// void, exactly like recordGameState's own disabled path).
 //
-// REVIEW FIX — A HUNG QUERY, NOT ONLY A REJECTED ONE. The original version
-// only guarded against a rejected promise; a promise that never settles at
-// all (a stalled Neon connection) would have stalled the awaited caller
-// until Vercel killed the whole function. withTelemetryTimeout races every
-// query against a small local ceiling and resolves with a safe fallback if
-// the ceiling wins, WITHOUT cancelling the underlying query — it may still
-// complete later, but nothing here waits for that. See its own doc for the
-// one accepted, documented trade-off this creates.
+// REVIEW FIX (round 1) — A HUNG QUERY, NOT ONLY A REJECTED ONE. The original
+// version only guarded against a rejected promise; a promise that never
+// settles at all (a stalled Neon connection) would have stalled the awaited
+// caller until Vercel killed the whole function. withTelemetryTimeout races
+// every query against a small local ceiling and resolves if the ceiling
+// wins, WITHOUT cancelling the underlying query — it may still complete
+// later, but nothing here waits for that.
+//
+// REVIEW FIX (round 2) — THE ORPHANED-ROW PROBLEM, CLOSED, NOT ACCEPTED.
+// Round 1 let the database assign operation_id (`RETURNING operation_id`
+// from the start INSERT), which meant a start INSERT that raced past
+// TELEMETRY_TIMEOUT_CONFIG.timeoutMs but later succeeded produced a row the
+// caller could never learn the id of — indistinguishable from a genuinely
+// killed attempt, and exactly the false-positive findPresumedKilledOperations
+// exists to avoid. The fix: the ID is generated HERE, client-side, with
+// randomUUID(), before any INSERT is even attempted, and carried through the
+// whole attempt as an OperationHandle. That makes both ends of an attempt's
+// life idempotent and order-independent:
+//   - the START write is `INSERT ... ON CONFLICT (operation_id) DO NOTHING`
+//     — if the terminal write already created this row (see below), a late
+//     start INSERT is a silent no-op, never resurrecting a finished row back
+//     to 'started'.
+//   - the TERMINAL write is `INSERT ... ON CONFLICT (operation_id) DO UPDATE
+//     ... WHERE status = 'started'` — a single idempotent upsert that
+//     creates the row directly (with its final status) if the start INSERT
+//     never landed at all (timed out, failed, or is still in flight), or
+//     updates it in place if the start row is already there. The `WHERE
+//     status = 'started'` guard is what makes this direction-safe too: once
+//     a row is terminal, no later write — including a delayed start INSERT
+//     landing after it — can ever move it back to a non-terminal state.
+// Net effect: a normal attempt's row is terminal the instant its outcome is
+// known, regardless of whether its start INSERT has landed, timed out, or
+// failed outright. findPresumedKilledOperations' `status = 'started'` filter
+// therefore never matches a completed attempt merely because its start
+// response was slow — only a row genuinely never completed stays 'started'.
 //
 // WHAT IS NEVER STORED HERE: secret targets, player answers or explanations,
 // prompts, model output, tool-call arguments, credentials, or headers. Only
@@ -57,16 +85,12 @@ export const TELEMETRY_TIMEOUT_CONFIG = { timeoutMs: 2000 };
  * settle on its own and its eventual result (success or rejection) is
  * swallowed here so it can never become an unhandled rejection.
  *
- * ACCEPTED, DOCUMENTED TRADE-OFF: if a `recordOperationStarted` insert wins
- * the race late (after the timeout already returned null) but the insert
- * itself SUCCEEDS moments later, the caller never learns that row's id and
- * so can never complete it — a genuine but rare orphaned `started` row,
- * indistinguishable from a real killed attempt until an operator
- * cross-checks corpus.turn_operations against corpus.game_turns for that
- * game/turn. This is the accepted cost of a timeout existing at all: making
- * it impossible would require a two-phase design (reserve an id
- * synchronously, insert asynchronously) that is a larger observability
- * system than S2 is scoped to build.
+ * No longer creates an orphaned-row risk the way it did in round 1 (see the
+ * module doc): whichever of the start/terminal writes lands first wins by
+ * construction (ON CONFLICT DO NOTHING / DO UPDATE ... WHERE status =
+ * 'started'), so a query racing past this timeout and succeeding later can
+ * still only ever produce the SAME correct row a caller already has the id
+ * for via its OperationHandle — never a row nobody can reach.
  */
 function withTelemetryTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   return new Promise((resolve) => {
@@ -145,75 +169,136 @@ export interface StartOperationInput {
 }
 
 /**
- * Insert a durable `started` row BEFORE the work it describes begins.
+ * Round-2 review fix — everything a terminal write needs to either UPDATE an
+ * existing 'started' row or CREATE the terminal row directly (if the start
+ * write never landed), carried by the caller across the attempt instead of a
+ * bare id. `requestedModelId` is the fallback used only when a terminal
+ * write's own `modelId` is omitted AND it turns out to be the one creating
+ * the row (start INSERT lost the race entirely) — see recordOperationCompleted.
  *
- * Returns the new operation_id, or null if corpus is unconfigured, the
- * insert itself failed, or it did not complete within TELEMETRY_TIMEOUT_CONFIG.timeoutMs —
- * all three are silently tolerated by every caller. A null return is not an
- * error the caller must react to; it simply means this attempt will not have
- * a completion record (rare, and never worse than the pre-S2 state of
- * recording nothing at all).
+ * Contains only the same non-sensitive identifying fields StartOperationInput
+ * already carried; no new data is captured.
  */
-export async function recordOperationStarted(input: StartOperationInput): Promise<string | null> {
-  if (!isCorpusConfigured()) return null;
+export interface OperationHandle {
+  operationId: string;
+  gameId: string;
+  turnIndex: number | null;
+  operationKind: OperationKind;
+  attemptNumber: number | null;
+  provider: string | null;
+  requestedModelId: string | null;
+}
+
+/**
+ * Generate an operation's id and identifying handle, and best-effort issue
+ * its durable `started` row.
+ *
+ * ALWAYS returns a usable handle — never null. The id is generated
+ * client-side (randomUUID()) before any database call, which is what makes
+ * this safe to use unconditionally regardless of whether corpus is
+ * configured, the insert fails, or it does not complete within
+ * TELEMETRY_TIMEOUT_CONFIG.timeoutMs: recordOperationCompleted's idempotent
+ * upsert (see its own doc) can always create the terminal row directly from
+ * this same handle if the start write never lands. Every caller may now
+ * unconditionally call recordOperationCompleted with the returned handle,
+ * with no null-check required.
+ */
+export async function recordOperationStarted(input: StartOperationInput): Promise<OperationHandle> {
+  const handle: OperationHandle = {
+    operationId: randomUUID(),
+    gameId: input.gameId,
+    turnIndex: input.turnIndex,
+    operationKind: input.operationKind,
+    attemptNumber: input.attemptNumber,
+    provider: input.provider,
+    requestedModelId: input.modelId,
+  };
+
+  if (!isCorpusConfigured()) return handle;
   const sql = getSql();
-  if (!sql) return null;
+  if (!sql) return handle;
 
   const insert = (async () => {
-    const rows = await sql`
+    // ON CONFLICT DO NOTHING — the only way this id could already exist is a
+    // terminal write that beat this start write to the row (see the module
+    // doc); in that case the terminal outcome must never be reverted to
+    // 'started'.
+    await sql`
       INSERT INTO corpus.turn_operations
-        (game_id, turn_index, operation_kind, attempt_number, provider, model_id, status)
-      VALUES (${input.gameId}, ${input.turnIndex}, ${input.operationKind}, ${input.attemptNumber}, ${input.provider}, ${input.modelId}, 'started')
-      RETURNING operation_id
+        (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status)
+      VALUES (${handle.operationId}, ${input.gameId}, ${input.turnIndex}, ${input.operationKind}, ${input.attemptNumber}, ${input.provider}, ${input.modelId}, 'started')
+      ON CONFLICT (operation_id) DO NOTHING
     `;
-    const id = rows[0]?.operation_id;
-    return typeof id === "string" ? id : null;
   })().catch((err) => {
     // eslint-disable-next-line no-console
     console.warn(
       "[barkoba] turn-operation telemetry insert failed (fail-open, gameplay unaffected):",
       err instanceof Error ? err.message : String(err)
     );
-    return null;
   });
 
-  return withTelemetryTimeout(insert, null);
+  await withTelemetryTimeout(insert, undefined);
+  return handle;
 }
 
-export interface CompleteOperationInput {
-  operationId: string;
+export interface CompletionOutcome {
   status: OperationStatus;
   latencyMs: number | null;
   /** A short classification only (e.g. "self_timeout"), never a raw error message or stack. */
   errorClass: string | null;
   /**
-   * S2 review fix — the RESOLVED model id, when this completion is the point
-   * that first learns it (a successful provider_attempt). Omitted (or null)
-   * on every other completion — including provider_error/self_timeout, so a
-   * failed attempt's row keeps the REQUESTED model id it was inserted with —
-   * and on corpus_write, which never carries a model at all. The SQL below
-   * only overwrites model_id when a value is actually given
-   * (COALESCE(new, existing)), so omitting this field is a true no-op on
-   * that column, never a silent NULL-out.
+   * The RESOLVED model id, when this completion is the point that first
+   * learns it (a successful provider_attempt). Omitted (or null) on every
+   * other completion — including provider_error/self_timeout, so the row
+   * keeps the REQUESTED model id (`handle.requestedModelId`) it started
+   * with — and on corpus_write, which never carries a model at all.
    */
   modelId?: string | null;
 }
 
-/** Update a previously-started row with its terminal outcome. Fail-open, and time-bounded. */
-export async function recordOperationCompleted(input: CompleteOperationInput): Promise<void> {
+/**
+ * Idempotently record an operation's terminal outcome, from `handle` alone —
+ * no read is required first.
+ *
+ * Round-2 review fix — a single `INSERT ... ON CONFLICT (operation_id) DO
+ * UPDATE ... WHERE status = 'started'` upsert:
+ *   - if the start row is already there (the common case), this UPDATEs it
+ *     in place;
+ *   - if the start write never landed (timed out, failed, or is still in
+ *     flight and loses the race), this CREATEs the terminal row directly
+ *     from the handle's own identifying fields — nothing is lost merely
+ *     because the start write was slow or unlucky;
+ *   - if the row is somehow ALREADY terminal (a duplicate completion call,
+ *     or a start write landing late after this one), the `WHERE status =
+ *     'started'` guard makes the UPDATE branch a no-op — a terminal outcome
+ *     can never be overwritten by a second write.
+ * model_id uses COALESCE(new, existing) semantics via EXCLUDED so a
+ * completion that omits `modelId` never nulls out a value the row already
+ * has (or, on the create-directly branch, falls back to the handle's own
+ * `requestedModelId`).
+ */
+export async function recordOperationCompleted(
+  handle: OperationHandle,
+  outcome: CompletionOutcome
+): Promise<void> {
   if (!isCorpusConfigured()) return;
   const sql = getSql();
   if (!sql) return;
 
-  const update = (async () => {
+  const modelIdForRow = outcome.modelId ?? handle.requestedModelId ?? null;
+
+  const upsert = (async () => {
     await sql`
-      UPDATE corpus.turn_operations
-      SET completed_at = now(),
-          status = ${input.status},
-          latency_ms = ${input.latencyMs},
-          error_class = ${input.errorClass},
-          model_id = COALESCE(${input.modelId ?? null}, model_id)
-      WHERE operation_id = ${input.operationId}
+      INSERT INTO corpus.turn_operations
+        (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class, completed_at)
+      VALUES (${handle.operationId}, ${handle.gameId}, ${handle.turnIndex}, ${handle.operationKind}, ${handle.attemptNumber}, ${handle.provider}, ${modelIdForRow}, ${outcome.status}, ${outcome.latencyMs}, ${outcome.errorClass}, now())
+      ON CONFLICT (operation_id) DO UPDATE SET
+        status = EXCLUDED.status,
+        latency_ms = EXCLUDED.latency_ms,
+        error_class = EXCLUDED.error_class,
+        completed_at = EXCLUDED.completed_at,
+        model_id = COALESCE(EXCLUDED.model_id, corpus.turn_operations.model_id)
+      WHERE corpus.turn_operations.status = 'started'
     `;
   })().catch((err) => {
     // eslint-disable-next-line no-console
@@ -223,7 +308,7 @@ export async function recordOperationCompleted(input: CompleteOperationInput): P
     );
   });
 
-  await withTelemetryTimeout(update, undefined);
+  await withTelemetryTimeout(upsert, undefined);
 }
 
 export interface PresumedKilledOperation {
@@ -241,10 +326,16 @@ export interface PresumedKilledOperation {
  * request occurring, and a read-only age comparison is the only mechanism
  * that satisfies that unconditionally. If a later request wants to also
  * WRITE the classification for its own bookkeeping, it can do so with
- * recordOperationCompleted(status: "presumed_killed") using an id this
- * function returned — that remains an optional caller decision, not
+ * recordOperationCompleted using an OperationHandle reconstructed from an id
+ * this function returned — that remains an optional caller decision, not
  * something this module performs on its own (no background job, no
  * reconciliation pass, per S2's explicit smallest-design scope).
+ *
+ * Round-2 review fix means this filter is now trustworthy: a row can only be
+ * `status = 'started'` here if its terminal write has genuinely never
+ * happened — a completed attempt's row is always terminal from the moment
+ * ITS OWN outcome is known, independent of whether its start write ever
+ * landed. See the module doc.
  */
 export async function findPresumedKilledOperations(
   thresholdMs: number

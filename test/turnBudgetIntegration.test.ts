@@ -236,8 +236,10 @@ test("REQUIRED 14: corpus-write telemetry does not change the CAS/save outcome",
     async (strings: TemplateStringsArray, ...values: SqlValue[]) => {
       const text = strings.join("?");
       if (text.trim().startsWith("INSERT")) {
-        inserted.push(String(values[2])); // operation_kind
-        return [{ operation_id: randomUUID() }];
+        // (operation_id, game_id, turn_index, operation_kind, ...) in both
+        // the start (DO NOTHING) and terminal (DO UPDATE) write shapes.
+        inserted.push(String(values[3]));
+        return [];
       }
       return [];
     },
@@ -400,36 +402,35 @@ test("REQUIRED 7: unset signal produces a byte-identical request to pre-S2 (no s
 
 /**
  * A fake corpus.turn_operations backend that DISCRIMINATES by operation_kind
- * (provider_attempt vs corpus_write) — both kinds insert/update through the
- * exact same two SQL shapes, so a hook that only matched on "is this an
- * INSERT/UPDATE" cannot tell a provider attempt's telemetry apart from the
- * corpus_write telemetry every save (including a preserved-answer failure
- * save) also triggers. Tracks kind-by-operation_id from each INSERT so a
- * later UPDATE can be attributed correctly.
+ * (provider_attempt vs corpus_write) and by write phase (start vs terminal).
+ *
+ * ROUND 2 REVIEW FIX — both the start write and the terminal write are now
+ * `INSERT INTO corpus.turn_operations` statements (an idempotent
+ * `ON CONFLICT (operation_id) DO NOTHING` for the start, an idempotent
+ * `ON CONFLICT (operation_id) DO UPDATE ... WHERE status = 'started'` for
+ * the terminal write) — see lib/corpus/turnTelemetry.ts's module doc. They
+ * are told apart here by that literal SQL text (DO NOTHING vs DO UPDATE),
+ * and operation_kind is read directly out of each statement's own values
+ * (position 3 in both shapes: operation_id, game_id, turn_index,
+ * operation_kind, ...) — no id-to-kind lookup map is needed any more, since
+ * every terminal write already carries its own operation_kind.
  */
 function fakeSqlWithHooks(opts: {
-  onInsert?: (info: { kind: string; values: SqlValue[] }) => void;
-  onUpdate?: (info: { kind: string | undefined; values: SqlValue[] }) => void;
-  insertResult?: () => Record<string, unknown>[];
+  onStart?: (info: { kind: string; operationId: string; values: SqlValue[] }) => void;
+  onTerminal?: (info: { kind: string; operationId: string; values: SqlValue[] }) => void;
   failEverythingElse?: boolean;
 }) {
-  const kindByOperationId = new Map<string, string>();
-  let nextId = 0;
   const fn = Object.assign(
     async (strings: TemplateStringsArray, ...values: SqlValue[]) => {
       const text = strings.join("?");
       if (text.trim().startsWith("INSERT INTO corpus.turn_operations")) {
-        const kind = String(values[2]); // (game_id, turn_index, operation_kind, ...)
-        const result = opts.insertResult ? opts.insertResult() : [{ operation_id: `op-${(nextId += 1)}` }];
-        const returnedId = result[0]?.operation_id;
-        if (typeof returnedId === "string") kindByOperationId.set(returnedId, kind);
-        opts.onInsert?.({ kind, values });
-        return result;
-      }
-      if (text.trim().startsWith("UPDATE corpus.turn_operations")) {
-        // (status, latency_ms, error_class, model_id, operation_id)
-        const operationId = String(values[4]);
-        opts.onUpdate?.({ kind: kindByOperationId.get(operationId), values });
+        const operationId = String(values[0]);
+        const kind = String(values[3]);
+        if (text.includes("DO NOTHING")) {
+          opts.onStart?.({ kind, operationId, values });
+        } else if (text.includes("DO UPDATE")) {
+          opts.onTerminal?.({ kind, operationId, values });
+        }
         return [];
       }
       if (opts.failEverythingElse) {
@@ -468,12 +469,14 @@ test("FINDING 1a: the final gate recomputes the budget and can abandon an attemp
   Date.now = () => now;
 
   // Simulate slow pre-provider work (consumeModelCall + this very insert)
-  // by advancing the clock the moment the telemetry INSERT runs -- exactly
-  // the gap the early gate cannot see.
+  // by advancing the clock the moment the telemetry start write runs --
+  // exactly the gap the early gate cannot see.
+  const terminalWrites: Array<{ kind: string; status: unknown }> = [];
   const sql = fakeSqlWithHooks({
-    onInsert: () => {
+    onStart: () => {
       now += 200_000; // leaves 40s of the 240s shared deadline -- below the 45s floor
     },
+    onTerminal: ({ kind, values }) => terminalWrites.push({ kind, status: values[7] }),
   });
 
   const stub = stubRacerQuestions(["SHOULD-NEVER-BE-CALLED"]);
@@ -482,6 +485,12 @@ test("FINDING 1a: the final gate recomputes the budget and can abandon an attemp
     assert.equal(stub.callCount(), 0, "the provider must never be called once the recomputed budget is below the floor");
     assert.equal(result.status, 502);
     assert.equal(result.data.error, "racer_unavailable");
+    // ROUND 2 REQUIRED: the final gate's abandoned attempt must be recorded
+    // as a genuine terminal outcome, never left at 'started' (which would
+    // make it indistinguishable from a killed attempt).
+    const abandoned = terminalWrites.find((w) => w.kind === "provider_attempt");
+    assert.ok(abandoned, `expected a provider_attempt terminal write; got ${JSON.stringify(terminalWrites)}`);
+    assert.equal(abandoned!.status, "shared_budget_exhausted");
   } finally {
     stub.restore();
     Date.now = originalNow;
@@ -500,7 +509,7 @@ test("FINDING 1b: a shrunk-but-sufficient remaining budget still proceeds, with 
   Date.now = () => now;
 
   const sql = fakeSqlWithHooks({
-    onInsert: () => {
+    onStart: () => {
       now += 100_000; // 240s - 100s = 140s remaining -- above the floor, below the 150s cap
     },
   });
@@ -548,11 +557,11 @@ test("FINDING 1c: insufficient shared budget can strike AFTER at least one dupli
   let now = originalNow();
   Date.now = () => now;
 
-  let insertCount = 0;
+  let startCount = 0;
   const sql = fakeSqlWithHooks({
-    onInsert: () => {
-      insertCount += 1;
-      if (insertCount === 2) now += 200_000; // only the SECOND attempt's pre-work is slow
+    onStart: () => {
+      startCount += 1;
+      if (startCount === 2) now += 200_000; // only the SECOND attempt's pre-work is slow
     },
   });
 
@@ -619,10 +628,11 @@ test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INS
 // --- Finding 3: requested vs resolved model_id -------------------------------
 
 test("FINDING 3a: a successful attempt's telemetry is updated with the RESOLVED model", async () => {
-  const updates: Array<{ kind: string | undefined; status: unknown; modelId: unknown }> = [];
+  const updates: Array<{ kind: string; status: unknown; modelId: unknown }> = [];
   const sql = fakeSqlWithHooks({
-    onUpdate: ({ kind, values }) => {
-      updates.push({ kind, status: values[0], modelId: values[3] });
+    onTerminal: ({ kind, values }) => {
+      // (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class)
+      updates.push({ kind, status: values[7], modelId: values[6] });
     },
   });
 
@@ -640,12 +650,12 @@ test("FINDING 3a: a successful attempt's telemetry is updated with the RESOLVED 
   }
 });
 
-test("FINDING 3b: a failed/timed-out attempt's telemetry keeps the REQUESTED model (never overwritten to null)", async () => {
-  const inserts: Array<{ kind: string; modelId: unknown }> = [];
-  const updates: Array<{ kind: string | undefined; status: unknown; modelId: unknown }> = [];
+test("FINDING 3b: a failed/timed-out attempt's terminal row keeps the REQUESTED model (never becomes null)", async () => {
+  const starts: Array<{ kind: string; modelId: unknown }> = [];
+  const updates: Array<{ kind: string; status: unknown; modelId: unknown }> = [];
   const sql = fakeSqlWithHooks({
-    onInsert: ({ kind, values }) => inserts.push({ kind, modelId: values[4] }),
-    onUpdate: ({ kind, values }) => updates.push({ kind, status: values[0], modelId: values[3] }),
+    onStart: ({ kind, values }) => starts.push({ kind, modelId: values[6] }),
+    onTerminal: ({ kind, values }) => updates.push({ kind, status: values[7], modelId: values[6] }),
   });
 
   const original = anthropicAdapter.callTool;
@@ -657,12 +667,16 @@ test("FINDING 3b: a failed/timed-out attempt's telemetry keeps the REQUESTED mod
   try {
     const result = await withFakeCorpus(sql, () => callTurn(gameId));
     assert.equal(result.status, 502);
-    const providerInserts = inserts.filter((i) => i.kind === "provider_attempt");
-    assert.equal(providerInserts.length, 1);
-    assert.notEqual(providerInserts[0]!.modelId, null, "the REQUESTED model must be recorded at insert time");
+    const providerStarts = starts.filter((i) => i.kind === "provider_attempt");
+    assert.equal(providerStarts.length, 1);
+    assert.notEqual(providerStarts[0]!.modelId, null, "the REQUESTED model must be recorded at start time");
     const failed = updates.find((u) => u.kind === "provider_attempt" && u.status === "provider_error");
-    assert.ok(failed, `expected a provider_attempt provider_error update; got ${JSON.stringify(updates)}`);
-    assert.equal(failed!.modelId, null, "omitted on completion -- COALESCE(null, model_id) leaves the requested model in place, never nulling it");
+    assert.ok(failed, `expected a provider_attempt provider_error terminal write; got ${JSON.stringify(updates)}`);
+    assert.equal(
+      failed!.modelId,
+      providerStarts[0]!.modelId,
+      "omitted on completion -- the terminal row falls back to the requested model recorded at start time, never nulling it"
+    );
   } finally {
     anthropicAdapter.callTool = original;
   }
@@ -708,9 +722,14 @@ test("FINDING 5: a 'deferred' corpus outcome is durably distinguished from a 'wr
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: SqlValue[]) => {
       const text = strings.join("?");
-      if (text.trim().startsWith("INSERT INTO corpus.turn_operations")) return [{ operation_id: randomUUID() }];
-      if (text.trim().startsWith("UPDATE corpus.turn_operations")) {
-        corpusWriteStatuses.push(values[0]);
+      if (text.trim().startsWith("INSERT INTO corpus.turn_operations")) {
+        // Only the terminal write (DO UPDATE) carries a status; filter to
+        // corpus_write specifically (operation_kind is values[3] in both
+        // the start and terminal shapes) -- a provider_attempt's own
+        // terminal statuses (accepted, etc.) must not leak into this list.
+        if (text.includes("DO UPDATE") && String(values[3]) === "corpus_write") {
+          corpusWriteStatuses.push(values[7]);
+        }
         return [];
       }
       // Every other statement (corpus.games / corpus.game_turns / the
@@ -750,7 +769,7 @@ test("FINDING 5: a 'deferred' corpus outcome is durably distinguished from a 'wr
 
 test("FINDING 6: the telemetry INSERT is issued before the real provider invocation", async () => {
   const order: string[] = [];
-  const sql = fakeSqlWithHooks({ onInsert: () => order.push("telemetry_insert") });
+  const sql = fakeSqlWithHooks({ onStart: () => order.push("telemetry_insert") });
 
   const original = anthropicAdapter.callTool;
   anthropicAdapter.callTool = (async () => {
@@ -787,8 +806,8 @@ test("FINDING 6: a real local timeout is classified as self_timeout in telemetry
   // gate (that's FINDING 1's own coverage).
   TURN_BUDGET_CONFIG.minRemainingToStartMs = 1;
 
-  const updates: Array<{ kind: string | undefined; status: unknown }> = [];
-  const sql = fakeSqlWithHooks({ onUpdate: ({ kind, values }) => updates.push({ kind, status: values[0] }) });
+  const updates: Array<{ kind: string; status: unknown }> = [];
+  const sql = fakeSqlWithHooks({ onTerminal: ({ kind, values }) => updates.push({ kind, status: values[7] }) });
 
   const original = anthropicAdapter.callTool;
   anthropicAdapter.callTool = (async (request: ToolCallRequest) => {

@@ -236,7 +236,7 @@ export async function saveGameIfRevisionMatches(
   const lastTurnIndex =
     record.qa_log.length > 0 ? record.qa_log[record.qa_log.length - 1]!.turn_index : null;
   const telemetryStartedAt = Date.now();
-  const operationId = await recordOperationStarted({
+  const telemetryHandle = await recordOperationStarted({
     gameId: record.game_id,
     turnIndex: lastTurnIndex,
     operationKind: "corpus_write",
@@ -257,23 +257,17 @@ export async function saveGameIfRevisionMatches(
     // — corpus.turn_operations' status values mirror CorpusOutcome exactly —
     // means this catch block is now for the genuinely unexpected case only.
     const outcome = await recordGameState(record);
-    if (operationId) {
-      await recordOperationCompleted({
-        operationId,
-        status: outcome,
-        latencyMs: Date.now() - telemetryStartedAt,
-        errorClass: null,
-      });
-    }
+    await recordOperationCompleted(telemetryHandle, {
+      status: outcome,
+      latencyMs: Date.now() - telemetryStartedAt,
+      errorClass: null,
+    });
   } catch (err) {
-    if (operationId) {
-      await recordOperationCompleted({
-        operationId,
-        status: "error",
-        latencyMs: Date.now() - telemetryStartedAt,
-        errorClass: "corpus_write_error",
-      });
-    }
+    await recordOperationCompleted(telemetryHandle, {
+      status: "error",
+      latencyMs: Date.now() - telemetryStartedAt,
+      errorClass: "corpus_write_error",
+    });
     // eslint-disable-next-line no-console
     console.error("[barkoba] corpus hook raised unexpectedly (this is a defect):", err);
   }
