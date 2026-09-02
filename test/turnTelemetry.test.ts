@@ -6,6 +6,7 @@ import {
   recordOperationCompleted,
   findPresumedKilledOperations,
   TELEMETRY_TIMEOUT_CONFIG,
+  __setSqlGetterForTests,
   type OperationHandle,
 } from "../lib/corpus/turnTelemetry";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
@@ -365,6 +366,65 @@ test("ROUND 2 REQUIRED: findPresumedKilledOperations does not return operations 
     assert.notEqual(found[0]!.operationId, h2.operationId);
   } finally {
     __setSqlClientForTests(fakeSql);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// MICRO-CORRECTION — getSql() must be called inside a try. neon() throws on
+// a malformed connection string (see lib/corpus/gameCorpus.ts's own module
+// doc on recordGameState's client acquisition for the precedent); this
+// module's fail-open rule has to hold for THAT failure too, not only for a
+// rejected or hung query. __setSqlGetterForTests is the minimal injectable
+// seam that lets this be proven directly, without needing a live,
+// genuinely malformed DATABASE_URL (test/corpusConnection.test.ts's own
+// approach for the equivalent gameCorpus.ts case).
+// ---------------------------------------------------------------------------
+
+test("MICRO-CORRECTION: a throwing SQL-client initializer is caught -- recordOperationStarted still returns a usable handle", async () => {
+  __setSqlGetterForTests(() => {
+    throw new Error("connection string rejected by the driver");
+  });
+  try {
+    const handle = await recordOperationStarted({
+      gameId: "g1",
+      turnIndex: 1,
+      operationKind: "provider_attempt",
+      attemptNumber: 1,
+      provider: "xai",
+      modelId: "requested-model",
+    });
+    assert.equal(typeof handle.operationId, "string");
+    assert.equal(handle.gameId, "g1");
+    assert.equal(calls.length, 0, "no query can even be attempted once the client itself fails to initialize");
+  } finally {
+    __setSqlGetterForTests(null);
+  }
+});
+
+test("MICRO-CORRECTION: a throwing SQL-client initializer is caught -- recordOperationCompleted resolves normally, does not throw", async () => {
+  __setSqlGetterForTests(() => {
+    throw new Error("connection string rejected by the driver");
+  });
+  try {
+    await assert.doesNotReject(() =>
+      recordOperationCompleted(makeHandle(), { status: "accepted", latencyMs: 10, errorClass: null })
+    );
+    assert.equal(calls.length, 0);
+  } finally {
+    __setSqlGetterForTests(null);
+  }
+});
+
+test("MICRO-CORRECTION: a throwing SQL-client initializer is caught -- findPresumedKilledOperations returns []", async () => {
+  __setSqlGetterForTests(() => {
+    throw new Error("connection string rejected by the driver");
+  });
+  try {
+    const found = await findPresumedKilledOperations(300_000);
+    assert.deepEqual(found, []);
+    assert.equal(calls.length, 0);
+  } finally {
+    __setSqlGetterForTests(null);
   }
 });
 

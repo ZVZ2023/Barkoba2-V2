@@ -1,5 +1,5 @@
 import { randomUUID } from "crypto";
-import { getSql, isCorpusConfigured } from "./db";
+import { getSql, isCorpusConfigured, type SqlClient } from "./db";
 
 // ---------------------------------------------------------------------------
 // S2 / RB-2 — durable turn-operation telemetry.
@@ -124,6 +124,41 @@ function withTelemetryTimeout<T>(promise: Promise<T>, fallback: T): Promise<T> {
   });
 }
 
+/**
+ * Micro-correction — getSql() MUST be called inside a try, exactly as
+ * lib/corpus/gameCorpus.ts's own module doc requires on recordGameState's
+ * client acquisition: neon() throws when the connection string is
+ * malformed (quotes kept from a copy-paste, a missing username, a `psql
+ * '...'` dashboard prefix), and this module's first rule — fail-open,
+ * absolutely — has to hold for THAT failure too, not only for a rejected or
+ * hung query. Only a non-sensitive classification is logged (never the raw
+ * error, which could otherwise echo back a fragment of a malformed
+ * connection string).
+ *
+ * `sqlGetterOverride` is a minimal injectable seam — swap the underlying
+ * getSql() call for a controlled stand-in — so a test can prove this catch
+ * fires without needing a live, genuinely malformed DATABASE_URL.
+ */
+let sqlGetterOverride: (() => SqlClient | null) | null = null;
+
+/** Test seam. Not used by any production path. */
+export function __setSqlGetterForTests(getter: (() => SqlClient | null) | null): void {
+  sqlGetterOverride = getter;
+}
+
+function getSqlSafely(): SqlClient | null {
+  try {
+    return (sqlGetterOverride ?? getSql)();
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[barkoba] telemetry: SQL client initialization failed (fail-open, gameplay unaffected):",
+      err instanceof Error ? err.constructor.name : typeof err
+    );
+    return null;
+  }
+}
+
 export type OperationKind = "provider_attempt" | "corpus_write";
 
 export type OperationStatus =
@@ -215,7 +250,7 @@ export async function recordOperationStarted(input: StartOperationInput): Promis
   };
 
   if (!isCorpusConfigured()) return handle;
-  const sql = getSql();
+  const sql = getSqlSafely();
   if (!sql) return handle;
 
   const insert = (async () => {
@@ -282,7 +317,7 @@ export async function recordOperationCompleted(
   outcome: CompletionOutcome
 ): Promise<void> {
   if (!isCorpusConfigured()) return;
-  const sql = getSql();
+  const sql = getSqlSafely();
   if (!sql) return;
 
   const modelIdForRow = outcome.modelId ?? handle.requestedModelId ?? null;
@@ -341,7 +376,7 @@ export async function findPresumedKilledOperations(
   thresholdMs: number
 ): Promise<PresumedKilledOperation[]> {
   if (!isCorpusConfigured()) return [];
-  const sql = getSql();
+  const sql = getSqlSafely();
   if (!sql) return [];
 
   const query = (async () => {
