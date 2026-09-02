@@ -62,21 +62,44 @@ function stubRacerQuestions(questions: string[]) {
   };
 }
 
+/**
+ * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with up to
+ * six deterministic, zero-provider classification turns before the model
+ * Racer is ever reached. Answers all five spine questions NO (-> the
+ * shortest path to Phase Two: Unclassified, no specificity question), then
+ * stubs and issues the one real call that both completes Phase One and
+ * produces the first model-driven question, matching this file's own
+ * "fresh game -> first racer turn" opener shape.
+ */
+async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
+  for (let i = 0; i < 4; i += 1) {
+    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
+    rev = result.data.game.revision;
+  }
+  const opener = stubRacerQuestions([openingQuestion]);
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  opener.restore();
+  return opening;
+}
+
 test("A. a stale human answer is rejected: zero mutation, zero Racer call, unaffected by the duplicate guard's presence", async () => {
   const gameId = await makeGame();
-  const stub = stubRacerQuestions(["Q1?", "Q2?"]);
+  const opening = await fastForwardPastPhaseOne(gameId, "Q1?");
+  const revisionAtQ1 = opening.data.game.revision;
+
+  const stub = stubRacerQuestions(["Q2?"]);
   try {
-    const opening = await callTurn(gameId);
-    const revisionAtQ1 = opening.data.game.revision;
     await callTurn(gameId, { answer: "YES", expected_revision: revisionAtQ1 }); // advances to Q2
-    assert.equal(stub.callCount(), 2);
+    assert.equal(stub.callCount(), 1);
 
     const before = await getGame(gameId);
     const stale = await callTurn(gameId, { answer: "NO", expected_revision: revisionAtQ1 }); // stale
 
     assert.equal(stale.status, 409);
     assert.equal(stale.data.error, "stale_turn");
-    assert.equal(stub.callCount(), 2, "the stale request must never reach the Racer");
+    assert.equal(stub.callCount(), 1, "the stale request must never reach the Racer");
 
     const after = await getGame(gameId);
     assert.deepEqual(after, before, "zero mutation from the stale request");
@@ -87,28 +110,29 @@ test("A. a stale human answer is rejected: zero mutation, zero Racer call, unaff
 
 test("B. an accepted answer followed by a duplicate Racer candidate: answer commits, duplicate is blocked, a non-duplicate replacement lands, revision stays coherent", async () => {
   const gameId = await makeGame();
+  const opening = await fastForwardPastPhaseOne(gameId, "Q1?");
+  assert.equal(opening.data.game.qa_log.at(-1).question_text, "Q1?");
+  const revisionAtQ1 = opening.data.game.revision;
+  const priorLength = (opening.data.game as { qa_log: unknown[] }).qa_log.length;
+
   // Q2 will be an exact duplicate of Q1 -- forces the guard to regenerate.
   // Q3 is the real, accepted replacement.
-  const stub = stubRacerQuestions(["Q1?", "Q1?", "Q3?"]);
+  const stub = stubRacerQuestions(["Q1?", "Q3?"]);
   try {
-    const opening = await callTurn(gameId);
-    assert.equal(opening.data.game.qa_log[0].question_text, "Q1?");
-    const revisionAtQ1 = opening.data.game.revision;
-
     const answered = await callTurn(gameId, { answer: "YES", expected_revision: revisionAtQ1 });
     assert.equal(answered.status, 200, "the human answer must commit correctly");
-    assert.equal(answered.data.game.qa_log[0].composer_response, "YES");
+    assert.equal(answered.data.game.qa_log.at(-2).composer_response, "YES");
     assert.equal(
       answered.data.game.qa_log.at(-1).question_text,
       "Q3?",
       "the duplicate candidate (Q1? again) must have been blocked and replaced"
     );
-    assert.equal(stub.callCount(), 3, "opening + blocked duplicate + accepted replacement");
+    assert.equal(stub.callCount(), 2, "blocked duplicate + accepted replacement");
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 2, "no phantom third entry from the blocked duplicate");
-    assert.equal(canonical!.qa_log[1]!.question_text, "Q3?");
-    assert.equal(canonical!.qa_log[1]!.composer_response, null);
+    assert.equal(canonical!.qa_log.length, priorLength + 1, "no phantom extra entry from the blocked duplicate");
+    assert.equal(canonical!.qa_log.at(-1)!.question_text, "Q3?");
+    assert.equal(canonical!.qa_log.at(-1)!.composer_response, null);
     assert.equal(
       canonical!.revision,
       answered.data.game.revision,

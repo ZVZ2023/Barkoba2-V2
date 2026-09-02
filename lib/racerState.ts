@@ -53,5 +53,9 @@ export function toRacerPublicState(game: GameRecord): RacerPublicState {
     // is — it is a property of how the Composer typed, not of the secret.
     game_language: game.game_language,
     transcript,
+    // V2.8.4 — set by the turn route once lib/phaseOne.ts's deterministic
+    // engine has locked a sandbox; this narrowing function has no access to
+    // that derivation (it only sees GameRecord) and always starts it null.
+    phase_one: null,
   };
 }

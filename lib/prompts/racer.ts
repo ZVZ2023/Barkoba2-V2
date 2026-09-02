@@ -394,6 +394,33 @@ function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
 }
 
 /**
+ * V2.8.4 — plain context from the deterministic Phase One engine
+ * (lib/phaseOne.ts), when it ran. Deliberately just a sentence: this is the
+ * SAME general-reasoning Racer as before, told one more fact up front — not
+ * a new decision tree per sandbox. Absent entirely (empty string) for any
+ * game Phase One did not classify, so RACER_PROMPT_VERSION's guarantee that
+ * every turn sees the identical strategy content is untouched; only the
+ * per-turn context varies, exactly as renderBudget/renderClues already do.
+ */
+function renderPhaseOne(state: RacerPublicState): string {
+  if (!state.phase_one) return "";
+  const { sandbox, specificity, mixed_spine_questions } = state.phase_one;
+  const specificityText =
+    specificity === "particular"
+      ? " (a particular instance, not a category)"
+      : specificity === "kind"
+        ? " (a kind/category, not one particular instance)"
+        : specificity === "mixed"
+          ? " (specificity unclear — treat as unresolved)"
+          : "";
+  const contested =
+    mixed_spine_questions.length > 0
+      ? ` The opening classification question(s) ${mixed_spine_questions.join(", ")} were answered IS-IS — treat that boundary as contested, not certain.`
+      : "";
+  return `Deterministic opening classification: ${sandbox}${specificityText}.${contested}`;
+}
+
+/**
  * Assemble the per-turn Racer message.
  *
  * PROVIDER-NEUTRAL BY CONSTRUCTION — note the signature: it takes no provider.
@@ -415,6 +442,8 @@ export function buildRacerTurnMessage(
     renderLanguage(state),
     "",
     renderBudget(state, forceFinal),
+    "",
+    renderPhaseOne(state),
     "",
     "Transcript so far:",
     renderTranscript(state),
