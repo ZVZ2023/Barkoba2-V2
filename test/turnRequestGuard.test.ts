@@ -518,3 +518,111 @@ test("reconciliationShowsProgress: an advanced revision alone (no visible qa_log
   const after = mergeViewIntoGame(before, view({ record_revision: 2 }));
   assert.equal(reconciliationShowsProgress(before, after), true);
 });
+
+// ---------------------------------------------------------------------------
+// CONFIRMED-DEFECT FIX — pending-question/pending-clue progress must be
+// RELATIVE to `before`, not an absolute fact about `after`. The bug: the
+// same still-unanswered question or clue, present in BOTH `before` and
+// `after` (the player's answer was lost in transit; nothing on the server
+// actually advanced), was reported as "progress" merely because something
+// was pending in `after` -- silently clearing the error over a lost answer.
+// ---------------------------------------------------------------------------
+
+test("REQUIRED 1: the SAME still-pending question (identical turn_index, unanswered in both, revision/log length/phase/question_count unchanged) is NOT progress", () => {
+  const before = game({
+    revision: 1,
+    question_count: 0,
+    phase: "questioning",
+    qa_log: [entry({ id: "q1", turn_index: 1, question_text: "Q1?", composer_response: null })],
+  });
+  const after = mergeViewIntoGame(
+    before,
+    view({
+      record_revision: 1,
+      question_count: 0,
+      phase: "questioning",
+      turns: [viewTurn({ turn_index: 1, question_text: "Q1?", composer_response: null })],
+    })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), false);
+});
+
+test("REQUIRED 2: runOwnedTurnRequest — a transport failure followed by /view showing the SAME still-pending question keeps the error visible, sets turnFailed, and does not automatically retry", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({
+    revision: 1,
+    qa_log: [entry({ id: "q1", turn_index: 1, question_text: "Q1?", composer_response: null })],
+  });
+  const { state, calls, getCurrentGame } = recordingState(g0);
+
+  let turnCalls = 0;
+  const io: TurnRequestIO = {
+    requestTurn: async () => {
+      turnCalls += 1;
+      throw new Error("network failure — the player's YES never reached the server");
+    },
+    requestView: async () => ({
+      ok: true,
+      view: view({
+        record_revision: 1,
+        turns: [viewTurn({ turn_index: 1, question_text: "Q1?", composer_response: null })],
+      }),
+    }),
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(turnCalls, 1, "no automatic /turn retry");
+  assert.equal(lastValueOf(calls, "setError"), NETWORK_ERROR_MESSAGE, "the network error must remain visible — the answer was lost, not accepted");
+  assert.equal(lastValueOf(calls, "setTurnFailed"), true, "turnFailed must be true so the explicit retry control is offered");
+  assert.equal(
+    getCurrentGame().qa_log[0]?.composer_response,
+    null,
+    "the answer must not be falsely represented as accepted"
+  );
+});
+
+test("REQUIRED 3: a NEW pending question (previously none pending) still counts as progress — saved-Q1 recovery keeps working", () => {
+  const before = game({ qa_log: [] }); // no pending question at all
+  const after = mergeViewIntoGame(before, view({ turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] }));
+  assert.equal(reconciliationShowsProgress(before, after), true);
+});
+
+test("REQUIRED 3b: end-to-end — a rejected /turn fetch still reconciles a genuinely NEW saved Q1 (Test B behavior preserved)", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ qa_log: [] });
+  const { state, getCurrentGame } = recordingState(g0);
+
+  const io: TurnRequestIO = {
+    requestTurn: async () => {
+      throw new Error("network failure");
+    },
+    requestView: async () => ({
+      ok: true,
+      view: view({ turns: [viewTurn({ turn_index: 1, question_text: "Newly saved Q1?" })] }),
+    }),
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(getCurrentGame().qa_log.length, 1);
+  assert.equal(getCurrentGame().qa_log[0]?.question_text, "Newly saved Q1?");
+});
+
+test("REQUIRED 4: the SAME still-pending clue request (identical turn_index, unresolved in both) is NOT progress", () => {
+  const before = game({ qa_log: [entry({ id: "clue1", turn_index: 1, turn_type: "clue", clue_text: null })] });
+  const after = mergeViewIntoGame(
+    before,
+    view({ turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: null })] })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), false);
+});
+
+test("REQUIRED 5: a NEWLY pending clue (previously none pending) counts as progress", () => {
+  const before = game({ qa_log: [] });
+  const after = mergeViewIntoGame(
+    before,
+    view({ turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: null })] })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), true);
+});

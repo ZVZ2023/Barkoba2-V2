@@ -234,25 +234,51 @@ export function mergeViewIntoGame(current: GameRecord, view: GameView): GameReco
   };
 }
 
+/** The pending (unanswered) question entry, or null — mirrors pendingClueRequest's shape. */
+function pendingQuestionEntry(game: GameRecord): QuestionLogEntry | null {
+  const last = game.qa_log[game.qa_log.length - 1];
+  if (last && last.turn_type === "question" && last.composer_response === null) return last;
+  return null;
+}
+
 /**
  * Did reconciliation actually show progress? True for any of S1's four
- * named signals: a pending question, a pending clue request, an advanced
- * qa_log, or an advanced phase — PLUS an advanced `revision` (the real
- * GameRecord.revision, now that mergeViewIntoGame applies it from
+ * named signals: a NEW pending question, a NEW pending clue request, an
+ * advanced qa_log, or an advanced phase — PLUS an advanced `revision` (the
+ * real GameRecord.revision, now that mergeViewIntoGame applies it from
  * `view.record_revision`; see the S1-review-follow-up doc on that
  * function). Checked explicitly rather than assumed-subsumed: a write that
  * bumps revision without changing qa_log length or phase is possible in
  * principle (a correction that replaces content without truncating the
  * log), and reconciliation should recognize it as progress too.
+ *
+ * CONFIRMED-DEFECT FIX — pending-question and pending-clue checks are
+ * RELATIVE to `before`, not absolute facts about `after`. The original
+ * absolute check ("is anything pending in `after`?") returned true even
+ * when the SAME still-unanswered question was pending in `before` too —
+ * exactly the case where the player's own answer was lost in transit and
+ * reconciliation must NOT silently clear the error, because nothing
+ * actually advanced. A pending item counts as progress only when its
+ * turn_index differs from whatever (if anything) was already pending at
+ * `before` — a genuinely new question or clue, not a stale echo of the one
+ * the player just tried and failed to answer.
  */
 export function reconciliationShowsProgress(before: GameRecord, after: GameRecord): boolean {
   if (after.revision > before.revision) return true;
   if (after.qa_log.length > before.qa_log.length) return true;
   if (after.phase !== before.phase) return true;
   if (after.question_count > before.question_count) return true;
-  const last = after.qa_log[after.qa_log.length - 1];
-  if (last && last.turn_type === "question" && last.composer_response === null) return true;
-  if (pendingClueRequest(after) !== null) return true;
+
+  const afterPendingQuestion = pendingQuestionEntry(after);
+  if (afterPendingQuestion && afterPendingQuestion.turn_index !== pendingQuestionEntry(before)?.turn_index) {
+    return true;
+  }
+
+  const afterPendingClue = pendingClueRequest(after);
+  if (afterPendingClue && afterPendingClue.turn_index !== pendingClueRequest(before)?.turn_index) {
+    return true;
+  }
+
   return false;
 }
 
