@@ -23,12 +23,25 @@ import type { GameLanguage, QuestionLogEntry } from "./types";
 //
 // SELF-BOUNDING BY TEXT MATCH. A Phase One entry is recognized by matching
 // its (static, localized) question_text against the exact next expected
-// question for the current state. The instant an entry doesn't match — a
-// different question, a non-"question" turn, or a model-authored turn
-// (model_id set) — Phase One reports itself "not applicable" (complete with
-// no sandbox) and every subsequent turn is untouched, unchanged Phase Two.
-// This makes the feature inert-by-construction for any game that did not
-// start inside it, with no explicit version/feature-flag check required.
+// question for the current state. If the LEADING run of entries doesn't
+// match — a different opening question, a non-"question" turn, or a
+// model-authored turn (model_id set) before Phase One ever locked a sandbox —
+// Phase One reports itself "not applicable" (complete with no sandbox) and
+// every turn is untouched, unchanged Phase Two. This makes the feature
+// inert-by-construction for any game that did not start inside it, with no
+// explicit version/feature-flag check required.
+//
+// COMPLETION FREEZES THE SUMMARY. The instant the deterministic prefix
+// completes (a sandbox locked with no specificity question, or its
+// specificity answered), derivation STOPS and returns that summary
+// immediately — it never inspects, matches against, or is invalidated by
+// anything qa_log holds afterward. Phase Two's own model-authored entries
+// come after this point on every game Phase One ever ran for, and the model
+// Racer's request depends on this same locked summary reaching it on EVERY
+// Phase Two turn, not only the handoff turn — so a model-authored entry must
+// never trip the "doesn't match" check above once Phase One is done; that
+// check exists only to bound the UNRECOGNIZED-prefix case (V2.8.4 language-
+// gate correction's sibling fix).
 //
 // HONEST PROVENANCE, NO INVENTED SENTINEL. A deterministic Phase One turn
 // leaves QuestionLogEntry.model_id / model_provider / prompt_version /
@@ -125,6 +138,14 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
   const mixedSpineQuestions: number[] = [];
   let spineIndex = 0; // 0-based index into `spine`, i.e. how many spine questions are already answered
 
+  const locked = (): PhaseOneState => ({
+    sandbox,
+    specificity,
+    mixedSpineQuestions,
+    complete: true,
+    nextQuestionText: null,
+  });
+
   for (const entry of qaLog) {
     if (entry.turn_type !== "question" || entry.model_id !== null) return NOT_APPLICABLE;
 
@@ -153,7 +174,12 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
         }
       } else {
         // Q5 — YES locks Abstract; NO or IS-IS both classify Unclassified.
+        // Neither has a specificity question, so Phase One is already done:
+        // freeze and return now, before any trailing Phase Two entry (which
+        // would fail the "question" / model_id === null check above) is ever
+        // looked at.
         sandbox = entry.composer_response === "YES" ? "abstract" : "unclassified";
+        return locked();
       }
       continue;
     }
@@ -165,12 +191,17 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
       }
       specificity =
         entry.composer_response === "YES" ? "particular" : entry.composer_response === "NO" ? "kind" : "mixed";
-      continue;
+      // The specificity answer is Phase One's last deterministic step —
+      // freeze and return now. Everything qa_log holds after this entry is
+      // Phase Two's, and must never be matched, reinterpreted, or allowed to
+      // invalidate this summary.
+      return locked();
     }
 
-    // Sandbox has no specificity question (abstract/unclassified) or
-    // specificity is already answered — Phase One's classification is
-    // final; anything further belongs to Phase Two.
+    // Unreachable in practice: the two branches above already return the
+    // instant Phase One completes, so no further loop iteration is ever
+    // reached with a locked, specificity-resolved sandbox. Kept as a
+    // structural safeguard, not a live path.
     return NOT_APPLICABLE;
   }
 
