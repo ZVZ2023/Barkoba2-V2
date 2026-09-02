@@ -137,6 +137,7 @@ function view(o: Partial<GameView> = {}): GameView {
     integrity_notes: null,
     revealed_target: null,
     revision: 0,
+    record_revision: 0,
     ...o,
   };
 }
@@ -467,11 +468,22 @@ test("mergeViewIntoGame preserves an existing turn's real id and GameRecord-only
   assert.equal(merged.qa_log[0]?.composer_response, "YES");
 });
 
-test("mergeViewIntoGame does not touch GameRecord.revision", () => {
-  const g = game({ revision: 7 });
-  const v = view({ turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] });
+test("mergeViewIntoGame applies the REAL GameRecord.revision from view.record_revision (S1 review fix)", () => {
+  // Confirmed defect, pre-fix: leaving the client's stale revision in place
+  // meant the player's very next answer was rejected as stale_turn on its
+  // first submit. See test/staleRevisionReconciliation.test.ts for the
+  // full real-server proof.
+  const g = game({ revision: 0 });
+  const v = view({ record_revision: 1, turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] });
   const merged = mergeViewIntoGame(g, v);
-  assert.equal(merged.revision, 7, "the V2.8.1 CAS revision must be left exactly as it was");
+  assert.equal(merged.revision, 1, "the true server-side revision must be adopted, not the stale client one");
+});
+
+test("mergeViewIntoGame never confuses view.revision (the H2H poll marker) with view.record_revision (the real CAS counter)", () => {
+  const g = game({ revision: 0 });
+  const v = view({ revision: 9999, record_revision: 3, turns: [] });
+  const merged = mergeViewIntoGame(g, v);
+  assert.equal(merged.revision, 3, "must come from record_revision, never from the derived poll marker");
 });
 
 test("reconciliationShowsProgress: a pending question is progress even with unchanged qa_log length after a resolved earlier turn is replaced", () => {
@@ -498,5 +510,11 @@ test("reconciliationShowsProgress: a pending clue request counts as progress", (
 test("reconciliationShowsProgress: an advanced phase alone counts as progress", () => {
   const before = game({ phase: "questioning" });
   const after = mergeViewIntoGame(before, view({ phase: "resolving" }));
+  assert.equal(reconciliationShowsProgress(before, after), true);
+});
+
+test("reconciliationShowsProgress: an advanced revision alone (no visible qa_log/phase change) counts as progress", () => {
+  const before = game({ revision: 1 });
+  const after = mergeViewIntoGame(before, view({ record_revision: 2 }));
   assert.equal(reconciliationShowsProgress(before, after), true);
 });

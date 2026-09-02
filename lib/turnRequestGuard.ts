@@ -193,16 +193,26 @@ function toQuestionLogEntry(turn: ViewTurn, existing: QuestionLogEntry | undefin
 /**
  * Merge a GET /view read into the last known-good GameRecord.
  *
- * DELIBERATELY DOES NOT TOUCH `revision`. GameView.revision (lib/gameView.ts's
- * `revisionOf`) is a DIFFERENT quantity from GameRecord.revision — a derived
- * qa_log-length/answered-count poll marker for Human↔Human, not the V2.8.1 My
- * Car Key CAS counter `expected_revision` is checked against. Carrying the
- * old GameRecord.revision forward unchanged is correct, not merely safe: if
- * it is now stale, the EXISTING, unmodified stale_turn path already replaces
- * it with the true value the moment any answer is next attempted, from the
- * canonical GameRecord the server returns on a 409. Inventing a value here
- * would risk it accidentally validating a request that should be rejected —
- * exactly the guarantee V2.8.1 exists to provide, which S1 must not weaken.
+ * S1 REVIEW FOLLOW-UP — CORRECTED. The original version of this function
+ * deliberately preserved the client's old `revision`, reasoning that the
+ * existing stale_turn path would self-correct on the next mutation attempt.
+ * A focused test proved that "self-correction" is not benign: it means the
+ * player's next answer is REJECTED (409 stale_turn) on its first submit, the
+ * server never records it, and GameClient's existing stale_turn handling
+ * does not resubmit automatically — the player must notice the question
+ * reappeared and answer AGAIN, and any typed IS-IS explanation is discarded
+ * in the meantime (see test/staleRevisionReconciliation.test.ts). CONFIRMED
+ * DEFECT, not confirmed-benign.
+ *
+ * The fix: GameView now carries `record_revision`, the ACTUAL
+ * GameRecord.revision (the V2.8.1 My Car Key CAS counter) — a field
+ * DISTINCT from `view.revision` (lib/gameView.ts's own derived
+ * qa_log-length/answered-count poll marker, load-bearing for Human↔Human's
+ * /hh/turn staleness check and never repurposed here). Applying the real
+ * value obtained from the SAME /view call already made during
+ * reconciliation — no second request — means the very next answer the
+ * player submits is accepted on its first try, exactly as if the original
+ * /turn response had reached the client successfully.
  */
 export function mergeViewIntoGame(current: GameRecord, view: GameView): GameRecord {
   const existingByIndex = new Map(current.qa_log.map((entry) => [entry.turn_index, entry]));
@@ -210,6 +220,7 @@ export function mergeViewIntoGame(current: GameRecord, view: GameView): GameReco
 
   return {
     ...current,
+    revision: view.record_revision,
     phase: view.phase as GamePhase,
     question_count: view.question_count,
     ambiguous_count: view.ambiguous_count,
@@ -226,12 +237,16 @@ export function mergeViewIntoGame(current: GameRecord, view: GameView): GameReco
 /**
  * Did reconciliation actually show progress? True for any of S1's four
  * named signals: a pending question, a pending clue request, an advanced
- * qa_log, or an advanced phase. (`GameView.revision` is not checked
- * separately — see mergeViewIntoGame's doc: lib/gameView.ts's `revisionOf`
- * formula is ENTIRELY derived from qa_log length, answered count, and phase,
- * so it cannot move without one of the checks below also being true.)
+ * qa_log, or an advanced phase — PLUS an advanced `revision` (the real
+ * GameRecord.revision, now that mergeViewIntoGame applies it from
+ * `view.record_revision`; see the S1-review-follow-up doc on that
+ * function). Checked explicitly rather than assumed-subsumed: a write that
+ * bumps revision without changing qa_log length or phase is possible in
+ * principle (a correction that replaces content without truncating the
+ * log), and reconciliation should recognize it as progress too.
  */
 export function reconciliationShowsProgress(before: GameRecord, after: GameRecord): boolean {
+  if (after.revision > before.revision) return true;
   if (after.qa_log.length > before.qa_log.length) return true;
   if (after.phase !== before.phase) return true;
   if (after.question_count > before.question_count) return true;

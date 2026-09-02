@@ -59,6 +59,23 @@ export interface GameView {
   revealed_target: string | null;
   /** Monotonic change marker so a poll can cheaply tell "anything new?". */
   revision: number;
+  /**
+   * S1 review follow-up — the ACTUAL GameRecord.revision (the V2.8.1 My Car
+   * Key CAS counter), distinct from `revision` above (this file's own
+   * derived qa_log-length/answered-count poll marker, load-bearing for
+   * Human↔Human's /hh/turn staleness check via HumanClient.tsx's
+   * `expected_revision: view.revision` — untouched, never repurposed).
+   *
+   * Exists so a client that reconciles through this route after a transport
+   * failure (see lib/turnRequestGuard.ts) can recover the TRUE revision
+   * rather than being stuck submitting a stale one and bouncing off /turn's
+   * stale_turn guard on every subsequent attempt. SAFE TO EXPOSE TO BOTH
+   * SEATS: it is a plain write counter, structurally the same class of
+   * information as `question_count`/`ambiguous_count` above (both already
+   * shared with both seats) — it carries no information about the secret
+   * target, only how many times the record has been written.
+   */
+  record_revision: number;
 }
 
 /**
@@ -162,6 +179,7 @@ export function buildGameView(game: GameRecord, seat: Seat): GameView {
     integrity_notes: game.integrity_notes,
     revealed_target: game.revealed_target,
     revision: revisionOf(game),
+    record_revision: game.revision,
   };
 }
 
