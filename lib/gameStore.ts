@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { getKV } from "./kv";
 import { env } from "./env";
 import { recordGameState } from "./corpus/gameCorpus";
+import { recordOperationStarted, recordOperationCompleted } from "./corpus/turnTelemetry";
 import type { GameRecord, QuestionLogEntry } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -224,9 +225,49 @@ export async function saveGameIfRevisionMatches(
     return { ok: false, revision: result.currentRevision };
   }
 
+  // S2 / RB-2 — measurement only. No retries, no timeout, no change to
+  // save/CAS semantics: the CAS write above has already landed by this
+  // point regardless of what follows. This wraps the SAME
+  // recordGameState() call with the same started/completed telemetry
+  // pattern lib/corpus/turnTelemetry.ts uses for provider attempts, purely
+  // to learn how long the corpus write-behind actually takes — which the S2
+  // discovery pass flagged as the one component in the post-provider-call
+  // path whose worst-case duration was previously unmeasured anywhere.
+  const lastTurnIndex =
+    record.qa_log.length > 0 ? record.qa_log[record.qa_log.length - 1]!.turn_index : null;
+  const telemetryStartedAt = Date.now();
+  const telemetryHandle = await recordOperationStarted({
+    gameId: record.game_id,
+    turnIndex: lastTurnIndex,
+    operationKind: "corpus_write",
+    attemptNumber: null,
+    provider: null,
+    modelId: null,
+  });
+
   try {
-    await recordGameState(record);
+    // S2 review fix — recordGameState() NEVER throws by design (its own
+    // module doc: "it never throws. A corpus failure must never break a
+    // game.") and reports what actually happened through its return value
+    // instead: 'disabled' | 'below_threshold' | 'written' | 'deferred'. The
+    // original version of this telemetry ignored that return value entirely
+    // and always recorded 'completed', which meant a 'deferred' write (one
+    // that did NOT land, and was queued for replay) was durably
+    // misrecorded as having succeeded. Recording the real outcome literally
+    // — corpus.turn_operations' status values mirror CorpusOutcome exactly —
+    // means this catch block is now for the genuinely unexpected case only.
+    const outcome = await recordGameState(record);
+    await recordOperationCompleted(telemetryHandle, {
+      status: outcome,
+      latencyMs: Date.now() - telemetryStartedAt,
+      errorClass: null,
+    });
   } catch (err) {
+    await recordOperationCompleted(telemetryHandle, {
+      status: "error",
+      latencyMs: Date.now() - telemetryStartedAt,
+      errorClass: "corpus_write_error",
+    });
     // eslint-disable-next-line no-console
     console.error("[barkoba] corpus hook raised unexpectedly (this is a defect):", err);
   }

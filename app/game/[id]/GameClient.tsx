@@ -4,6 +4,13 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { questionNumbers } from "@/lib/questionNumbers";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
+import {
+  createRequestOwnership,
+  runOwnedTurnRequest,
+  type RequestOwnership,
+  type TurnResponseBody,
+} from "@/lib/turnRequestGuard";
+import type { GameView } from "@/lib/gameView";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -103,6 +110,22 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   // the ref alone would turn one failure into a retry loop.
   const [turnFailed, setTurnFailed] = useState(false);
 
+  // S1 / RB-1 — request ownership. See lib/turnRequestGuard.ts. One tracker
+  // for the life of this screen; only the most recently begun sendTurn() may
+  // mutate game/error/busy/turnFailed/ambiguousMode/explanation or the
+  // auto-turn guard below.
+  const requestOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!requestOwnershipRef.current) {
+    requestOwnershipRef.current = createRequestOwnership();
+  }
+  // Always the latest `game` — read by a reconciliation that may run after
+  // this closure's own `game` has gone stale (a newer request may already
+  // have updated it while this one was still failing).
+  const gameRef = useRef(game);
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
   const clueWanted = pendingClueRequest(game);
@@ -128,79 +151,64 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
     }
   }, [clueText, game.game_id]);
 
+  // S1 / RB-1 — the actual GameClient.sendTurn() defect and its fix are
+  // documented in lib/turnRequestGuard.ts's module doc. This function is now
+  // a thin transport/state adapter: request ownership (so a superseded
+  // request's late success/failure/finally can never overwrite what a newer
+  // one already established) and canonical-truth reconciliation on a
+  // transport failure (one GET /view read, never a second /turn call) both
+  // live in that pure, directly-tested module — see
+  // test/turnRequestGuard.test.ts.
   const sendTurn = useCallback(
     async (answer?: ComposerAnswer, ambiguousExplanation?: string) => {
-      setBusy(true);
-      setError(null);
-      try {
-        const res = await fetch(`/api/game/${game.game_id}/turn`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            answer
-              ? {
-                  answer,
-                  ambiguous_explanation: ambiguousExplanation,
-                  // V2.8.1 — the My Car Key integrity hotfix. Binds this
-                  // answer to the exact state this screen was showing, so a
-                  // stale retry can never land on a question the human never
-                  // saw. See lib/types.ts's GameRecord.revision.
-                  expected_revision: game.revision,
-                }
-              : {}
-          ),
-        });
-        const data = await res.json();
-
-        // Server truth first, on success AND on failure. Every error path in
-        // /turn returns the record with the human's answer already recorded, so
-        // a correction or an answer is never lost by a failed generation.
-        if (data.game) {
-          setGame(data.game as GameRecord);
-        }
-        if (!res.ok) {
-          if (data.error === "stale_turn") {
-            // V2.8.1 — a synchronization event, not a gameplay failure: the
-            // game already moved on (setGame above just reconciled this
-            // screen to the real current question). The stale answer was
-            // never applied to anything — do not say it was, and do not
-            // treat this like a failure the human needs to retry, since
-            // retrying the SAME stale answer would only be rejected again.
-            // The now-current question is already on screen; they answer
-            // that one normally. autoTurnFor.current is deliberately left
-            // as-is: it is keyed on qa_log.length, and the fresh `game` this
-            // reconciled to has a different length than what the ref holds,
-            // so the auto-turn effect already fires correctly without
-            // needing to clear anything — unlike the two failure paths
-            // below, where the length does NOT change on failure.
-            setError(null);
-            setTurnFailed(false);
-          } else {
-            setError(data.message || "Valami hiba történt.");
+      await runOwnedTurnRequest(
+        requestOwnershipRef.current as RequestOwnership,
+        {
+          requestTurn: async () => {
+            const res = await fetch(`/api/game/${game.game_id}/turn`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(
+                answer
+                  ? {
+                      answer,
+                      ambiguous_explanation: ambiguousExplanation,
+                      // V2.8.1 — the My Car Key integrity hotfix. Binds this
+                      // answer to the exact state this screen was showing, so a
+                      // stale retry can never land on a question the human never
+                      // saw. See lib/types.ts's GameRecord.revision.
+                      expected_revision: game.revision,
+                    }
+                  : {}
+              ),
+            });
+            const data = (await res.json()) as TurnResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const body = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: body.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame: (next) => setGame(next),
+          setError,
+          setTurnFailed,
+          setBusy,
+          setAmbiguousMode,
+          setExplanation,
+          clearAutoTurnGuard: () => {
             // V2.5-B4. Both halves matter and neither works alone:
             //   the ref is cleared so a stale qa_log length can never wedge the
             //   game again — the GROK-03 stall;
             //   turnFailed suspends the automatic path so clearing the ref does
             //   not turn one failure into a loop against a failing provider.
             autoTurnFor.current = null;
-            setTurnFailed(true);
-          }
-        } else {
-          setTurnFailed(false);
+          },
         }
-      } catch {
-        // Network failure, or the browser aborting an in-flight request when
-        // the app was backgrounded — GROK-02. No response, so game state is
-        // left exactly as it was; the server may well have completed the turn,
-        // and the retry re-reads whatever actually happened.
-        setError("Hálózati hiba — próbáld újra.");
-        autoTurnFor.current = null;
-        setTurnFailed(true);
-      } finally {
-        setBusy(false);
-        setAmbiguousMode(false);
-        setExplanation("");
-      }
+      );
     },
     [game.game_id, game.revision]
   );

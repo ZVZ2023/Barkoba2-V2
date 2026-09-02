@@ -76,6 +76,26 @@ export interface ToolCallRequest {
    * has nothing to do with `temperature`.
    */
   reasoningEffort?: string;
+  /**
+   * S2 / RB-2 — a LOCAL deadline only. When provided, an adapter must pass
+   * this straight to its own transport's abort mechanism (fetch's `signal`
+   * option) so Barkóba stops waiting once the caller's shared provider
+   * budget (lib/turnBudget.ts) runs out.
+   *
+   * THIS DOES NOT CANCEL THE REMOTE PROVIDER'S INFERENCE, AND MUST NEVER BE
+   * DESCRIBED AS DOING SO. Aborting a fetch closes Barkóba's own connection;
+   * whether xAI or Anthropic actually stop computing, or whether the call is
+   * still billed, is unconfirmed by either provider's public documentation
+   * as of the S2 read-only discovery pass. An adapter may only USE this to
+   * stop waiting locally — it must not claim, log, or imply cancellation
+   * upstream.
+   *
+   * UNSET MEANS UNCHANGED, exactly like `reasoningEffort`: an adapter must
+   * only pass `signal` to its transport when this is defined, so a caller
+   * that never sets it (every existing script and test) gets a
+   * byte-identical request to what production sent before S2.
+   */
+  signal?: AbortSignal;
 }
 
 export interface ToolCallResult<T> {

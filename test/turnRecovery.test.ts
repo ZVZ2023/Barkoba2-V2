@@ -150,24 +150,36 @@ test("no turn retry control on a resolving game — ResultPanel owns that retry"
 
 const CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
 
+// S1 / RB-1 — sendTurn() is now a thin transport/state adapter; the failure
+// handling these two tests protect (clearing the auto-turn guard on both
+// failure paths, and applying server state before checking res.ok) moved
+// with it into lib/turnRequestGuard.ts's runOwnedTurnRequest, exactly the
+// same "decision lives in a pure module, not asserted about source text"
+// move this file's own header already made for shouldAutoRequestTurn. See
+// test/turnRequestGuard.test.ts for the behavioral (not source-text)
+// coverage of this — these two are kept as a cheap tripwire that the logic
+// has not silently moved somewhere ungoverned.
+const TURN_REQUEST_GUARD = readFileSync("lib/turnRequestGuard.ts", "utf8");
+
 test("the client clears the guard on BOTH failure paths", () => {
   // Response-level failure (502 racer_unavailable, 429, 409) and transport
-  // failure (network drop, backgrounded tab) are different code paths and the
-  // original bug was that neither reset anything.
-  const sendTurn = CLIENT.slice(
-    CLIENT.indexOf("const sendTurn = useCallback"),
-    CLIENT.indexOf("const retryTurn = useCallback")
-  );
-  assert.ok(sendTurn.length > 0, "could not isolate sendTurn");
+  // failure (network drop, backgrounded tab, unusable body) are different
+  // code paths and the original bug was that neither reset anything.
+  const guardCalls = TURN_REQUEST_GUARD.match(/state\.clearAutoTurnGuard\(\)/g) ?? [];
+  assert.equal(guardCalls.length, 2, "the guard must be cleared on the response failure AND the reconciliation-exhausted path");
   assert.equal(
-    (sendTurn.match(/autoTurnFor\.current = null/g) ?? []).length,
-    2,
-    "the guard must be cleared on !res.ok AND in catch"
-  );
-  assert.equal(
-    (sendTurn.match(/setTurnFailed\(true\)/g) ?? []).length,
+    (TURN_REQUEST_GUARD.match(/state\.setTurnFailed\(true\)/g) ?? []).length,
     2,
     "both failure paths must record the failure"
+  );
+  // The ref itself necessarily stays component-local state (only the DECISION
+  // of when to clear it moved); GameClient.tsx must expose exactly the one
+  // clearAutoTurnGuard callback wiring it up, not a second inline copy of the
+  // decision alongside it.
+  assert.equal(
+    (CLIENT.match(/autoTurnFor\.current = null/g) ?? []).length,
+    2,
+    "exactly clearAutoTurnGuard's own wiring plus retryTurn's human-initiated reset — no reintroduced inline failure-path copy"
   );
 });
 
@@ -175,13 +187,23 @@ test("the client preserves server state on a failed turn", () => {
   // Every /turn error path returns the record with the human's answer already
   // recorded. Setting it before checking res.ok is what stops a failed
   // generation from discarding an answer or a correction.
+  const setGameAt = TURN_REQUEST_GUARD.indexOf("state.setGame(data.game as GameRecord)");
+  const checkAt = TURN_REQUEST_GUARD.indexOf("if (!result.ok)");
+  assert.ok(setGameAt > 0 && checkAt > setGameAt, "state must be applied before the error check");
+});
+
+test("S1: sendTurn() delegates to the ownership-guarded orchestrator rather than re-implementing it inline", () => {
+  assert.match(CLIENT, /runOwnedTurnRequest\(/);
+  assert.match(CLIENT, /createRequestOwnership/);
+  // The bug this closes: no code path in GameClient.tsx may set game/error/
+  // turnFailed/busy directly from within sendTurn's own try/catch/finally
+  // any more -- that is now runOwnedTurnRequest's job, via the `state`
+  // adapter object, which is exactly what makes ownership enforceable.
   const sendTurn = CLIENT.slice(
     CLIENT.indexOf("const sendTurn = useCallback"),
     CLIENT.indexOf("const retryTurn = useCallback")
   );
-  const setGameAt = sendTurn.indexOf("setGame(data.game as GameRecord)");
-  const checkAt = sendTurn.indexOf("if (!res.ok)");
-  assert.ok(setGameAt > 0 && checkAt > setGameAt, "state must be applied before the error check");
+  assert.doesNotMatch(sendTurn, /^\s*setGame\(/m, "setGame must not be called directly inside sendTurn any more");
 });
 
 test("only the human clears turnFailed on the failing path", () => {

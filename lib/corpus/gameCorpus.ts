@@ -171,6 +171,15 @@ interface TurnRow {
   prompt_version: string | null;
   answered_at: string | null;
   pre_revision_question_text: string | null;
+  /**
+   * S2 / RB-2 review fix — mirrors QuestionLogEntry.latency_ms, the ONE
+   * measurement route.ts already takes for the provider attempt that
+   * produced this turn (never a second, independent measurement here).
+   * INSERT-ONLY, matching model_id/prompt_version's own treatment just
+   * above: known when the row is created, and reject_finalized_turn_mutation
+   * (0002) would raise on a later attempt to change it anyway.
+   */
+  latency_ms: number | null;
 }
 
 function toTurnRow(
@@ -220,6 +229,7 @@ function toTurnRow(
     prompt_version: entry.prompt_version ?? null,
     answered_at: entry.answered_at ?? null,
     pre_revision_question_text: entry.pre_revision_question_text ?? null,
+    latency_ms: entry.latency_ms ?? null,
   };
 }
 
@@ -389,7 +399,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         guess_intent_outcome, original_question_text, edit_status, edit_reason,
         raw_output, occurred_at,
         model_id, model_provider, prompt_version, answered_at,
-        pre_revision_question_text
+        pre_revision_question_text, latency_ms
       )
       SELECT
         t.turn_id,
@@ -401,7 +411,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         t.guess_intent_outcome, t.original_question_text, t.edit_status, t.edit_reason,
         t.raw_output, t.occurred_at,
         t.model_id, t.model_provider, t.prompt_version, t.answered_at,
-        t.pre_revision_question_text
+        t.pre_revision_question_text, t.latency_ms
       FROM jsonb_to_recordset(${JSON.stringify(turns)}::jsonb) AS t(
         turn_id uuid, turn_index integer, branch text, branch_seq integer,
         turn_type text, actor text,
@@ -411,7 +421,8 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
         original_question_text text, edit_status text, edit_reason text,
         raw_output jsonb, occurred_at timestamptz,
         model_id text, model_provider text, prompt_version text,
-        answered_at timestamptz, pre_revision_question_text text
+        answered_at timestamptz, pre_revision_question_text text,
+        latency_ms integer
       )
       -- ---------------------------------------------------------------------
       -- V2.5-B5: TWO KINDS OF COLUMN, AND THE DIFFERENCE IS WHEN THE VALUE IS
