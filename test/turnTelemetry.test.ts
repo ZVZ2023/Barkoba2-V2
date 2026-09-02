@@ -117,14 +117,27 @@ for (const status of ["accepted", "duplicate_rejected", "provider_error", "self_
     assert.equal(calls.length, 1);
     assert.match(calls[0]!.sql, /UPDATE corpus\.turn_operations/);
     assert.match(calls[0]!.sql, /WHERE operation_id/);
+    assert.match(calls[0]!.sql, /model_id = COALESCE/, "model_id must only be overwritten when a value is given");
     assert.deepEqual(calls[0]!.values, [
       status,
       4321,
       status === "provider_error" || status === "self_timeout" ? status : null,
+      null, // modelId omitted -- COALESCE(null, model_id) leaves the existing value untouched
       "op-1",
     ]);
   });
 }
+
+test("REQUIRED (model tracking): recordOperationCompleted overwrites model_id only when one is explicitly given (a successful attempt's resolved model)", async () => {
+  await recordOperationCompleted({
+    operationId: "op-1",
+    status: "accepted",
+    latencyMs: 100,
+    errorClass: null,
+    modelId: "grok-4.20-0309-reasoning",
+  });
+  assert.deepEqual(calls[0]!.values, ["accepted", 100, null, "grok-4.20-0309-reasoning", "op-1"]);
+});
 
 // --- REQUIRED 12: telemetry failure never blocks gameplay -------------------
 

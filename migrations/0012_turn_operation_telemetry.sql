@@ -25,6 +25,24 @@
 -- findPresumedKilledOperations.
 -- ---------------------------------------------------------------------------
 
+-- ---------------------------------------------------------------------------
+-- S2 / RB-2 review fix — corpus.game_turns.latency_ms.
+--
+-- The accepted provider attempt's measured duration (QuestionLogEntry.
+-- latency_ms, set once in app/api/game/[id]/turn/route.ts from the SAME
+-- measurement corpus.turn_operations records for every attempt) is mirrored
+-- here so direct turn-level analysis reads it as a column alongside the
+-- question/target/quality data already on this row, rather than requiring a
+-- join against turn_operations for the one turn that won. INSERT-ONLY, same
+-- as model_id/prompt_version above it in lib/corpus/gameCorpus.ts's
+-- toTurnRow() — reject_finalized_turn_mutation (0002) already prevents any
+-- later UPDATE from changing it. Null for every turn recorded before this
+-- column existed, and null forever on those turns, matching how model_id
+-- itself was introduced in migration 0005.
+-- ---------------------------------------------------------------------------
+ALTER TABLE corpus.game_turns
+  ADD COLUMN IF NOT EXISTS latency_ms integer;
+
 CREATE TABLE IF NOT EXISTS corpus.turn_operations (
   operation_id     uuid PRIMARY KEY DEFAULT gen_random_uuid(),
 
@@ -65,10 +83,22 @@ CREATE TABLE IF NOT EXISTS corpus.turn_operations (
   CONSTRAINT turn_operations_kind_known CHECK (
     operation_kind IN ('provider_attempt', 'corpus_write')
   ),
+  -- 'written' / 'deferred' / 'disabled' / 'below_threshold' mirror
+  -- lib/corpus/gameCorpus.ts's own CorpusOutcome literally, for
+  -- operation_kind = 'corpus_write' — see the S2 review fix on
+  -- recordGameState()'s return value in lib/gameStore.ts.
+  -- 'shared_budget_exhausted' is for operation_kind = 'provider_attempt': a
+  -- call abandoned before it started because the PER-INVOCATION shared
+  -- provider-time deadline (lib/turnBudget.ts) ran out during the
+  -- pre-provider work, distinct from 'self_timeout' (the call itself started
+  -- and was then aborted). Deliberately not named 'budget_exhausted' — that
+  -- string is already the existing client-facing error code for the
+  -- unrelated global daily racer-call ceiling (lib/callBudget.ts).
   CONSTRAINT turn_operations_status_known CHECK (
     status IN (
       'started', 'accepted', 'duplicate_rejected', 'provider_error',
-      'self_timeout', 'presumed_killed', 'completed', 'error'
+      'self_timeout', 'shared_budget_exhausted', 'presumed_killed',
+      'written', 'deferred', 'disabled', 'below_threshold', 'error'
     )
   ),
   CONSTRAINT turn_operations_attempt_number_range CHECK (

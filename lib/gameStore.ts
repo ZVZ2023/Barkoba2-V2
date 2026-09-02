@@ -246,11 +246,21 @@ export async function saveGameIfRevisionMatches(
   });
 
   try {
-    await recordGameState(record);
+    // S2 review fix — recordGameState() NEVER throws by design (its own
+    // module doc: "it never throws. A corpus failure must never break a
+    // game.") and reports what actually happened through its return value
+    // instead: 'disabled' | 'below_threshold' | 'written' | 'deferred'. The
+    // original version of this telemetry ignored that return value entirely
+    // and always recorded 'completed', which meant a 'deferred' write (one
+    // that did NOT land, and was queued for replay) was durably
+    // misrecorded as having succeeded. Recording the real outcome literally
+    // — corpus.turn_operations' status values mirror CorpusOutcome exactly —
+    // means this catch block is now for the genuinely unexpected case only.
+    const outcome = await recordGameState(record);
     if (operationId) {
       await recordOperationCompleted({
         operationId,
-        status: "completed",
+        status: outcome,
         latencyMs: Date.now() - telemetryStartedAt,
         errorClass: null,
       });

@@ -504,7 +504,10 @@ function assertGuidanceApplied(content: string): void {
  * comes from the game record, the model id from the environment. No request may
  * state either, exactly as no request may state a Play Credit price.
  */
-function racerModelFor(provider: ModelProviderId): string {
+// S2 / RB-2 review fix — exported so route.ts can record the REQUESTED model
+// in turn-operation telemetry before the call, without duplicating this
+// resolution logic a second time. Behavior unchanged; only visibility widened.
+export function racerModelFor(provider: ModelProviderId): string {
   return provider === "xai" ? env.xaiModelRacer() : env.modelRacer();
 }
 
