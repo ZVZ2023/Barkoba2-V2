@@ -153,6 +153,9 @@ export const xaiAdapter: ProviderAdapter = {
         Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify(body),
+      // S2 / RB-2 — local deadline only; see ToolCallRequest.signal's own doc
+      // for what this does and does not claim about xAI's remote inference.
+      ...(request.signal !== undefined ? { signal: request.signal } : {}),
     });
 
     if (!response.ok) {

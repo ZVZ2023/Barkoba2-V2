@@ -78,6 +78,13 @@ interface AnthropicToolCallParams {
    * anywhere; recording the weaker of the two would have been a half-fix.
    */
   onModelResolved?: (modelId: string) => void;
+  /**
+   * S2 / RB-2 — see ToolCallRequest.signal's own doc for the exact contract:
+   * a local deadline only, never a claim about Anthropic's remote inference
+   * or its billing. Passed straight to fetch() when defined; unset means
+   * every request built before S2 is byte-identical.
+   */
+  signal?: AbortSignal;
 }
 
 /** Every call this wrapper makes goes to Anthropic. One constant, one source. */
@@ -146,6 +153,8 @@ export async function callAnthropicTool<T>(
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify(body),
+      // S2 / RB-2 — local deadline only; see AnthropicToolCallParams.signal.
+      ...(params.signal !== undefined ? { signal: params.signal } : {}),
     });
   };
 

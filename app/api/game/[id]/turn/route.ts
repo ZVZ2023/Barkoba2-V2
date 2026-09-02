@@ -12,8 +12,19 @@ import { runRacerTurn, resolveGuessIntent } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
 import type { ModelProviderId } from "@/lib/providers/types";
 import { detectGuess } from "@/lib/guessDetector";
-import { priorAskedQuestions, runWithDuplicateQuestionGuard } from "@/lib/duplicateQuestionGuard";
+import {
+  priorAskedQuestions,
+  runWithDuplicateQuestionGuard,
+  isDuplicateQuestion,
+} from "@/lib/duplicateQuestionGuard";
 import { consumeModelCall } from "@/lib/callBudget";
+import {
+  TURN_BUDGET_CONFIG,
+  decideAttemptBudget,
+  runWithAbortTimeout,
+  isLocalTimeoutError,
+} from "@/lib/turnBudget";
+import { recordOperationStarted, recordOperationCompleted } from "@/lib/corpus/turnTelemetry";
 import { env } from "@/lib/env";
 import type {
   ComposerAnswer,
@@ -28,20 +39,37 @@ import type {
 // This route deliberately imports neither lib/secretStore.ts nor anything that
 // does. It runs the entire question loop on public state alone.
 
-export const maxDuration = 60;
+// S2 / RB-2 — 270, a LITERAL, not a reference to another constant. Next.js's
+// route-segment-config analyzer looks for `export const maxDuration = <number
+// literal>` specifically; a computed or imported value here is not guaranteed
+// to be picked up by the Vercel build step, so this MUST stay a bare number.
+// See lib/turnBudget.ts's module doc for the read-only S2 discovery evidence
+// this value is chosen from: Vercel's actual Hobby-plan ceiling is 300s (this
+// repo's team plan, confirmed against Vercel's own current docs), well above
+// the pre-S2 self-imposed 60s. Ordering requirement, pinned by
+// test/turnBudget.test.ts: the shared provider deadline (lib/turnBudget.ts,
+// 240s) < maxDuration (270s) < TURN_LOCK_TTL_SECONDS (300s) below — 30s of
+// margin after the shared deadline for duplicate-checking, the revision-CAS
+// save, telemetry, and response construction; then 30s more before the lock
+// itself can be re-acquired by a legitimate retry.
+export const maxDuration = 270;
 
-// V2.8.1 — the My Car Key integrity hotfix. The turn lock's TTL matches
-// maxDuration exactly: it must never expire before a legitimate in-flight
-// request could still be genuinely running (that would let a second request
-// in prematurely and defeat the whole point), and there is no reason for it
-// to outlive that. If the Racer call times out, the platform kills this
-// function before it reaches its own `finally` release — the lock then
-// simply expires on its own TTL, at most `TURN_LOCK_TTL_SECONDS` after
-// acquisition, no worse than the request itself would have taken. A later
+// V2.8.1 — the My Car Key integrity hotfix's turn lock.
+//
+// S2 / RB-2 — NO LONGER TIED TO maxDuration. Before S2 this was
+// `= maxDuration` (both 60), which is exactly what the S2 discovery pass
+// flagged as unsafe once real attempts could run close to a multi-hundred-
+// second budget: the lock could expire while a legitimate call was still in
+// flight, letting a retry acquire it and start a SECOND concurrent Racer
+// call for the same turn. 300 is deliberately > maxDuration (270), so the
+// lock cannot expire before the platform itself would have already killed
+// the function holding it. If the Racer call times out, the platform kills
+// this function before it reaches its own `finally` release — the lock then
+// simply expires on its own TTL, at most 300s after acquisition. A later
 // retry sees "busy, try again shortly" for up to that long rather than ever
 // risking a stale answer landing on the wrong question — see
 // docs/DESIGN-NOTES.md for the incident this closes.
-const TURN_LOCK_TTL_SECONDS = maxDuration;
+const TURN_LOCK_TTL_SECONDS = 300;
 
 // V2.8.2 — the exact-duplicate question pre-emission guard. A "small bounded
 // retry cap" per the intervention ticket: 1 initial attempt plus 2
@@ -138,6 +166,17 @@ interface RacerAttempt {
   flagged: boolean;
   intentOutcome: GuessIntentOutcome | null;
   preRevisionQuestion: string | null;
+  /**
+   * S2 / RB-2 — the durable telemetry row for THIS attempt's provider call,
+   * or null if telemetry was unconfigured/failed (fail-open; see
+   * lib/corpus/turnTelemetry.ts). Carried out of runOneRacerAttempt because
+   * only the CALLER (POST's produceCandidate closure) knows the
+   * duplicate-guard's verdict — accepted vs duplicate_rejected — which this
+   * id is used to finalize.
+   */
+  telemetryOperationId: string | null;
+  /** Wall-clock time of the runRacerTurn() call alone, in ms. */
+  attemptLatencyMs: number;
 }
 
 type RacerAttemptOutcome =
@@ -160,6 +199,14 @@ type RacerAttemptOutcome =
  * fixed once when the lock was confirmed; `gameId` is only needed for the
  * re-fetch-on-mismatch defensive log path, matching every other save site
  * in this route.
+ *
+ * S2 / RB-2 — `providerDeadlineAt` is the ONE absolute deadline (epoch ms)
+ * fixed at route entry for the whole invocation's provider time, shared
+ * across every attempt the duplicate-guard makes; `attemptNumber` is this
+ * attempt's 1-based position in that loop, for telemetry only. See
+ * lib/turnBudget.ts for why an absolute deadline (rather than a per-attempt
+ * duration) is what makes time already spent by earlier attempts count
+ * automatically.
  */
 async function runOneRacerAttempt(
   game: GameRecord,
@@ -167,8 +214,44 @@ async function runOneRacerAttempt(
   forceFinal: boolean,
   racerProvider: ModelProviderId,
   gameId: string,
-  revisionAtLockTime: number
+  revisionAtLockTime: number,
+  providerDeadlineAt: number,
+  attemptNumber: number
 ): Promise<RacerAttemptOutcome> {
+  // S2 / RB-2 — the shared provider-time budget gate. Checked before EVERY
+  // attempt, including the first, per the ordering requirement:
+  // sharedProviderDeadline < maxDuration < TURN_LOCK_TTL_SECONDS. If there is
+  // not enough shared time left to be worth starting a call, this attempt
+  // never touches the daily spend ceiling or the model at all — it fails
+  // exactly like every other attempt-level failure below: the answer (if
+  // any) is preserved, and the response is the SAME recoverable
+  // racer_unavailable 502 the duplicate-guard's own exhaustion path already
+  // returns. No new client-facing error type.
+  const budgetDecision = decideAttemptBudget(providerDeadlineAt, Date.now());
+  if (!budgetDecision.allowed) {
+    const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+    if (!saved.ok) {
+      // eslint-disable-next-line no-console
+      console.error(
+        `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId})`
+      );
+      const canonical = await getGame(gameId);
+      return { ok: false, response: staleTurn(canonical ?? game) };
+    }
+    game.revision = saved.revision;
+    return {
+      ok: false,
+      response: NextResponse.json(
+        {
+          error: "racer_unavailable",
+          message: "Az ellenfeled most nem tudott lépni. Próbáld újra.",
+          game,
+        },
+        { status: 502 }
+      ),
+    };
+  }
+
   // Step 2 — global spend ceiling. Checked before every model call, fails closed.
   const budget = await consumeModelCall("racer");
   if (!budget.allowed) {
@@ -198,18 +281,57 @@ async function runOneRacerAttempt(
   }
 
   // Step 3 — the Racer's turn, on narrowed public state only.
+  //
+  // S2 / RB-2 — bounded locally to budgetDecision.allowanceMs
+  // (min(150s, whatever remains of the shared 240s deadline)) via
+  // AbortController, and telemetered start-to-finish. The abort is a LOCAL
+  // deadline only: it stops Barkóba from waiting, and must never be read as
+  // stopping the remote provider's inference or its billing — see
+  // lib/providers/types.ts's ToolCallRequest.signal doc.
   let turn: RacerTurnOutput;
   let provenance: ModelProvenance;
+  const telemetryOperationId = await recordOperationStarted({
+    gameId,
+    turnIndex: game.qa_log.length + 1,
+    operationKind: "provider_attempt",
+    attemptNumber,
+    provider: racerProvider,
+    modelId: null,
+  });
+  const attemptStartedAt = Date.now();
+  let attemptLatencyMs = 0;
   try {
-    const racerResult = await runRacerTurn(racerState, {
-      forceFinal,
-      provider: racerProvider,
-    });
+    const racerResult = await runWithAbortTimeout(budgetDecision.allowanceMs, (signal) =>
+      runRacerTurn(racerState, {
+        forceFinal,
+        provider: racerProvider,
+        signal,
+      })
+    );
     turn = racerResult.output;
     provenance = racerResult.provenance;
+    attemptLatencyMs = Date.now() - attemptStartedAt;
+    // NOT finalized here: whether this lands as "accepted" or
+    // "duplicate_rejected" is the duplicate-guard's verdict, which only the
+    // caller (POST's produceCandidate closure) knows. telemetryOperationId
+    // and attemptLatencyMs travel with the returned attempt for exactly
+    // that purpose — see the RacerAttempt field docs.
   } catch (err) {
+    attemptLatencyMs = Date.now() - attemptStartedAt;
+    const localTimeout = isLocalTimeoutError(err);
     // eslint-disable-next-line no-console
-    console.error("[barkoba] Racer call failed:", err);
+    console.error(
+      `[barkoba] Racer call failed${localTimeout ? " (local timeout — Barkóba stopped waiting; the remote call may still be running)" : ""}:`,
+      err
+    );
+    if (telemetryOperationId) {
+      await recordOperationCompleted({
+        operationId: telemetryOperationId,
+        status: localTimeout ? "self_timeout" : "provider_error",
+        latencyMs: attemptLatencyMs,
+        errorClass: localTimeout ? "self_timeout" : "provider_error",
+      });
+    }
     const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime); // preserve the recorded answer
     if (!saved.ok) {
       // eslint-disable-next-line no-console
@@ -295,7 +417,15 @@ async function runOneRacerAttempt(
 
   return {
     ok: true,
-    attempt: { turn, provenance, flagged, intentOutcome, preRevisionQuestion },
+    attempt: {
+      turn,
+      provenance,
+      flagged,
+      intentOutcome,
+      preRevisionQuestion,
+      telemetryOperationId,
+      attemptLatencyMs,
+    },
   };
 }
 
@@ -303,6 +433,13 @@ export async function POST(
   req: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  // S2 / RB-2 — established ONCE, at route entry, before anything else: the
+  // one absolute deadline every provider attempt in this invocation shares.
+  // See lib/turnBudget.ts's module doc for why an absolute timestamp (not a
+  // remaining-duration counter) is what makes time already spent by earlier
+  // attempts and intervening work count automatically.
+  const providerDeadlineAt = Date.now() + TURN_BUDGET_CONFIG.sharedDeadlineMs;
+
   const gameId = params.id;
 
   const game = await getGame(gameId);
@@ -559,19 +696,48 @@ export async function POST(
     // -------------------------------------------------------------------------
     const priorQuestions = priorAskedQuestions(game.qa_log);
 
+    // S2 / RB-2 — 1-based position within this loop, for telemetry only.
+    // MAX_DUPLICATE_QUESTION_ATTEMPTS stays 3; this does not change how many
+    // attempts the guard may make, only how much shared provider time each
+    // one may draw on (runOneRacerAttempt's own budget gate).
+    let attemptNumber = 0;
+
     const guardResult = await runWithDuplicateQuestionGuard<RacerAttempt, NextResponse>(
       priorQuestions,
       MAX_DUPLICATE_QUESTION_ATTEMPTS,
       async () => {
+        attemptNumber += 1;
         const outcome = await runOneRacerAttempt(
           game,
           racerState,
           forceFinal,
           racerProvider,
           gameId,
-          revisionAtLockTime
+          revisionAtLockTime,
+          providerDeadlineAt,
+          attemptNumber
         );
-        return outcome.ok ? { ok: true, candidate: outcome.attempt } : { ok: false, failure: outcome.response };
+        if (!outcome.ok) return { ok: false, failure: outcome.response };
+
+        // S2 / RB-2 — finalize THIS attempt's telemetry now: only here is the
+        // duplicate-guard's verdict (accepted vs duplicate_rejected) known.
+        // Recomputing it with the guard's own exported isDuplicateQuestion
+        // (not a copy) is cheap, pure, in-memory string comparison — the
+        // guard immediately below makes the SAME, authoritative check;
+        // this only decides what gets written to telemetry.
+        const { action, question_text } = outcome.attempt.turn;
+        const isDuplicate =
+          action === "question" && !!question_text && isDuplicateQuestion(question_text, priorQuestions);
+        if (outcome.attempt.telemetryOperationId) {
+          await recordOperationCompleted({
+            operationId: outcome.attempt.telemetryOperationId,
+            status: isDuplicate ? "duplicate_rejected" : "accepted",
+            latencyMs: outcome.attempt.attemptLatencyMs,
+            errorClass: null,
+          });
+        }
+
+        return { ok: true, candidate: outcome.attempt };
       },
       (attempt) => attempt.turn
     );
@@ -635,8 +801,16 @@ export async function POST(
     entry.model_id = provenance.model_id;
     entry.model_provider = provenance.model_provider;
     entry.prompt_version = provenance.prompt_version;
-    // latency_ms and the other dormant fields stay null. They are schema-ready,
-    // not implemented — populating them is a separate, explicit decision.
+    // S2 / RB-2 — the provider attempt that PRODUCED this accepted question.
+    // The durable corpus.turn_operations table (migrations/0012) records
+    // every attempt including rejected duplicates and failures; this field
+    // records only the one that won. Not a competing latency field — the
+    // dormant column QuestionLogEntry already had, now populated.
+    entry.latency_ms = guardResult.candidate.attemptLatencyMs;
+    // The other dormant fields (quality_score, information_gain,
+    // strategy_classification, integrity_flag, confidence) stay null. They
+    // are schema-ready, not implemented — populating them is a separate,
+    // explicit decision.
 
     game.qa_log.push(entry);
 

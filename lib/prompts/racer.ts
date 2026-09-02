@@ -520,6 +520,15 @@ export async function runRacerTurn(
      * carries what a caller already decided.
      */
     reasoningEffort?: string;
+    /**
+     * S2 / RB-2 — the shared provider-time budget's local deadline for this
+     * one attempt (lib/turnBudget.ts). A LOCAL deadline only: see
+     * ToolCallRequest.signal's own doc for what this does and does not claim
+     * about the remote provider. Forwarded unchanged; this function does not
+     * decide the allowance, only carries what the caller already decided —
+     * the same relationship it already has with `reasoningEffort`.
+     */
+    signal?: AbortSignal;
   }
 ): Promise<RacerTurnResult> {
   const { forceFinal } = options;
@@ -554,6 +563,7 @@ export async function runRacerTurn(
   } = await adapter.callTool<RacerTurnOutput>({
     model: requestedModel,
     reasoningEffort: options.reasoningEffort,
+    signal: options.signal,
     system: RACER_SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
     toolName: "submit_turn",
