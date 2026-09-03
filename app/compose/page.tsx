@@ -1,10 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   PLAYER_COOKIE,
   PLAYER_NAME_COOKIE,
   readPlayerName,
   verifyPlayerCookie,
 } from "@/lib/playerIdentity";
+import { resolveAccountHeaderState } from "@/lib/actingPlayer";
 import type { Metadata } from "next";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import ComposerEntry from "../ComposerEntry";
@@ -58,10 +59,16 @@ async function shouldAskForName(): Promise<boolean> {
 }
 
 export default async function Page() {
+  // V2.8.4.3 — the shared account-control header state (login state, saved
+  // photo), resolved server-side exactly like SiteHeader's, so this "new-game
+  // flow" screen's header shows the same control instead of none at all.
+  const accountHeaderState = await resolveAccountHeaderState(headers());
   return (
     <ComposerEntry
       versionLabel={formatVersionLabel(getAppVersion())}
       askForName={await shouldAskForName()}
+      accountAuthenticated={accountHeaderState.authenticated}
+      accountPhotoUrl={accountHeaderState.photoUrl}
     />
   );
 }

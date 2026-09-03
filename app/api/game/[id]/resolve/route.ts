@@ -4,7 +4,7 @@ import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { isParticipant } from "@/lib/seats";
 import { getSecretForAdjudication } from "@/lib/secretStore";
 import { runAdjudicator } from "@/lib/prompts/adjudicator";
-import { runIntegrityReview } from "@/lib/prompts/integrityReview";
+import { IntegrityReviewIncompleteError, runIntegrityReview } from "@/lib/prompts/integrityReview";
 import {
   deriveResult,
   needsAdjudication,
@@ -153,44 +153,70 @@ export async function POST(
   // -------------------------------------------------------------------------
   // Integrity Review — only where the verdict can change the outcome. A correct
   // guess never reaches this branch, so it never costs the call.
+  //
+  // V2.8.4.3 — the "PC" incident: a review completed with verdict "upheld"
+  // and an empty reasoning string, which the result screen then rendered as
+  // though no review had happened at all. runIntegrityReview() now REQUIRES
+  // non-empty reasoning and throws IntegrityReviewIncompleteError rather than
+  // return one silently blank. This retries exactly once, through the same
+  // bounded consumeModelCall("resolve") mechanism every other resolve call
+  // already uses, before falling back to the PRE-EXISTING
+  // integrity_review_unavailable technical state — no new persisted outcome
+  // is introduced: an unexplained review, after its one retry, is
+  // represented exactly like any other resolve-time provider failure.
   // -------------------------------------------------------------------------
   if (needsIntegrityReview(game.final_action, adjudicatorVerdict)) {
-    const budget = await consumeModelCall("resolve");
-    if (!budget.allowed) {
-      return NextResponse.json(
-        {
-          error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-          message: budget.failedClosed
-            ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
-            : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
-          game,
-        },
-        { status: budget.failedClosed ? 503 : 429 }
-      );
+    const MAX_INTEGRITY_REVIEW_ATTEMPTS = 2;
+    let review: Awaited<ReturnType<typeof runIntegrityReview>> | null = null;
+
+    for (let attempt = 1; attempt <= MAX_INTEGRITY_REVIEW_ATTEMPTS && !review; attempt += 1) {
+      const budget = await consumeModelCall("resolve");
+      if (!budget.allowed) {
+        return NextResponse.json(
+          {
+            error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+            message: budget.failedClosed
+              ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
+              : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
+            game,
+          },
+          { status: budget.failedClosed ? 503 : 429 }
+        );
+      }
+
+      try {
+        review = await runIntegrityReview({
+          target: secret.target,
+          privateClarification: secret.private_clarification,
+          qaLog: game.qa_log,
+          gameLanguage: game.game_language,
+        });
+      } catch (err) {
+        const incomplete = err instanceof IntegrityReviewIncompleteError;
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] Integrity Review call failed${incomplete ? " (no usable reasoning)" : ""}:`,
+          err
+        );
+        if (incomplete && attempt < MAX_INTEGRITY_REVIEW_ATTEMPTS) {
+          continue; // one bounded retry, same mechanism, next loop iteration
+        }
+        return NextResponse.json(
+          {
+            error: "integrity_review_unavailable",
+            message: "Most nem sikerült befejezni az ellenőrzést. A játék változatlan — próbáld újra.",
+            game,
+          },
+          { status: 502 }
+        );
+      }
     }
 
-    try {
-      const review = await runIntegrityReview({
-        target: secret.target,
-        privateClarification: secret.private_clarification,
-        qaLog: game.qa_log,
-        gameLanguage: game.game_language,
-      });
-      integrityVerdict = review.verdict;
-      integrityNotes = review.reasoning;
-      flaggedTurns = review.contradicting_turns.length > 0 ? review.contradicting_turns : null;
-    } catch (err) {
-      // eslint-disable-next-line no-console
-      console.error("[barkoba] Integrity Review call failed:", err);
-      return NextResponse.json(
-        {
-          error: "integrity_review_unavailable",
-          message: "Most nem sikerült befejezni az ellenőrzést. A játék változatlan — próbáld újra.",
-          game,
-        },
-        { status: 502 }
-      );
-    }
+    // Reached only via a successful assignment above — every failure path
+    // returns before falling out of the loop.
+    integrityVerdict = review!.verdict;
+    integrityNotes = review!.reasoning;
+    flaggedTurns = review!.contradicting_turns.length > 0 ? review!.contradicting_turns : null;
   }
 
   // -------------------------------------------------------------------------

@@ -51,3 +51,39 @@ export async function resolveActingPlayerId(headers: Headers): Promise<string | 
   const context = await resolveActingPlayer(headers);
   return context.kind === "account" || context.kind === "guest" ? context.playerId : null;
 }
+
+export interface AccountHeaderState {
+  authenticated: boolean;
+  /** The requester's own saved profile photo, or null. Never another player's. */
+  photoUrl: string | null;
+}
+
+/**
+ * V2.8.4.3 — the account-control header state for the CURRENT request's own
+ * player, shared by every header surface (SiteHeader, GameShell, and
+ * GameClient's own header) so photo resolution has exactly one
+ * implementation rather than three.
+ *
+ * Identity comes from resolveActingPlayer, exactly as everywhere else in this
+ * file — session/cookies on the incoming request, never a caller-supplied id
+ * — so this can only ever describe the requester's own account. "guest" and
+ * "none" have no account row and therefore no photo; a lookup failure fails
+ * closed to no photo rather than blocking the header from rendering at all.
+ */
+export async function resolveAccountHeaderState(headers: Headers): Promise<AccountHeaderState> {
+  const context = await resolveActingPlayer(headers);
+  const authenticated = context.kind === "account";
+
+  if (context.kind !== "account" && context.kind !== "registered") {
+    return { authenticated, photoUrl: null };
+  }
+
+  try {
+    const account = await getPlayerAccount(context.playerId);
+    return { authenticated, photoUrl: account?.photo_url ?? null };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error("[barkoba] resolveAccountHeaderState: account lookup failed:", err);
+    return { authenticated, photoUrl: null };
+  }
+}

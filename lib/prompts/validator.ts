@@ -31,6 +31,8 @@ Separately, set private_knowledge to true when the target's identity rests on fa
 
 Important: difficulty is not invalidity. A target may be valid but very hard to guess within the question limit — in that case, return VALID and set difficulty_warning to a short, non-blocking note. Do not reject merely-difficult targets.
 
+CATEGORY BREADTH IS NOT A DEFECT. Barkóba lets a Composer set a kind or category as the whole target — "a bicycle", "a PC", "a bird" — where ANY real thing genuinely fitting that category counts as a correct guess; the game's own in-play questioning resolves this precisely once the Racer starts asking, and you must not anticipate or second-guess it here. Never set difficulty_warning, and never suggest narrowing by type, era, brand, model, or unique individual, for the sole reason that many different things could match the category the Composer named. That breadth is not a weakness to flag — a valid category is exactly as complete a target as a single specific instance, not a placeholder for one. Reserve difficulty_warning for a problem that exists independently of category breadth: irresolvable ambiguity between genuinely unrelated referents, an internal contradiction between the target and its own clarification, a distinction so subjective that no outside observer could judge a guess against it, or specialist/obscure knowledge the question budget could not realistically uncover. If none of those apply, a broad category gets no warning at all, however many things satisfy it.
+
 Never reveal the target or clarification back to anyone other than the Composer — your output is only ever shown to the Composer, never to the Racer.
 
 TYPO TOLERANCE
@@ -72,7 +74,7 @@ const INPUT_SCHEMA = {
     difficulty_warning: {
       type: ["string", "null"],
       description:
-        "Optional non-blocking warning if the target looks very hard for the question limit. Null if not applicable.",
+        "Optional non-blocking warning if the target is hard for a reason OTHER than being a valid, broad kind/category — never merely because multiple real things would match it. Null if not applicable.",
     },
     private_knowledge: {
       type: "boolean",

@@ -4,6 +4,7 @@ import ThinkingState from "./components/ThinkingState";
 import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import AccountControl from "./components/AccountControl";
 import GameShell from "./components/GameShell";
 import BudgetPicker, { pickedBudget } from "./components/BudgetPicker";
 import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
@@ -44,7 +45,18 @@ function PrivateTargetNote() {
   );
 }
 
-export default function ComposerEntry({ versionLabel, askForName = false }: { versionLabel: string; askForName?: boolean }) {
+export default function ComposerEntry({
+  versionLabel,
+  askForName = false,
+  accountAuthenticated = false,
+  accountPhotoUrl = null,
+}: {
+  versionLabel: string;
+  askForName?: boolean;
+  /** V2.8.4.3 — resolved server-side by app/compose/page.tsx. */
+  accountAuthenticated?: boolean;
+  accountPhotoUrl?: string | null;
+}) {
   const router = useRouter();
   const [target, setTarget] = useState("");
   const [clarification, setClarification] = useState("");
@@ -132,7 +144,11 @@ export default function ComposerEntry({ versionLabel, askForName = false }: { ve
   }
 
   return (
-    <GameShell role="Te gondolsz valamire. A Barkóba AI fogja kitalálni." version={versionLabel}>
+    <GameShell
+      role="Te gondolsz valamire. A Barkóba AI fogja kitalálni."
+      version={versionLabel}
+      meta={<AccountControl authenticated={accountAuthenticated} photoUrl={accountPhotoUrl} />}
+    >
       <p className="text-sm text-[var(--ink-soft)]">
         Gondolj valamire, és rögzítsd. Az AI teljesen vakon indul, és{" "}
         {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.

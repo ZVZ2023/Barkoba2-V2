@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 /**
  * Profile photo upload/replace. Used both right after registration succeeds
@@ -14,6 +15,7 @@ export default function ProfilePhotoPrompt({
 }: {
   currentPhotoUrl?: string | null;
 }) {
+  const router = useRouter();
   const [file, setFile] = useState<File | null>(null);
   const [uploadedUrl, setUploadedUrl] = useState<string | null>(currentPhotoUrl);
   const [busy, setBusy] = useState(false);
@@ -55,6 +57,12 @@ export default function ProfilePhotoPrompt({
       setUploadedUrl(data.photo_url);
       setJustUploaded(true);
       setFile(null);
+      // V2.8.4.3 — the shared header (SiteHeader, GameShell, GameClient) reads
+      // the saved photo from a server component, which a client-side upload
+      // does not otherwise cause to re-render. router.refresh() re-runs this
+      // route's server components against the now-current database row,
+      // without discarding this component's own client-side upload state.
+      router.refresh();
     } catch {
       setError("Hálózati hiba — próbáld újra.");
     } finally {

@@ -18,6 +18,7 @@ import {
 import type { GameView } from "@/lib/gameView";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
+import AccountControl from "@/app/components/AccountControl";
 import EvaluationState from "@/app/components/EvaluationState";
 import ThinkingIndicator from "@/app/components/ThinkingIndicator";
 
@@ -30,6 +31,9 @@ const TURN_LOCK_RETRY_DELAY_MS = 3000;
 interface Props {
   initialGame: GameRecord;
   versionLabel: string;
+  /** V2.8.4.3 — resolved server-side by app/game/[id]/page.tsx. */
+  accountAuthenticated?: boolean;
+  accountPhotoUrl?: string | null;
 }
 
 /** Stored values stay YES/NO/AMBIGUOUS; only the display is Hungarian. */
@@ -95,7 +99,12 @@ function pendingGuessCheckpoint(game: GameRecord): GuessCheckpoint | null {
   return { guessEntry, answeredEntry };
 }
 
-export default function GameClient({ initialGame, versionLabel }: Props) {
+export default function GameClient({
+  initialGame,
+  versionLabel,
+  accountAuthenticated = false,
+  accountPhotoUrl = null,
+}: Props) {
   const [game, setGame] = useState<GameRecord>(initialGame);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -464,11 +473,15 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             {versionLabel}
           </span>
         </div>
-        <div className="shrink-0 text-right">
-          <div className="text-sm font-semibold tabular-nums">
-            {consumed} / {game.max_questions}
+        <div className="flex shrink-0 items-start gap-2">
+          {/* V2.8.4.3 — same account control as every other header surface. */}
+          <AccountControl authenticated={accountAuthenticated} photoUrl={accountPhotoUrl} />
+          <div className="text-right">
+            <div className="text-sm font-semibold tabular-nums">
+              {consumed} / {game.max_questions}
+            </div>
+            <div className="text-xs text-[var(--ink-soft)]">{questionsLeft} maradt</div>
           </div>
-          <div className="text-xs text-[var(--ink-soft)]">{questionsLeft} maradt</div>
         </div>
       </header>
 

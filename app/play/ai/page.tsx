@@ -1,10 +1,11 @@
-import { cookies } from "next/headers";
+import { cookies, headers } from "next/headers";
 import {
   PLAYER_COOKIE,
   PLAYER_NAME_COOKIE,
   readPlayerName,
   verifyPlayerCookie,
 } from "@/lib/playerIdentity";
+import { resolveAccountHeaderState } from "@/lib/actingPlayer";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import RacerSetup from "../../RacerSetup";
 
@@ -34,10 +35,14 @@ async function shouldAskForName(): Promise<boolean> {
 }
 
 export default async function Page() {
+  // V2.8.4.3 — see app/compose/page.tsx's identical comment.
+  const accountHeaderState = await resolveAccountHeaderState(headers());
   return (
     <RacerSetup
       versionLabel={formatVersionLabel(getAppVersion())}
       askForName={await shouldAskForName()}
+      accountAuthenticated={accountHeaderState.authenticated}
+      accountPhotoUrl={accountHeaderState.photoUrl}
     />
   );
 }

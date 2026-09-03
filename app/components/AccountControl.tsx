@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Avatar from "./Avatar";
 import ClaimPrompt from "./ClaimPrompt";
 import RecoverPrompt from "./RecoverPrompt";
 import { CreditGateway } from "./Entitlement";
@@ -23,7 +24,14 @@ import { CreditGateway } from "./Entitlement";
  * changed here — this is entirely about giving Barkóba's own UI a proactive
  * front door to work already built elsewhere.
  */
-export default function AccountControl({ authenticated }: { authenticated: boolean }) {
+export default function AccountControl({
+  authenticated,
+  photoUrl = null,
+}: {
+  authenticated: boolean;
+  /** V2.8.4.3 — the signed-in player's saved profile photo, if any. */
+  photoUrl?: string | null;
+}) {
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
@@ -43,7 +51,7 @@ export default function AccountControl({ authenticated }: { authenticated: boole
         onClick={() => setOpen(true)}
         className="flex min-h-10 min-w-0 items-center gap-2 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
       >
-        <span aria-hidden="true" className="shrink-0">👤</span>
+        <Avatar photoUrl={authenticated ? photoUrl : null} />
         <span className="truncate">{authenticated ? "Profil" : "Regisztráció / Belépés"}</span>
       </button>
 

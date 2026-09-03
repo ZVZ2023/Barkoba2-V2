@@ -50,6 +50,8 @@ WHAT NEVER COUNTS, ON ITS OWN, AS A VIOLATION:
 
 A RECURRING CONFUSION, WORTH NAMING EXPLICITLY: whether an object was installed level or plumb is different from the object's geometric orientation, and both are different from whether it is a structural or load-bearing element. A window installed level in a wall is not thereby a "horizontal structural element." In ordinary construction, absent target-specific evidence of a specialized structural system, a window is normally treated as a non-load-bearing building component containing both horizontal and vertical parts; its overall orientation cannot be inferred merely from the fact that it was installed level. Treat a YES that conflates these properties as a candidate for INCORRECT, then determine materiality from the target's private clarification and the complete ledger, exactly as STEP 2 requires — never automatically.
 
+LEXICAL CONTEXT ACROSS LANGUAGES. Interpret every question and answer by the ordinary meaning its own words carry in the game's actual language — never by translating a word to another language first and judging THAT translation's breadth instead. Many languages distinguish a narrower, traditional or mechanical term from a broader general term for the same rough concept, where only the broader term comfortably extends to something modern or metaphorical. Calling something by the NARROW term when it only fits under the broad one is a candidate for INCORRECT even when a one-word gloss into another language would sound defensible there — the defensibility of a foreign paraphrase is not evidence about the word the Composer actually chose. For example, in Hungarian, "szerszám" ordinarily names a traditional, hand-operated or mechanical tool (a hammer, a wrench, a saw); "eszköz" is the broader word for a device or instrument in general. Answering YES to whether a computer is a "szerszám" is a candidate for INCORRECT even though English "tool" can defensibly stretch to cover it — "tool" and "szerszám" are not the same width of word. This is a general principle about lexical breadth, to apply with whatever pair of narrow/broad terms the game's own language and target present, never a rule about computers, tools, or Hungarian specifically. As always, a candidate is not a verdict: classify it honestly under STEP 1, then let STEP 2's materiality test — not the classification alone — decide whether it affected the outcome.
+
 OPTIONAL NOTES ARE CONTEXT, NEVER A REPLACEMENT FOR THE SELECTED ANSWER. The Composer's structured YES/NO/IS-IS choice is the authoritative record of what they answered; an attached note only helps you understand WHY. Read notes charitably and contextually — ordinary spelling mistakes, missing accent marks, and obvious phone-autocorrect substitutions (for example, Hungarian "Bem" for "nem" is a keyboard/autocorrect slip, not a different word) should be understood as the player plainly intended, never used to second-guess or override the YES/NO/IS-IS they actually selected.
 
 The clarification is OPTIONAL and may be absent. When it is, assess the answers against the target alone — and lean further toward upheld, not less. With less information about what the Composer meant, more answers become defensible, not fewer. Absence of a clarification is never itself evidence of bad faith.
@@ -106,6 +108,20 @@ export const INTEGRITY_REVIEW_INPUT_SCHEMA: Record<string, unknown> = {
 
 const INPUT_SCHEMA = INTEGRITY_REVIEW_INPUT_SCHEMA;
 
+/**
+ * V2.8.4.3 — thrown when a review call otherwise succeeds but returns no
+ * usable reasoning (the "PC" incident: verdict "upheld", reasoning ""). An
+ * upheld-but-unexplained verdict is indistinguishable from a review that
+ * never ran, so this is deliberately NOT swallowed into an empty string.
+ *
+ * Distinct from a transport/provider failure — which still throws a plain
+ * Error, as before — so the caller (app/api/game/[id]/resolve/route.ts) can
+ * tell "the call failed" apart from "the call succeeded but explained
+ * nothing" and retry only the latter, once, through the same bounded
+ * provider mechanism it already uses.
+ */
+export class IntegrityReviewIncompleteError extends Error {}
+
 function renderTranscript(qaLog: QuestionLogEntry[]): string {
   const rows = qaLog
     .filter((e) => e.turn_type === "question" && e.question_text)
@@ -157,11 +173,23 @@ export async function runIntegrityReview(params: {
     ? result.contradicting_turns.filter((n): n is number => typeof n === "number")
     : [];
 
+  // V2.8.4.3 — required, not merely preferred: an upheld-or-violated verdict
+  // with no explanation behind it must never reach persistence. See
+  // IntegrityReviewIncompleteError's doc for why this is a distinct failure
+  // mode from a transport error, and app/api/game/[id]/resolve/route.ts for
+  // the one bounded retry this is designed to trigger.
+  const reasoning = (result.reasoning ?? "").trim();
+  if (reasoning.length === 0) {
+    throw new IntegrityReviewIncompleteError(
+      "integrityReview: provider returned a verdict with no usable reasoning."
+    );
+  }
+
   return {
     verdict,
     // An upheld verdict with evidence attached is incoherent; normalize rather
     // than surface a contradiction to the player.
     contradicting_turns: verdict === "violated" ? turns : [],
-    reasoning: result.reasoning ?? "",
+    reasoning,
   };
 }
