@@ -400,12 +400,14 @@ test("both providers receive the same prompt version", () => {
   // Resolved-branch gate and the close-candidate specificity gate were added
   // on top of that block, and again to "racer/4.0.0" when that whole
   // nine-stage, ~800-word block was compressed into a six-stage, ~400-word
-  // loop. The INVARIANT is unchanged and is what this test is really for:
-  // exactly one version, shared by both providers. The literal is pinned as
-  // well so that an accidental revert to a previously-published version —
-  // which would silently relabel new evidence as old — fails here rather
-  // than in the corpus.
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
+  // loop, and again to "racer/4.0.1" (V2.8.4.3) for the no-concession
+  // final-action contract — a schema/prompt-contract change, not a
+  // CORE_RACER_RULES reasoning change. The INVARIANT is unchanged and is what
+  // this test is really for: exactly one version, shared by both providers.
+  // The literal is pinned as well so that an accidental revert to a
+  // previously-published version — which would silently relabel new evidence
+  // as old — fails here rather than in the corpus.
+  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.1");
   const versions = RACER_SRC.match(/RACER_PROMPT_VERSION = "[^"]+"/g) ?? [];
   assert.equal(versions.length, 1, "exactly one prompt version, shared by both providers");
 });

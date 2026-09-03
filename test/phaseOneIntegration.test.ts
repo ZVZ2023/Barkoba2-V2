@@ -121,8 +121,16 @@ test("REQUIRED 1 & 8: the opening turn is Q1 with zero provider calls, and each 
 
 // --- REQUIRED 9/10/11: Phase Two starts only after Phase One, with handoff -
 
-test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes, receives sandbox+specificity, and racer/4.0.0 is unchanged", async () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0", "REQUIRED 11: prompt version must not be bumped or renamed");
+test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes, receives sandbox+specificity, and the guidance version reflects only the V2.8.4.3 final-action contract", async () => {
+  // REQUIRED 11 (as of V2.8.4) pinned the version so a Phase Two change could
+  // not slip in unnoticed. V2.8.4.3 bumped it for an unrelated reason — the
+  // no-concession final-action contract, not Phase One/Two reasoning — so
+  // this now pins the CURRENT expected value instead of forbidding any bump.
+  assert.equal(
+    RACER_PROMPT_VERSION,
+    "racer/4.0.1",
+    "prompt version must be exactly the V2.8.4.3 final-action-contract bump, not a Phase One/Two change"
+  );
 
   const { gameId } = await makeGame("en");
 

@@ -14,6 +14,19 @@ interface Props {
   onRetry: () => void;
 }
 
+// V2.8.4.3 — the "PC" incident: a completed review (verdict "upheld") with an
+// empty legacy `integrity_notes` string used to hide this entire section,
+// because the old guard was `{game.integrity_notes && (...)}` — truthiness of
+// the PROSE, not of whether a review actually ran. A finished review must
+// render honestly even with nothing to quote, so the section now keys off
+// the explicit `integrity_verdict` field (null only when no review ran at
+// all) and falls back to a plain, honest notice instead of vanishing.
+function integrityFallbackNotice(gameLanguage: GameRecord["game_language"]): string {
+  return gameLanguage === "en"
+    ? "The review completed, but no detailed explanation was received."
+    : "Az ellenőrzés befejeződött, de részletes indoklás nem érkezett.";
+}
+
 const HEADLINE: Record<string, string> = {
   racer_correct: "Az AI eltalálta.",
   racer_incorrect: "Az AI nem talált. Nyertél.",
@@ -114,12 +127,16 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
           </div>
         )}
 
-        {game.integrity_notes && (
+        {game.integrity_verdict !== null && (
           <div>
             <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
               Integritás-ellenőrzés
             </dt>
-            <dd className="mt-0.5 break-words text-[var(--ink)]">{game.integrity_notes}</dd>
+            <dd className="mt-0.5 break-words text-[var(--ink)]">
+              {game.integrity_notes && game.integrity_notes.trim().length > 0
+                ? game.integrity_notes
+                : integrityFallbackNotice(game.game_language)}
+            </dd>
             {game.integrity_flagged_turns && game.integrity_flagged_turns.length > 0 && (
               <dd className="mt-1 text-xs text-[var(--red)]">
                 Ellentmondó körök: {game.integrity_flagged_turns.map((t) => `#${t}`).join(", ")}

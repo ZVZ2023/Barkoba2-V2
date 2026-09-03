@@ -159,8 +159,34 @@ import type {
  * same no-credentials constraint as every version above. The compression
  * hypothesis itself (shorter reads better under repeated injection) is
  * untested until Zsolt plays it.
+ *
+ * `racer/4.0.1` — FINAL-ACTION CONTRACT ONLY. NOT A REASONING CHANGE.
+ *
+ * V2.8.4.3 hotfix, following the "PC" concede-at-final-turn incident: the
+ * Racer could legitimately choose CONCEDE, including on the forced final
+ * turn once the question budget was exhausted, and a truthful "the AI gave
+ * up" outcome resulted. The product rule from this point on is absolute: the
+ * Racer never voluntarily concedes, and its final action is always a guess.
+ *
+ * The bump covers exactly two things, both in turnInputSchema() and the
+ * system-prompt paragraph describing the action contract: "concede" is
+ * removed from the action enum on every ordinary turn, not only the forced
+ * final one, and the forced-final enum is narrowed to the single value
+ * "guess". CORE_RACER_RULES — the KNOWN / UNKNOWN / HYPOTHESES / SELECT /
+ * RED FLAGS / BEFORE ANY FINAL GUESS uncertainty-management loop this
+ * constant's history above documents — is byte-for-byte unchanged. This is
+ * not a RG #3/#4 reasoning revision; it is a change to what moves exist, not
+ * to how the Racer chooses among them.
+ *
+ * A provider that still returns "concede", or any action outside the
+ * permitted set for the call it was given, is now a schema violation:
+ * runRacerTurn() throws rather than accept it or translate it into a
+ * fabricated guess. That throw surfaces exactly like any other provider
+ * failure — the pre-existing racer_unavailable technical-recovery path in
+ * app/api/game/[id]/turn/route.ts — so a malformed response can end in a
+ * retry-eligible technical failure, never in a false Setter victory.
  */
-export const RACER_PROMPT_VERSION = "racer/4.0.0";
+export const RACER_PROMPT_VERSION = "racer/4.0.1";
 
 /**
  * RG #4 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
@@ -252,8 +278,9 @@ Your opponent has locked in a secret target. You start completely blind: no cate
 
 Each turn you do exactly one of:
 - ask ONE question that can be answered YES or NO,
-- declare a GUESS naming the target,
-- CONCEDE.
+- declare a GUESS naming the target.
+
+You do not have the option to give up. When your questions run out, you name your best candidate — there is no other move available to you at that point.
 
 Your opponent answers YES, NO, or AMBIGUOUS. AMBIGUOUS means your question could not be answered truthfully as a binary — the framing was wrong, not the topic. When you get AMBIGUOUS, do not re-ask the same question; re-cut the same territory along a cleaner line.
 
@@ -264,8 +291,7 @@ How to play well:
 - Watch your remaining questions. If the space is still wide with few questions left, take bigger cuts.
 - A question that names one specific candidate IS a guess. Do not disguise a guess as a question to get a free attempt — declare it as a guess. There is no penalty for guessing when you are ready, and an automated check will catch a disguised one anyway.
 - FALSIFY BEFORE YOU COMMIT. While you still have questions left, a leading hypothesis is a reason to ask, not a reason to guess. Spend a question trying to break it: ask something that would come back NO if you are wrong. A hypothesis that survives an honest attempt to kill it is worth guessing; one you have merely not contradicted yet is not. You get exactly one guess, and an unspent question is worth far less than a wasted guess.
-- Guess when your leading hypothesis has survived a deliberate attempt to falsify it, or when you are out of questions.
-- Concede only if you are out of questions and have no candidate worth naming.
+- Guess when your leading hypothesis has survived a deliberate attempt to falsify it, or when you are out of questions. Out of questions means guess NOW, with whatever candidate is strongest — even an uncertain leader is required, since giving up is not an available move.
 
 Your "rationale" is private working notes, at most two sentences. Your opponent never sees it. Be honest in it — it is not scored.
 
@@ -297,6 +323,13 @@ Write revised_question and guess_text in the language of the game, which you wil
 
 This exchange is internal. Your opponent never sees it and is not waiting on it.`;
 
+/**
+ * V2.8.4.3 — no-concession final-action contract. "concede" is not a member
+ * of any action enum this function can return, on any turn: an ordinary
+ * turn's Racer may never voluntarily give up, and the forced-final turn's
+ * only permitted action is "guess". See RACER_PROMPT_VERSION's racer/4.0.1
+ * doc for why this is a contract change, not a reasoning change.
+ */
 function turnInputSchema(forceFinal: boolean, clueAvailable: boolean): Record<string, unknown> {
   return {
     type: "object",
@@ -304,12 +337,12 @@ function turnInputSchema(forceFinal: boolean, clueAvailable: boolean): Record<st
       action: {
         type: "string",
         enum: forceFinal
-          ? ["guess", "concede"]
+          ? ["guess"]
           : clueAvailable
-            ? ["question", "clue", "guess", "concede"]
-            : ["question", "guess", "concede"],
+            ? ["question", "clue", "guess"]
+            : ["question", "guess"],
         description: forceFinal
-          ? "No questions remain. You must guess or concede."
+          ? "No questions remain. You must name your guess now."
           : "What you are doing this turn.",
       },
       question_text: {
@@ -388,7 +421,7 @@ function renderClues(state: RacerPublicState): string {
 
 function renderBudget(state: RacerPublicState, forceFinal: boolean): string {
   if (forceFinal) {
-    return `You have used all ${state.max_questions} questions. This is your final turn: guess or concede.`;
+    return `You have used all ${state.max_questions} questions. This is your final turn: name your guess.`;
   }
   return `Questions used: ${state.question_count} of ${state.max_questions}. Remaining: ${state.questions_remaining}.`;
 }
@@ -463,7 +496,7 @@ export function buildRacerTurnMessage(
     // not others, which is precisely the ambiguity the version is meant to remove.
     CORE_RACER_RULES,
     "",
-    forceFinal ? "Make your final move." : "Take your turn.",
+    forceFinal ? "Name your guess now." : "Take your turn.",
   ].join("\n");
 }
 
@@ -604,20 +637,53 @@ export async function runRacerTurn(
     maxTokens: 512,
   });
 
-  // The schema constrains the enum, but a model can still return a null
-  // question_text alongside action="question". Normalize rather than trust.
-  const action = forceFinal && result.action === "question" ? "guess" : result.action;
+  // V2.8.4.3 — no-concession final-action contract. The schema enum already
+  // excludes "concede" (and, under forceFinal, everything but "guess"), but a
+  // provider is not guaranteed to honor a tool-call enum strictly — the "PC"
+  // incident's own schema (["guess", "concede"]) was itself honored, but
+  // nothing here may assume a future provider always will. Validate the
+  // returned action against the SAME allowed set the schema was built from,
+  // and throw on anything else rather than accept it or repair it into a
+  // guess. A thrown error here propagates to the caller
+  // (app/api/game/[id]/turn/route.ts's runOneRacerAttempt) exactly like a
+  // provider timeout or transport failure: the existing racer_unavailable
+  // technical-recovery path, never a fabricated outcome.
+  //
+  // The one defensive substitution kept is "clue" claimed without a credit —
+  // downgrading that to "question" preserves the model's own question text
+  // unchanged and manufactures nothing, unlike accepting an unearned action
+  // or inventing a guess would.
+  const allowedActions: readonly RacerTurnOutput["action"][] = forceFinal
+    ? (["guess"] as const)
+    : clueAvailable
+      ? (["question", "clue", "guess"] as const)
+      : (["question", "guess"] as const);
 
-  // A model can pick "clue" even when the schema did not offer it. Refuse it
-  // rather than mint a credit that was never earned.
-  const safeAction = action === "clue" && !clueAvailable ? "question" : action;
+  const action =
+    result.action === "clue" && !clueAvailable ? "question" : result.action;
+
+  if (!allowedActions.includes(action)) {
+    throw new Error(
+      `racer: provider returned action "${result.action}", outside the permitted set ` +
+        `(${allowedActions.join(", ")}) for this ${forceFinal ? "forced-final" : "ordinary"} turn. ` +
+        `Refusing to translate a schema violation into a guess or concession.`
+    );
+  }
+
+  // A "guess" with no actual named target is a malformed response, not a
+  // guess — refusing it here is what stops one from ever being fabricated
+  // out of a stray question_text or an empty string.
+  if (action === "guess" && !(result.guess_text && result.guess_text.trim())) {
+    throw new Error(
+      'racer: provider declared action "guess" without a usable guess_text — refusing to fabricate one.'
+    );
+  }
 
   return {
     output: {
-      action: safeAction,
-      question_text: safeAction === "question" ? (result.question_text ?? null) : null,
-      guess_text:
-        safeAction === "guess" ? (result.guess_text ?? result.question_text ?? null) : null,
+      action,
+      question_text: action === "question" ? (result.question_text ?? null) : null,
+      guess_text: action === "guess" ? result.guess_text : null,
       rationale: result.rationale ?? "",
     },
     provenance: {

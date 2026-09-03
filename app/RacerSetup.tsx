@@ -5,6 +5,7 @@ import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import type { ClueMode, Difficulty } from "@/lib/types";
+import AccountControl from "./components/AccountControl";
 import GameShell from "./components/GameShell";
 import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
 
@@ -26,7 +27,18 @@ const CLUE_MODES: { value: ClueMode; label: string; blurb: string }[] = [
 
 const BUDGETS = [20, 35, 50, 100];
 
-export default function RacerSetup({ versionLabel, askForName = false }: { versionLabel: string; askForName?: boolean }) {
+export default function RacerSetup({
+  versionLabel,
+  askForName = false,
+  accountAuthenticated = false,
+  accountPhotoUrl = null,
+}: {
+  versionLabel: string;
+  askForName?: boolean;
+  /** V2.8.4.3 — resolved server-side by app/play/ai/page.tsx. */
+  accountAuthenticated?: boolean;
+  accountPhotoUrl?: string | null;
+}) {
   const router = useRouter();
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
   const [clueMode, setClueMode] = useState<ClueMode>("none");
@@ -80,7 +92,11 @@ export default function RacerSetup({ versionLabel, askForName = false }: { versi
     }`;
 
   return (
-    <GameShell role="A Barkóba AI gondol valamire. Te fogsz kérdezni." version={versionLabel}>
+    <GameShell
+      role="A Barkóba AI gondol valamire. Te fogsz kérdezni."
+      version={versionLabel}
+      meta={<AccountControl authenticated={accountAuthenticated} photoUrl={accountPhotoUrl} />}
+    >
       {naming ? (
         <NamePrompt onDone={() => setNaming(false)} />
       ) : busy ? (

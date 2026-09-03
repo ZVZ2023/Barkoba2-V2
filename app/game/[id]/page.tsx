@@ -2,7 +2,7 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getGame } from "@/lib/gameStore";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { resolveAccountHeaderState, resolveActingPlayerId } from "@/lib/actingPlayer";
 import { isHumanVsHuman, resolveSeat } from "@/lib/seats";
 import { buildGameView } from "@/lib/gameView";
 import GameClient from "./GameClient";
@@ -68,5 +68,17 @@ export default async function GamePage({ params }: { params: { id: string } }) {
     return <RacerClient initialGame={game} versionLabel={versionLabel} />;
   }
 
-  return <GameClient initialGame={game} versionLabel={versionLabel} />;
+  // V2.8.4.3 — the human-Composer/AI-Racer mode's own header gains the same
+  // account control SiteHeader and GameShell already carry. Scoped to this
+  // client only: RacerClient (AI Composer, human Racer) and HumanClient
+  // (human vs human) are different modes, out of this hotfix's boundary.
+  const accountHeaderState = await resolveAccountHeaderState(headers());
+  return (
+    <GameClient
+      initialGame={game}
+      versionLabel={versionLabel}
+      accountAuthenticated={accountHeaderState.authenticated}
+      accountPhotoUrl={accountHeaderState.photoUrl}
+    />
+  );
 }

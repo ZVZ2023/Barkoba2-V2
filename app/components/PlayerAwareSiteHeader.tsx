@@ -1,5 +1,5 @@
 import { headers } from "next/headers";
-import { resolveActingPlayer } from "@/lib/actingPlayer";
+import { resolveAccountHeaderState, resolveActingPlayer } from "@/lib/actingPlayer";
 import SiteHeader from "./SiteHeader";
 
 /**
@@ -13,11 +13,15 @@ import SiteHeader from "./SiteHeader";
  */
 export default async function PlayerAwareSiteHeader() {
   const context = await resolveActingPlayer(headers());
+  // V2.8.4.3 — the saved profile photo, resolved the same way on every
+  // header surface. See lib/actingPlayer.ts's resolveAccountHeaderState doc.
+  const { photoUrl } = await resolveAccountHeaderState(headers());
 
   return (
     <SiteHeader
       hasEstablishedPlayerIdentity={context.kind === "account" || context.kind === "guest"}
       accountAuthenticated={context.kind === "account"}
+      photoUrl={photoUrl}
     />
   );
 }

@@ -46,13 +46,15 @@ test("progressive calibrates to remaining budget; minimal stays restrained", () 
 
 test("the Racer is offered a clue action only when a credit exists", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
-  assert.match(src, /clueAvailable\s*\n?\s*\?\s*\["question", "clue", "guess", "concede"\]/);
+  // V2.8.4.3 — "concede" was removed from every action enum, this one
+  // included; see test/racerNoConcession.test.ts for the dedicated coverage.
+  assert.match(src, /clueAvailable\s*\n?\s*\?\s*\["question", "clue", "guess"\]/);
   assert.match(src, /state\.clue_credits_available > 0/);
 });
 
 test("the Racer cannot mint a credit it was not offered", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
-  assert.match(src, /action === "clue" && !clueAvailable \? "question" : action/);
+  assert.match(src, /result\.action === "clue" && !clueAvailable \? "question" : result\.action/);
 });
 
 test("eligibility is stated as an option, never an instruction", () => {

@@ -12,9 +12,12 @@ import AccountControl from "./AccountControl";
 export default function SiteHeader({
   hasEstablishedPlayerIdentity,
   accountAuthenticated,
+  photoUrl = null,
 }: {
   hasEstablishedPlayerIdentity: boolean;
   accountAuthenticated: boolean;
+  /** V2.8.4.3 — threaded from PlayerAwareSiteHeader's server-side resolution. */
+  photoUrl?: string | null;
 }) {
   const comingSoon = useComingSoon();
   const entitlement = useEntitlement(
@@ -46,7 +49,7 @@ export default function SiteHeader({
           <span aria-hidden="true" className="text-xs opacity-60">▾</span>
         </button>
 
-        <AccountControl authenticated={accountAuthenticated} />
+        <AccountControl authenticated={accountAuthenticated} photoUrl={photoUrl} />
       </div>
 
       {hasEstablishedPlayerIdentity && (

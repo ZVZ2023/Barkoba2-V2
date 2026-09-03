@@ -124,12 +124,14 @@ test("the block survives a long transcript — it does not get pushed up by hist
 
 test("the block is present on the final turn too", () => {
   // The final-guess gate governs this moment, and an unconditional block is what
-  // keeps racer/4.0.0 true of EVERY stamped turn rather than most of them.
+  // keeps racer/4.0.1 true of EVERY stamped turn rather than most of them.
   const content = buildRacerTurnMessage(answeredWith("YES"), {
     forceFinal: true,
     clueAvailable: false,
   });
-  assert.ok(content.endsWith(`${CORE_RACER_RULES}\n\nMake your final move.`));
+  // V2.8.4.3 — "Make your final move." (ambiguous about concede) became
+  // "Name your guess now." under the no-concession final-action contract.
+  assert.ok(content.endsWith(`${CORE_RACER_RULES}\n\nName your guess now.`));
 });
 
 for (const answer of ["YES", "NO", "AMBIGUOUS"] as ComposerAnswer[]) {
@@ -448,8 +450,11 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/4.0.0", () => {
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.0");
+test("the Racer guidance version is racer/4.0.1", () => {
+  // V2.8.4.3 bumped this from racer/4.0.0 for the no-concession final-action
+  // contract ONLY — CORE_RACER_RULES (the reasoning block below) is unchanged;
+  // see RACER_PROMPT_VERSION's own racer/4.0.1 doc.
+  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.1");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/2.7.0", "the RG v2 version must not be reused");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/3.0.0", "the pre-Hierarchy-gate RG v3 version must not be reused");
   assert.notEqual(
@@ -461,6 +466,11 @@ test("the Racer guidance version is racer/4.0.0", () => {
     RACER_PROMPT_VERSION,
     "racer/3.2.0",
     "the pre-compression, nine-stage RG v3 version must not be reused"
+  );
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/4.0.0",
+    "the pre-no-concession final-action contract must not be reused"
   );
 });
 
@@ -479,7 +489,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/4.0.0");
+    assert.equal(result.provenance.prompt_version, "racer/4.0.1");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");

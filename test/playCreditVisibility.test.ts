@@ -127,7 +127,8 @@ test("§39 introductory copy stays welcoming while the account control becomes r
   assert.match(introductory, /Az első VERSENYED vár rád/);
   assert.doesNotMatch(introductory, /\b0\b|elfogyott|CreditGateway|vásárl/i);
 
-  assert.match(HEADER, /<AccountControl authenticated=\{accountAuthenticated\} \/>/);
+  // V2.8.4.3 — AccountControl also receives the resolved photoUrl now.
+  assert.match(HEADER, /<AccountControl authenticated=\{accountAuthenticated\} photoUrl=\{photoUrl\} \/>/);
   assert.doesNotMatch(HEADER, /comingSoon\(copy\.header\.login\)/);
   const account = readFileSync("app/components/AccountControl.tsx", "utf8");
   assert.match(account, /\/api\/account\/logout/);
