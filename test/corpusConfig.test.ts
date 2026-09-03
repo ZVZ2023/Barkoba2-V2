@@ -172,6 +172,7 @@ function game(qa: QuestionLogEntry[]): GameRecord {
     difficulty: "easy",
     clue_mode: "none",
     question_count: qa.length,
+    question_count_high_water_mark: qa.length,
     ambiguous_count: 0,
     qa_log: qa,
     final_action: null,

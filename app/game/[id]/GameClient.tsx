@@ -2,8 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
+import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { derivePhaseOneState, isReferentScopeQuestion } from "@/lib/phaseOne";
 import { questionNumbers } from "@/lib/questionNumbers";
+import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
 import {
   createRequestOwnership,
@@ -430,7 +432,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   const turns = answeredTurns(game).filter(
     (e) => !(guessRevealPending && e.id === guessCheckpoint!.guessEntry.id)
   );
-  const questionsLeft = Math.max(0, game.max_questions - game.question_count);
+  // V2.8.4.2 — correction-budget integrity. Uses the durable floor, not the
+  // possibly-lower recomputed question_count, so the displayed remaining
+  // count can never imply a correction bought back spent questions.
+  const consumed = effectiveConsumed(game);
+  const questionsLeft = Math.max(0, game.max_questions - consumed);
 
   return (
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
@@ -460,7 +466,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
         </div>
         <div className="shrink-0 text-right">
           <div className="text-sm font-semibold tabular-nums">
-            {game.question_count} / {game.max_questions}
+            {consumed} / {game.max_questions}
           </div>
           <div className="text-xs text-[var(--ink-soft)]">{questionsLeft} maradt</div>
         </div>
@@ -490,6 +496,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
               spellCheck
               autoCorrect="on"
               autoCapitalize="sentences"
+              // V2.8.4.2 — mobile note-text tolerance: a locale hint so the
+              // device's own spell-checker/autocorrect uses the right
+              // dictionary. Purely a UI hint — the server stores whatever
+              // text is submitted, unchanged.
+              lang={game.game_language}
               className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--blue)]"
               value={clueText}
               onChange={(e) => setClueText(e.target.value)}
@@ -576,6 +587,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   spellCheck
                   autoCorrect="on"
                   autoCapitalize="sentences"
+                  // V2.8.4.2 — mobile note-text tolerance: see the clue
+                  // textarea's own comment above.
+                  lang={game.game_language}
                   className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                   value={explanation}
                   onChange={(e) => setExplanation(e.target.value)}
@@ -637,7 +651,14 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
           </div>
         )}
 
-        {turns.map((entry) => (
+        {/*
+          V2.8.4.2 — completed history renders NEWEST-first, below the active
+          area above. `completedHistoryForDisplay` returns a new, reversed
+          array for THIS rendering only — `turns` itself (chronological) is
+          untouched, and remains what drives length/emptiness checks and
+          every non-display computation in this component.
+        */}
+        {completedHistoryForDisplay(turns).map((entry) => (
           <div key={entry.id} className="flex flex-col gap-1.5">
             {entry.turn_type === "question" && entry.question_text && (
               <>
@@ -675,6 +696,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                   // for exactly one turn: the answer that produced the
                   // unrevealed guess. See pendingGuessCheckpoint above.
                   (guessRevealPending && guessCheckpoint!.answeredEntry.turn_index === entry.turn_index)) &&
+                  // V2.8.4.2 — correction-budget integrity. Only the latest
+                  // CORRECTION_WINDOW_SIZE answered questions offer the
+                  // control at all; the server enforces the same window
+                  // regardless of what this hides or shows.
+                  isWithinCorrectionWindow(game.qa_log, entry.turn_index) &&
                   correcting !== entry.turn_index && (
                   <div className="flex min-w-0 gap-3">
                     <span className="w-6 shrink-0 sm:w-8" />
@@ -743,6 +769,9 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
                             spellCheck
                             autoCorrect="on"
                             autoCapitalize="sentences"
+                            // V2.8.4.2 — mobile note-text tolerance: see the
+                            // clue textarea's own comment above.
+                            lang={game.game_language}
                             className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
                             value={correctionExplanation}
                             onChange={(e) => setCorrectionExplanation(e.target.value)}

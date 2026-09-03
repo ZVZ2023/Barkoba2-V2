@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acquireTurnLock, getGame, releaseTurnLock, saveGameIfRevisionMatches } from "@/lib/gameStore";
 import {
+  advanceHighWaterMark,
+  CORRECTION_WINDOW_SIZE,
   isCorrectable,
   isNoOpCorrection,
   isPreGuessCheckpointCorrection,
+  isWithinCorrectionWindow,
   recomputeCounters,
   splitAtTurn,
 } from "@/lib/rewind";
@@ -190,6 +193,22 @@ export async function POST(
       );
     }
 
+    // V2.8.4.2 — correction-budget integrity (competitive correction
+    // behavior). Only the latest CORRECTION_WINDOW_SIZE answered questions
+    // may be corrected at all — enforced here regardless of what the UI
+    // offers, so a stale or manually crafted request naming an older turn
+    // is refused exactly like one the UI never showed a control for.
+    if (!isWithinCorrectionWindow(game.qa_log, turnIndex)) {
+      return NextResponse.json(
+        {
+          error: "correction_window_closed",
+          message: `Csak az utolsó ${CORRECTION_WINDOW_SIZE} megválaszolt kérdés javítható.`,
+          game,
+        },
+        { status: 400 }
+      );
+    }
+
     const explanation =
       answer === "AMBIGUOUS" ? (body.ambiguous_explanation || "").trim() || null : null;
 
@@ -224,6 +243,16 @@ export async function POST(
     // Recomputed, never decremented — and this also repairs the positional
     // ambiguous_consumed_credit flags across the surviving log.
     const counters = recomputeCounters(game.qa_log);
+    // V2.8.4.2 — correction-budget integrity. question_count itself may now
+    // DROP (the whole point of recomputeCounters — see its own doc), but the
+    // durable floor must not: capture it BEFORE overwriting question_count,
+    // so a legacy game's first-ever correction locks in what it had already
+    // consumed rather than silently refunding it.
+    game.question_count_high_water_mark = advanceHighWaterMark(
+      game.question_count,
+      game.question_count_high_water_mark,
+      counters.questionCount
+    );
     game.question_count = counters.questionCount;
     game.ambiguous_count = counters.ambiguousCount;
 

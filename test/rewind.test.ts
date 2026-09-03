@@ -1,9 +1,13 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
+  advanceHighWaterMark,
+  CORRECTION_WINDOW_SIZE,
+  effectiveConsumed,
   isCorrectable,
   isNoOpCorrection,
   isPreGuessCheckpointCorrection,
+  isWithinCorrectionWindow,
   recomputeCounters,
   splitAtTurn,
 } from "../lib/rewind";
@@ -276,6 +280,7 @@ function gameWith(qaLog: QuestionLogEntry[], abandoned: QuestionLogEntry[][]): G
     difficulty: null,
     clue_mode: null,
     question_count: 0,
+    question_count_high_water_mark: 0,
     ambiguous_count: 0,
     qa_log: qaLog,
     final_action: null,
@@ -315,4 +320,96 @@ test("the Racer cannot see an abandoned branch", () => {
     false,
     "a discarded question must not reach the Racer by any path"
   );
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.4.2 — CORRECTION-BUDGET INTEGRITY. Competitive correction behavior:
+// only a recent window is correctable at all, and a discarded question is
+// never refunded. Exclusively enforced by the AI-Racer routes (the only
+// callers of this module) — see test/correctionBudgetIntegrity.test.ts for
+// the full route-level regression.
+// ---------------------------------------------------------------------------
+
+test("isWithinCorrectionWindow: only the latest CORRECTION_WINDOW_SIZE answered questions are eligible", () => {
+  assert.equal(CORRECTION_WINDOW_SIZE, 3);
+  const log = [1, 2, 3, 4, 5].map((i) => entry(i, "YES"));
+  assert.equal(isWithinCorrectionWindow(log, 1), false, "Q1 is outside the window of 5 answered questions");
+  assert.equal(isWithinCorrectionWindow(log, 2), false, "Q2 is outside the window");
+  assert.equal(isWithinCorrectionWindow(log, 3), true, "Q3 is the oldest ELIGIBLE turn");
+  assert.equal(isWithinCorrectionWindow(log, 4), true);
+  assert.equal(isWithinCorrectionWindow(log, 5), true, "the most recent answered question is always eligible");
+});
+
+test("isWithinCorrectionWindow: an unanswered pending question is never eligible, and does not occupy a window slot", () => {
+  const log = [entry(1, "YES"), entry(2, "YES"), entry(3, "YES"), entry(4, null)];
+  assert.equal(isWithinCorrectionWindow(log, 4), false, "not yet answered -- not correctable at all, see isCorrectable");
+  // The window is still exactly the latest 3 ANSWERED questions: 1, 2, 3.
+  assert.equal(isWithinCorrectionWindow(log, 1), true);
+});
+
+test("isWithinCorrectionWindow: the window moves as the game progresses -- it is relative to the CURRENT log, not a fixed historical position", () => {
+  const earlyLog = [1, 2, 3].map((i) => entry(i, "YES"));
+  assert.equal(isWithinCorrectionWindow(earlyLog, 1), true, "with only 3 answered, Q1 is still within the window");
+
+  const laterLog = [1, 2, 3, 4, 5, 6].map((i) => entry(i, "YES"));
+  assert.equal(isWithinCorrectionWindow(laterLog, 1), false, "the same Q1 has aged out once later questions exist");
+});
+
+test("isWithinCorrectionWindow: fewer than the window size answered questions -- all of them are eligible", () => {
+  const log = [entry(1, "YES"), entry(2, "NO")];
+  assert.equal(isWithinCorrectionWindow(log, 1), true);
+  assert.equal(isWithinCorrectionWindow(log, 2), true);
+});
+
+test("advanceHighWaterMark: ordinary play keeps the mark equal to the growing question_count", () => {
+  assert.equal(advanceHighWaterMark(0, 0, 1), 1);
+  assert.equal(advanceHighWaterMark(5, 5, 6), 6);
+});
+
+test("advanceHighWaterMark: never decreases, even when the new count is lower", () => {
+  // Exactly the correction shape: question_count is ABOUT to drop from 19 to
+  // 17 because a correction discarded two trailing answered questions.
+  assert.equal(advanceHighWaterMark(19, 19, 17), 19, "the mark must hold at 19, not fall to 17");
+});
+
+test("advanceHighWaterMark: a legacy game's first-ever correction locks in what it had already consumed", () => {
+  // A game that predates this field is backfilled with mark === question_count
+  // (see lib/gameStore.ts's getGame()) -- so its FIRST correction call already
+  // receives currentHighWaterMark === currentQuestionCount, and this must not
+  // let the correction's own (lower) new count retroactively lower it.
+  assert.equal(advanceHighWaterMark(19, 19, 17), 19);
+});
+
+test("advanceHighWaterMark: CONFIRMED-DEFECT-CLASS GUARD — a genuinely NEW question answered after a correction must still push the true total up, not be absorbed by the stale mark", () => {
+  // The shape that a naive Math.max(mark, before, after) gets wrong: a
+  // correction already dropped question_count to 17 while the mark held at
+  // 19 (a prior gap of 2 -- two discarded, already-spent questions). Now ONE
+  // genuinely new question is asked and answered: count goes 17 -> 18. That
+  // is a real, never-before-seen consumption event and must raise the TRUE
+  // total from 19 to 20 -- not be silently absorbed because 18 < 19.
+  const mark = advanceHighWaterMark(17, 19, 18);
+  assert.equal(mark, 20, "one new real answer after a correction must always raise the true total by exactly one, on top of the held mark -- never be a free question bought back by the gap a correction left behind");
+});
+
+test("advanceHighWaterMark: several new questions answered one at a time after a correction each advance the mark by exactly one", () => {
+  let mark = 19; // post-correction: count=17, mark held at 19
+  let count = 17;
+  count += 1;
+  mark = advanceHighWaterMark(count - 1, mark, count); // 17 -> 18
+  assert.equal(mark, 20);
+  count += 1;
+  mark = advanceHighWaterMark(count - 1, mark, count); // 18 -> 19
+  assert.equal(mark, 21);
+});
+
+test("effectiveConsumed: equals question_count when nothing has ever been corrected", () => {
+  assert.equal(effectiveConsumed({ question_count: 5, question_count_high_water_mark: 5 }), 5);
+});
+
+test("effectiveConsumed: holds at the high-water mark even when question_count has since dropped", () => {
+  assert.equal(effectiveConsumed({ question_count: 17, question_count_high_water_mark: 19 }), 19);
+});
+
+test("effectiveConsumed: never returns LESS than the raw question_count either (defensive symmetry)", () => {
+  assert.equal(effectiveConsumed({ question_count: 5, question_count_high_water_mark: 0 }), 5);
 });

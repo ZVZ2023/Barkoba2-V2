@@ -8,6 +8,7 @@ import {
 } from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
 import { derivePhaseOneState } from "@/lib/phaseOne";
+import { advanceHighWaterMark, effectiveConsumed } from "@/lib/rewind";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent, racerModelFor } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
@@ -653,7 +654,16 @@ export async function POST(
 
       // Every question the Racer asks costs one of its 20, whatever answer
       // comes back. YES, NO and AMBIGUOUS are all worth exactly one question.
+      const questionCountBefore = game.question_count;
       game.question_count += 1;
+      // V2.8.4.2 — correction-budget integrity. Keeps the durable floor in
+      // step with ordinary play, so the very first correction (if any) has
+      // an accurate mark to freeze rather than starting from a stale one.
+      game.question_count_high_water_mark = advanceHighWaterMark(
+        questionCountBefore,
+        game.question_count_high_water_mark,
+        game.question_count
+      );
     }
 
     // -------------------------------------------------------------------------
@@ -683,7 +693,11 @@ export async function POST(
     // -------------------------------------------------------------------------
     // Step 2/3/4 setup — the Racer's turn, on narrowed public state only.
     // -------------------------------------------------------------------------
-    const forceFinal = game.question_count >= game.max_questions;
+    // V2.8.4.2 — correction-budget integrity. Uses the durable high-water
+    // mark, not the possibly-lower recomputed question_count, so a
+    // correction that discarded trailing answered questions cannot buy back
+    // turns that were already spent. See lib/rewind.ts's effectiveConsumed.
+    const forceFinal = effectiveConsumed(game) >= game.max_questions;
 
     // -------------------------------------------------------------------------
     // V2.8.4 — Runtime Phase One v6.1. Deterministic sandbox classification,

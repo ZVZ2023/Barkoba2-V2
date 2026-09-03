@@ -59,6 +59,7 @@ export async function createGame(
     difficulty: null,
     clue_mode: null,
     question_count: 0,
+    question_count_high_water_mark: 0,
     ambiguous_count: 0,
     qa_log: [],
     final_action: null,
@@ -104,6 +105,13 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   // GAME_TTL_SECONDS, so normalize rather than trusting the field is present.
   if (typeof record.ambiguous_count !== "number") {
     record.ambiguous_count = 0;
+  }
+  // V2.8.4.2 — correction-budget integrity. Records created before this
+  // field existed have no history of ever discarding a correction, so
+  // question_count itself is the only correct backfill: see
+  // GameRecord.question_count_high_water_mark's own doc.
+  if (typeof record.question_count_high_water_mark !== "number") {
+    record.question_count_high_water_mark = record.question_count;
   }
   // game_language was added in M3; pre-M3 records default to English.
   if (record.game_language !== "hu" && record.game_language !== "en") {
