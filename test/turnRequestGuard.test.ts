@@ -6,7 +6,12 @@ import {
   mergeViewIntoGame,
   reconciliationShowsProgress,
   runOwnedTurnRequest,
+  runOwnedResolveRequest,
   NETWORK_ERROR_MESSAGE,
+  RESOLVE_NETWORK_ERROR_MESSAGE,
+  type ResolveRequestIO,
+  type ResolveRequestState,
+  type ResolveResponseBody,
   type TurnRequestIO,
   type TurnRequestState,
   type TurnResponseBody,
@@ -882,5 +887,170 @@ test("V2.8.5.1 REQUIRED TEST 8: recovery through a timeout never issues a second
   await runOwnedTurnRequest(ownership, io, state, 10);
 
   assert.equal(requestTurnCalls, 1, "the client's own timeout-driven recovery must never call POST /turn a second time");
+  assert.equal(requestViewCalls, 1, "reconciliation is a single GET /view, never a retried POST");
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.5.2 (C) — the same bounded-lifecycle pattern for /resolve. See
+// lib/turnRequestGuard.ts's runOwnedResolveRequest/RESOLVE_CLIENT_TIMEOUT_MS
+// doc for the "Hálózati hiba a lezárásnál" production forensic this repairs
+// (game a0b7743b-5599-45ac-9909-e1dd23a6316c): resolveGame()'s fetch had no
+// timeout at all, so a client-perceived failure could diverge from a server
+// that had actually completed. Mirrors the /turn tests above exactly.
+// ---------------------------------------------------------------------------
+
+function resolveRecordingState(initial: GameRecord) {
+  let currentGame = initial;
+  const calls: { fn: string; arg?: unknown }[] = [];
+  const state: ResolveRequestState = {
+    getGame: () => currentGame,
+    setGame: (g) => {
+      currentGame = g;
+      calls.push({ fn: "setGame", arg: g });
+    },
+    setResolveError: (m) => calls.push({ fn: "setResolveError", arg: m }),
+    setResolving: (r) => calls.push({ fn: "setResolving", arg: r }),
+    clearResolveGuard: () => calls.push({ fn: "clearResolveGuard" }),
+    registerActiveRequest: (h) => calls.push({ fn: "registerActiveRequest", arg: h }),
+    clearActiveRequest: () => calls.push({ fn: "clearActiveRequest" }),
+  };
+  return { state, calls, getCurrentGame: () => currentGame };
+}
+
+function hungRequestResolve(): ResolveRequestIO["requestResolve"] {
+  return (signal: AbortSignal) =>
+    new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => {
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    });
+}
+
+test("V2.8.5.2 (C) REQUIRED TEST — timeout: a hung /resolve request times out and exposes Retry when canonical state has NOT advanced", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls } = resolveRecordingState(g0);
+
+  let requestResolveCalls = 0;
+  let viewCalls = 0;
+  const io: ResolveRequestIO = {
+    requestResolve: (signal) => {
+      requestResolveCalls += 1;
+      return hungRequestResolve()(signal);
+    },
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: view({ phase: "resolving" }) }; // unchanged -- still resolving
+    },
+  };
+
+  await runOwnedResolveRequest(ownership, io, state, 10);
+
+  assert.equal(requestResolveCalls, 1, "exactly one /resolve attempt -- the timeout must never retry it itself");
+  assert.equal(viewCalls, 1, "exactly one canonical reconciliation read after the timeout fires");
+  assert.equal(lastValueOf(calls, "setResolveError"), RESOLVE_NETWORK_ERROR_MESSAGE);
+  assert.equal(lastValueOf(calls, "setResolving"), false, "resolving must not stay stuck true");
+  assert.equal(countCalls(calls, "clearResolveGuard"), 1, "the auto-resolve guard must be re-armed so a later legitimate attempt is not permanently blocked");
+});
+
+test("V2.8.5.2 (C) REQUIRED TEST — completed-server reconciliation: a hung /resolve request that times out reconciles successfully when the server had actually finished (phase advanced to complete)", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls, getCurrentGame } = resolveRecordingState(g0);
+
+  const io: ResolveRequestIO = {
+    requestResolve: hungRequestResolve(),
+    requestView: async () => ({
+      ok: true,
+      view: view({ phase: "complete", result: "racer_incorrect" }),
+    }),
+  };
+
+  await runOwnedResolveRequest(ownership, io, state, 10);
+
+  assert.equal(getCurrentGame().phase, "complete");
+  assert.equal(lastValueOf(calls, "setResolveError"), null);
+  assert.equal(lastValueOf(calls, "setResolving"), false);
+  assert.equal(countCalls(calls, "clearResolveGuard"), 0, "a successful reconciliation must not re-arm the guard -- there is nothing to retry");
+});
+
+test("V2.8.5.2 (C) REQUIRED TEST — unresolved reconciliation: when the server is still genuinely resolving, the game is preserved unchanged and Retry is offered, not a false completion", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls, getCurrentGame } = resolveRecordingState(g0);
+
+  const io: ResolveRequestIO = {
+    requestResolve: hungRequestResolve(),
+    requestView: async () => ({ ok: true, view: view({ phase: "resolving" }) }),
+  };
+
+  await runOwnedResolveRequest(ownership, io, state, 10);
+
+  assert.equal(getCurrentGame().phase, "resolving", "must never be reported as complete when it is not");
+  assert.equal(lastValueOf(calls, "setResolveError"), RESOLVE_NETWORK_ERROR_MESSAGE);
+});
+
+test("V2.8.5.2 (C) REQUIRED TEST — late completion ownership: a late-settling (superseded) /resolve request cannot overwrite newer reconciled state, nor clobber the newer request's active-handle registration", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls, getCurrentGame } = resolveRecordingState(g0);
+
+  const olderResolve = deferred<{ ok: boolean; data: ResolveResponseBody }>();
+  const olderIo: ResolveRequestIO = {
+    requestResolve: () => olderResolve.promise as unknown as Promise<{ ok: boolean; data: ResolveResponseBody | null }>,
+    requestView: async () => {
+      throw new Error("must not be called — the older request settles directly (success), never reaching transport failure");
+    },
+  };
+  const olderRun = runOwnedResolveRequest(ownership, olderIo, state, 100_000);
+
+  await Promise.resolve();
+  assert.equal(countCalls(calls, "registerActiveRequest"), 1);
+
+  const newerGame = game({ phase: "complete", result: "racer_incorrect" });
+  const newerIo: ResolveRequestIO = {
+    requestResolve: async () => ({ ok: true, data: { game: newerGame } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedResolveRequest(ownership, newerIo, state, 100_000);
+  assert.equal(countCalls(calls, "registerActiveRequest"), 2, "the newer request must also register its own handle");
+  assert.equal(getCurrentGame(), newerGame);
+
+  // NOW the older request finally settles, late, with its own stale success.
+  const staleGame = game({ phase: "resolving" });
+  olderResolve.resolve({ ok: true, data: { game: staleGame } });
+  await olderRun;
+
+  assert.equal(getCurrentGame(), newerGame, "the stale late success must not overwrite the newer reconciled game");
+  assert.equal(
+    countCalls(calls, "clearActiveRequest"),
+    1,
+    "only the still-current (newer) request's own settlement may clear the active-request handle"
+  );
+});
+
+test("V2.8.5.2 (C) REQUIRED TEST — recovery through a timeout never issues a second POST /resolve, keeping adjudication requests idempotent", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state } = resolveRecordingState(g0);
+
+  let requestResolveCalls = 0;
+  let requestViewCalls = 0;
+  const io: ResolveRequestIO = {
+    requestResolve: (signal) => {
+      requestResolveCalls += 1;
+      return hungRequestResolve()(signal);
+    },
+    requestView: async () => {
+      requestViewCalls += 1;
+      return { ok: true, view: view({ phase: "resolving" }) };
+    },
+  };
+
+  await runOwnedResolveRequest(ownership, io, state, 10);
+
+  assert.equal(requestResolveCalls, 1, "the client's own timeout-driven recovery must never call POST /resolve a second time");
   assert.equal(requestViewCalls, 1, "reconciliation is a single GET /view, never a retried POST");
 });

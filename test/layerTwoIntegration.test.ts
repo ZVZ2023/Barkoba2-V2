@@ -396,6 +396,32 @@ test("V2.8.5.1: the Racer's own prompt explicitly requires premise_audit to name
   );
 });
 
+// --- V2.8.5.2 — contested-parent guidance reaches the Racer -----------------
+
+test("V2.8.5.2: the Racer's own prompt explicitly forbids building on a still-contested parent, and forbids routing around it with a new proposition_id", () => {
+  const content = buildRacerTurnMessage(MINIMAL_LAYER_TWO_STATE_RACER_STATE, {
+    forceFinal: false,
+    clueAvailable: false,
+  });
+  assert.match(
+    content,
+    /NEVER ask a child question whose parent_proposition is a proposition still contested from an unresolved IS-IS/,
+    "the guidance the Racer actually receives must state this explicitly -- the Q5 production forensic (game a0b7743b-...) found the model doing exactly this"
+  );
+  assert.match(
+    content,
+    /use the one permitted operationalization of that EXACT parent \(same proposition_id\)/
+  );
+  assert.match(
+    content,
+    /abandon that line of descent entirely and switch dimensions/
+  );
+  assert.match(
+    content,
+    /do not invent a new proposition to route around the contested one/
+  );
+});
+
 // --- FINAL ENGINE-CONTRACT CORRECTION finding 4: raw sandbox_repair check --
 
 const MINIMAL_LAYER_TWO_STATE_RACER_STATE: RacerPublicState = {

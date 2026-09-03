@@ -10,12 +10,15 @@ import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry, shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import {
   CLIENT_TURN_TIMEOUT_MS,
+  RESOLVE_CLIENT_TIMEOUT_MS,
   createRequestOwnership,
   mergeViewIntoGame,
   reconciliationShowsProgress,
   runOwnedTurnRequest,
+  runOwnedResolveRequest,
   type ActiveRequestHandle,
   type RequestOwnership,
+  type ResolveResponseBody,
   type TurnResponseBody,
 } from "@/lib/turnRequestGuard";
 import type { GameView } from "@/lib/gameView";
@@ -201,6 +204,38 @@ export default function GameClient({
   // triggers, not two competing ones.
   const activeRequestRef = useRef<ActiveRequestHandle | null>(null);
 
+  // V2.8.5.2 — /resolve's own request-ownership tracker, independent of
+  // /turn's above (a separate request stream). Mirrors requestOwnershipRef
+  // exactly — see lib/turnRequestGuard.ts's runOwnedResolveRequest.
+  const resolveOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!resolveOwnershipRef.current) {
+    resolveOwnershipRef.current = createRequestOwnership();
+  }
+  const activeResolveRequestRef = useRef<ActiveRequestHandle | null>(null);
+  // V2.8.5.2 (D) — synchronous submission guard for resolveGame() itself:
+  // claimed the instant the FIRST call begins, before any await, so a rapid
+  // second tap of the Retry control (or an overlapping auto-fire) returns
+  // immediately rather than firing a second POST /resolve. Released only
+  // when the owned request reaches its terminal/reconciled state. See the
+  // identical pattern on the answer-submission path below.
+  const resolveInFlightRef = useRef(false);
+  // V2.8.5.2 (D) — the same synchronous submission guard for sendTurn()
+  // itself. Production forensic (game a0b7743b-...): dense clusters of
+  // 409s (up to 6 in ~11s) consistent with two answer submissions landing
+  // before React's `disabled={busy}` re-render could commit — the SERVER's
+  // turn-lock/CAS correctly rejected the collision every time (no wrong
+  // answer was ever applied), but each extra submission still cost a real
+  // request and a quiet turn_in_progress retry cycle. A plain ref update is
+  // synchronous, unlike React state, so checking it FIRST (before any
+  // await, before runOwnedTurnRequest's own state.setBusy(true) even runs)
+  // closes the exact window a double-tap or duplicate event needs. This
+  // does NOT interfere with sendTurn()'s own internal callers (the
+  // auto-turn effect, the awaitingTurnLock quiet retry, retryTurn): each of
+  // those only ever fires once busy is already false, i.e. once a PRIOR
+  // sendTurn() call has already fully settled and cleared this same ref —
+  // they are sequential with the call they follow, never concurrent with it.
+  const answerInFlightRef = useRef(false);
+
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
   const clueWanted = pendingClueRequest(game);
@@ -244,9 +279,13 @@ export default function GameClient({
   // test/turnRequestGuard.test.ts.
   const sendTurn = useCallback(
     async (answer?: ComposerAnswer, ambiguousExplanation?: string) => {
-      await runOwnedTurnRequest(
-        requestOwnershipRef.current as RequestOwnership,
-        {
+      // (D) synchronous guard — see answerInFlightRef's own doc above.
+      if (answerInFlightRef.current) return;
+      answerInFlightRef.current = true;
+      try {
+        await runOwnedTurnRequest(
+          requestOwnershipRef.current as RequestOwnership,
+          {
           requestTurn: async (signal) => {
             const res = await fetch(`/api/game/${game.game_id}/turn`, {
               method: "POST",
@@ -304,7 +343,13 @@ export default function GameClient({
             activeRequestRef.current = null;
           },
         }
-      );
+        );
+      } finally {
+        // (D) released only once the owned request has fully reached its
+        // terminal/reconciled state — runOwnedTurnRequest's own await chain
+        // covers both the ordinary path and the reconcile-after-failure path.
+        answerInFlightRef.current = false;
+      }
     },
     [game.game_id, game.revision]
   );
@@ -360,25 +405,59 @@ export default function GameClient({
     [game.game_id, game.qa_log.length]
   );
 
+  // V2.8.5.2 — bounded, ownership-guarded, and synchronously de-duplicated.
+  // See lib/turnRequestGuard.ts's runOwnedResolveRequest doc for the "Hálózati
+  // hiba a lezárásnál" production forensic this repairs (a fetch with no
+  // timeout, indistinguishable client-side from a server that never
+  // responded even though it had actually completed).
   const resolveGame = useCallback(async () => {
-    setResolving(true);
-    setResolveError(null);
+    // (D) synchronous guard, claimed before any await: a rapid second tap
+    // (or an overlapping auto-fire racing a manual Retry) returns immediately
+    // rather than issuing a second POST /resolve. /resolve is idempotent
+    // server-side regardless, but this avoids spending a second round-trip
+    // (and, while a review is genuinely running, a second provider budget
+    // slot) on a request already in flight.
+    if (resolveInFlightRef.current) return;
+    resolveInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/game/${game.game_id}/resolve`, { method: "POST" });
-      const data = await res.json();
-      if (data.game) setGame(data.game as GameRecord);
-      if (!res.ok) {
-        setResolveError(data.message || "Nem sikerült lezárni a játékot.");
-        // Allow a retry: the route is idempotent and the phase is unchanged.
-        resolveFired.current = false;
-      }
-    } catch {
-      setResolveError("Hálózati hiba a lezárásnál — próbáld újra.");
-      resolveFired.current = false;
+      await runOwnedResolveRequest(
+        resolveOwnershipRef.current as RequestOwnership,
+        {
+          requestResolve: async (signal) => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/resolve`, {
+              method: "POST",
+              signal,
+            });
+            const data = (await res.json()) as ResolveResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const body = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: body.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame: (next) => setGame(next),
+          setResolveError,
+          setResolving,
+          // Allow a retry: the route is idempotent and the phase is unchanged.
+          clearResolveGuard: () => {
+            resolveFired.current = false;
+          },
+          registerActiveRequest: (handle) => {
+            activeResolveRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeResolveRequestRef.current = null;
+          },
+        }
+      );
     } finally {
-      setResolving(false);
+      resolveInFlightRef.current = false;
     }
-  }, [game.game_id]);
+  }, []);
 
   const guessCheckpoint = pendingGuessCheckpoint(game);
   const guessRevealPending = guessCheckpoint !== null && !guessConfirmed;
