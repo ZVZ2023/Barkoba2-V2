@@ -109,3 +109,47 @@ export function shouldOfferTurnRetry(state: AutoTurnState): boolean {
   if (state.hasPendingQuestion) return false;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// V2.8.5.1 — foreground reconciliation. Pure, no React, no DOM: the same
+// reason the two predicates above are pure. Extracted so
+// GameClient.tsx's `visibilitychange` handler is a thin application of a
+// tested decision, exactly like shouldAutoRequestTurn/shouldOfferTurnRetry
+// already are for the auto-turn effect.
+//
+// THE DEFECT THIS REPAIRS — see lib/turnRequestGuard.ts's
+// CLIENT_TURN_TIMEOUT_MS doc for the full "silent stall" forensic. The OLD
+// handler's `if (busy) return` trusted that an in-flight request always
+// eventually settles; a mobile browser silently discarding a backgrounded
+// fetch (neither resolving nor rejecting) makes that false. This predicate
+// gives the handler a way to tell "still legitimately running" apart from
+// "has been running far longer than any real attempt ever takes" WITHOUT
+// relying on `busy` alone, and without relying on this tab's own JS timers
+// (which backgrounding can throttle or pause) to have fired.
+// ---------------------------------------------------------------------------
+
+export interface StaleRequestCheck {
+  busy: boolean;
+  /** When the current /turn request began, or null if none is in flight. */
+  activeRequestStartedAt: number | null;
+  now: number;
+  /** CLIENT_TURN_TIMEOUT_MS from lib/turnRequestGuard.ts, passed in rather than imported so this module stays free of that one's own dependency surface. */
+  timeoutMs: number;
+}
+
+/**
+ * Should returning to the foreground force-abort and reconcile a currently
+ * busy request? True only when a request is ACTUALLY in flight
+ * (`activeRequestStartedAt` non-null) and it has been running at least
+ * `timeoutMs` — i.e., it is already eligible for the SAME timeout
+ * runOwnedTurnRequest's own internal timer enforces, just possibly not yet
+ * fired because this tab's timers were throttled while hidden. Never true
+ * for a fresh, legitimately-still-running request, and never true when
+ * nothing is in flight at all (the existing not-busy reconciliation path in
+ * GameClient.tsx already covers that case).
+ */
+export function shouldReconcileStaleRequestOnForeground(check: StaleRequestCheck): boolean {
+  if (!check.busy) return false;
+  if (check.activeRequestStartedAt === null) return false;
+  return check.now - check.activeRequestStartedAt >= check.timeoutMs;
+}

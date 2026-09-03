@@ -115,8 +115,29 @@ export interface ViewRequestResult {
  * requirement that both route to the same reconciliation path.
  */
 export interface TurnRequestIO {
-  requestTurn(): Promise<TurnRequestResult>;
+  /**
+   * V2.8.5.1 — `signal` aborts the underlying transport when this module's
+   * own CLIENT_TURN_TIMEOUT_MS elapses, or when GameClient.tsx's
+   * `visibilitychange` handler decides a busy request is stale (see
+   * `ActiveRequestHandle` below). The caller (GameClient.tsx) MUST forward
+   * this to its `fetch()` call for either abort path to have any real
+   * effect on the actual network request.
+   */
+  requestTurn(signal: AbortSignal): Promise<TurnRequestResult>;
   requestView(): Promise<ViewRequestResult>;
+}
+
+/**
+ * V2.8.5.1 — a live request's abort handle plus when it began, so a caller
+ * (GameClient.tsx's `visibilitychange` handler) can decide independently
+ * whether THIS specific in-flight request has been running long enough to
+ * be considered stale, and abort it directly if so — reusing the exact same
+ * ownership-gated abort→reconcile path CLIENT_TURN_TIMEOUT_MS itself
+ * triggers, rather than a second, competing mechanism.
+ */
+export interface ActiveRequestHandle {
+  abort(): void;
+  startedAt: number;
 }
 
 /** Every piece of state S1 requires to be ownership-guarded. */
@@ -148,9 +169,45 @@ export interface TurnRequestState {
    * error banner exactly as before.
    */
   setSandboxClarificationFailed?(failed: boolean): void;
+  /**
+   * V2.8.5.1 — registers/clears the CURRENT request's abort handle so
+   * GameClient.tsx's `visibilitychange` handler can abort a stale one
+   * directly (see ActiveRequestHandle). Optional and additive: existing
+   * callers/tests that never need foreground-staleness recovery need not
+   * implement it, and its absence simply means CLIENT_TURN_TIMEOUT_MS's own
+   * internal timer is the only thing that can ever abort the request.
+   */
+  registerActiveRequest?(handle: ActiveRequestHandle): void;
+  clearActiveRequest?(): void;
 }
 
 export const NETWORK_ERROR_MESSAGE = "Hálózati hiba — próbáld újra.";
+
+/**
+ * V2.8.5.1 — the client's own bound on how long a single /turn request may
+ * run before this module gives up waiting and reconciles through canonical
+ * truth instead. Chosen from EXISTING server-side timing, not invented:
+ * app/api/game/[id]/turn/route.ts documents the ordering
+ * sharedDeadlineMs (240s, lib/turnBudget.ts) < maxDuration (270s, the
+ * route's own Vercel execution ceiling — the platform kills the function by
+ * then, no matter what) < TURN_LOCK_TTL_SECONDS (300s, when a legitimate
+ * retry may safely re-acquire the lock). 300_000ms matches that last value
+ * deliberately: by the time THIS client gives up, the SERVER's own lock
+ * would already have expired too, so an explicit retry after this timeout
+ * can never race a still-legitimately-running attempt on the lock alone —
+ * the existing turn_in_progress handling covers the remaining overlap.
+ *
+ * THE DEFECT THIS REPAIRS — the "silent stall" forensic (game
+ * 6c55682c-b60d-414b-8c0c-1b6a1c8248d8, V2.8.5 production). Before this,
+ * `await io.requestTurn()` below had no bound at all: a fetch a backgrounded
+ * mobile browser silently suspended or discarded (neither resolving nor
+ * rejecting, ever) left `busy` stuck true forever, which in turn defeated
+ * GameClient.tsx's own `visibilitychange` reconciliation (guarded by
+ * `if (busy) return`, on the — here false — assumption that an in-flight
+ * request always eventually settles). No error, no retry, no thinking
+ * indicator, no progress: a game frozen with no way back.
+ */
+export const CLIENT_TURN_TIMEOUT_MS = 300_000;
 
 /**
  * Reconstruct a GameRecord-shaped QuestionLogEntry from a role-narrowed
@@ -311,7 +368,14 @@ export function reconciliationShowsProgress(before: GameRecord, after: GameRecor
 export async function runOwnedTurnRequest(
   ownership: RequestOwnership,
   io: TurnRequestIO,
-  state: TurnRequestState
+  state: TurnRequestState,
+  // V2.8.5.1 — defaults to CLIENT_TURN_TIMEOUT_MS; overridable so a focused
+  // test can exercise a real timeout firing without waiting 300 real
+  // seconds, without resorting to a mutable shared config object (unlike
+  // lib/turnBudget.ts's TURN_BUDGET_CONFIG, nothing here is shared across
+  // concurrent requests, so a plain parameter is simpler and needs no
+  // save/restore around a test).
+  timeoutMs: number = CLIENT_TURN_TIMEOUT_MS
 ): Promise<void> {
   const token = ownership.begin();
 
@@ -324,11 +388,34 @@ export async function runOwnedTurnRequest(
   let transportFailed = false;
   let result: TurnRequestResult | null = null;
 
+  // V2.8.5.1 — bound the wait. `controller` is registered so an EXTERNAL
+  // trigger (GameClient.tsx's visibilitychange handler, on a request it
+  // judges stale) can abort the SAME request through the SAME path as this
+  // module's own CLIENT_TURN_TIMEOUT_MS timer — one mechanism, two triggers,
+  // never a second competing one. Aborting resolves to the ordinary
+  // transport-failure branch below, which already reconciles through
+  // canonical truth exactly once.
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  state.registerActiveRequest?.({ abort: () => controller.abort(), startedAt });
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
   try {
-    result = await io.requestTurn();
+    result = await io.requestTurn(controller.signal);
     if (!result.data || !result.data.game) transportFailed = true;
   } catch {
     transportFailed = true;
+  } finally {
+    clearTimeout(timeoutId);
+    // V2.8.5.1 — ownership-gated. Without this check, an OLDER (superseded)
+    // request's own late settlement would unconditionally null out
+    // activeRequestRef, clobbering a NEWER request's registration even
+    // though that newer request is still genuinely in flight — silently
+    // disabling the stale-foreground-abort path for it. Only the request
+    // that is STILL current may clear what it registered.
+    if (ownership.isCurrent(token)) {
+      state.clearActiveRequest?.();
+    }
   }
 
   if (!ownership.isCurrent(token)) return; // superseded — nothing below may run
