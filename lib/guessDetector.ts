@@ -287,9 +287,22 @@ export const CAPITALIZED_PREDICATE_STOPWORDS = new Set([
  *
  * Case-SENSITIVE, so it carries no `i` flag: capitalisation is the whole
  * signal, and an `i` flag would destroy it.
+ *
+ * V2.8.5 REGRESSION FIX — the token class was `[A-Za-z][\w.-]*`, and JS's
+ * `\w` is ASCII-only. A capitalised name containing a non-ASCII letter broke
+ * the match entirely rather than merely truncating: "Is the target
+ * Kaposvár?" (a real Hungarian place name, and the section-6 named-question-
+ * prohibition example this exact ticket cites) never matched at all, because
+ * `\w` stops at "á" and nothing after the truncation point satisfies the
+ * trailing `\s*\??\s*$`. "Is the target Grok?" — no accented letter — matched
+ * fine, which is what let this sit unnoticed. Extending the class with
+ * Hungarian's accented letters (the same set HU_WORD already carries
+ * elsewhere in this file) fixes the language this app actually plays in,
+ * without touching the existing ASCII/digit/period/hyphen behaviour
+ * ("GPT-4", "GPT-3.5") at all.
  */
 const BARE_CANDIDATE_EN =
-  /\b(?:[Ii]s|[Ww]as)\s+(?:it|that|this|the\s+(?:target|answer|thing|object|word))\s+([A-Za-z][\w.-]*)\s*\??\s*$/;
+  /\b(?:[Ii]s|[Ww]as)\s+(?:it|that|this|the\s+(?:target|answer|thing|object|word))\s+([A-Za-zÁÉÍÓÖŐÚÜŰáéíóöőúüű][\w.\-ÁÉÍÓÖŐÚÜŰáéíóöőúüű]*)\s*\??\s*$/;
 
 /**
  * Does this question name a single bare candidate?

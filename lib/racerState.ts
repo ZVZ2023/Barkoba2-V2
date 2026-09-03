@@ -1,4 +1,5 @@
 import { clueCreditsAvailable } from "./clueCredits";
+import { isSandboxClarificationEntry } from "./sandboxClarification";
 import type {
   GameRecord,
   RacerClueTurn,
@@ -25,6 +26,11 @@ export function toRacerPublicState(game: GameRecord): RacerPublicState {
   for (const entry of game.qa_log) {
     if (entry.turn_type !== "question") continue;
     if (!entry.question_text) continue;
+    // V2.8.5 — the +1 sandbox-clarification corridor (lib/sandboxClarification
+    // .ts) is a PRIVATE exchange with the Setter. It must never reach the
+    // Racer's transcript — only the resulting sandbox contract does, via the
+    // ordinary phase_one summary the caller populates separately.
+    if (isSandboxClarificationEntry(entry)) continue;
     transcript.push({
       turn_index: entry.turn_index,
       question: entry.question_text,
@@ -57,5 +63,8 @@ export function toRacerPublicState(game: GameRecord): RacerPublicState {
     // engine has locked a sandbox; this narrowing function has no access to
     // that derivation (it only sees GameRecord) and always starts it null.
     phase_one: null,
+    // V2.8.5 — same pattern: the turn route populates this once
+    // lib/layerTwo.ts's replay has run.
+    layer_two: null,
   };
 }

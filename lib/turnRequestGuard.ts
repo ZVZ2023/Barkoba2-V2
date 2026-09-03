@@ -139,6 +139,15 @@ export interface TurnRequestState {
    * GameClient.tsx's own awaitingTurnLock effect.
    */
   setTurnInProgress(inProgress: boolean): void;
+  /**
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — the "+1" private
+   * sandbox-clarification corridor (lib/sandboxClarification.ts) reached its
+   * truthful "no coherent contract" terminal state. Optional and additive:
+   * existing callers/tests that never construct this scenario need not
+   * implement it, and its absence falls back to the pre-existing generic
+   * error banner exactly as before.
+   */
+  setSandboxClarificationFailed?(failed: boolean): void;
 }
 
 export const NETWORK_ERROR_MESSAGE = "Hálózati hiba — próbáld újra.";
@@ -345,6 +354,15 @@ export async function runOwnedTurnRequest(
         state.setError(null);
         state.setTurnFailed(false);
         state.setTurnInProgress(true);
+      } else if (data.error === "sandbox_clarification_failed") {
+        // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — a truthful terminal
+        // state, not a generic gameplay failure: no retry can help, and the
+        // raw message must not be shown as though it were. GameClient renders
+        // its own localized restart/reframe panel with New Game navigation.
+        state.setError(null);
+        state.clearAutoTurnGuard();
+        state.setTurnFailed(false);
+        state.setSandboxClarificationFailed?.(true);
       } else {
         state.setError(data.message || "Valami hiba történt.");
         state.clearAutoTurnGuard();

@@ -80,7 +80,22 @@ function stubRacerQuestions(questions: string[]): { callCount: () => number; res
     const q = questions[calls];
     calls += 1;
     return {
-      output: { action: "question", question_text: q ?? `unexpected-call-${calls}`, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove().
+      output: {
+        action: "question",
+        question_text: q ?? `unexpected-call-${calls}`,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.p${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
@@ -112,7 +127,20 @@ function stubRacerControlled(): {
     resolveNext: (questionText: string) => {
       assert.ok(resolveFn, "no pending Racer call to resolve");
       resolveFn!({
-        output: { action: "question", question_text: questionText, guess_text: null, rationale: "test" },
+        output: {
+          action: "question",
+          question_text: questionText,
+          guess_text: null,
+          rationale: "test",
+          dimension: "test.generic",
+          question_kind: "discriminator",
+          proposition_id: `test.generic.${questionText}`,
+          parent_proposition: null,
+          predicate_strength: "stable",
+          sandbox_repair: false,
+          sandbox_repair_reason: null,
+          sandbox_repair_to: null,
+        },
         resolvedModel: "stub",
       } as ToolCallResult<unknown>);
       resolveFn = null;
@@ -139,23 +167,31 @@ function stubRacerControlled(): {
  * six deterministic, zero-provider classification turns before the model
  * Racer is ever reached. This file exists to exercise the My Car Key
  * integrity/concurrency machinery against MODEL-DRIVEN turns, so its
- * fixtures answer all five spine questions NO (-> Unclassified, the
- * shortest path to Phase Two, no specificity question) first. Answering the
- * fifth question is itself what completes Phase One and triggers the first
- * real Racer call in that same request — stubbed here with `openingQuestion`
- * — so callers get back exactly the `{ status, data }` shape their old
+ * fixtures lock "physical" (NO, then YES) first. Answering the specificity
+ * question is itself what completes Phase One and triggers the first real
+ * Racer call in that same request — stubbed here with `openingQuestion` —
+ * so callers get back exactly the `{ status, data }` shape their old
  * "fresh game -> first racer turn" opener already expected, just reached
  * after Phase One instead of at turn 1.
+ *
+ * V2.8.5 — was 4x NO to "unclassified"; that sandbox now routes through the
+ * private "+1" sandbox-clarification corridor first (see
+ * lib/sandboxClarification.ts) instead of reaching the model directly.
+ * "physical" has no Layer Two mandatory opening gate either, so it still
+ * reaches the model in the very next answer, exactly as this file's
+ * integrity/concurrency tests (orthogonal to sandbox specifics) need.
  */
 async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
   let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
-  for (let i = 0; i < 4; i += 1) {
-    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
-    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
-    rev = result.data.game.revision;
-  }
+  let result = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // -> "physical" gate question
+  assert.equal(result.status, 200, "phase one step 1 must succeed");
+  rev = result.data.game.revision;
+  result = await callTurn(gameId, { answer: "YES", expected_revision: rev }); // locks physical -> specificity question
+  assert.equal(result.status, 200, "phase one step 2 must succeed");
+  rev = result.data.game.revision;
+
   const opener = stubRacerQuestions([openingQuestion]);
-  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // kind -> Phase One complete
   opener.restore();
   return opening;
 }

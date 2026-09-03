@@ -77,7 +77,22 @@ function stubRacerQuestions(questions: string[]) {
     const q = questions[calls];
     calls += 1;
     return {
-      output: { action: "question", question_text: q ?? `unexpected-call-${calls}`, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove().
+      output: {
+        action: "question",
+        question_text: q ?? `unexpected-call-${calls}`,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.p${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
@@ -102,23 +117,32 @@ async function makeGame() {
 }
 
 /**
- * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with up to
- * six deterministic, zero-provider classification turns before the model
- * Racer is ever reached. Answers all five spine questions NO (-> the
- * shortest path to Phase Two: Unclassified), then stubs and issues the one
- * real call that both completes Phase One and produces the first
+ * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with
+ * deterministic, zero-provider classification turns before the model Racer
+ * is ever reached. Locks "physical" (NO, then YES), then stubs and issues
+ * the one real call that both completes Phase One and produces the first
  * model-driven question. Returns the resulting `{status, data}`, matching
  * this file's own "fresh game -> first racer turn" opener shape.
+ *
+ * V2.8.5 — was 4x NO to "unclassified"; that sandbox now routes through the
+ * private "+1" sandbox-clarification corridor first (see
+ * lib/sandboxClarification.ts) instead of reaching the model directly.
+ * "physical" has no Layer Two mandatory opening gate either, so completing
+ * its specificity question still reaches the model in the SAME request, as
+ * this file's stale-revision-reconciliation tests (orthogonal to sandbox
+ * specifics) need.
  */
 async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
   let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
-  for (let i = 0; i < 4; i += 1) {
-    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
-    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
-    rev = result.data.game.revision;
-  }
+  let result = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // -> "physical" gate question
+  assert.equal(result.status, 200, "phase one step 1 must succeed");
+  rev = result.data.game.revision;
+  result = await callTurn(gameId, { answer: "YES", expected_revision: rev }); // locks physical -> specificity question
+  assert.equal(result.status, 200, "phase one step 2 must succeed");
+  rev = result.data.game.revision;
+
   const opener = stubRacerQuestions([openingQuestion]);
-  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // kind -> Phase One complete
   opener.restore();
   return opening;
 }

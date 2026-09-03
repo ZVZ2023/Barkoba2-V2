@@ -74,7 +74,22 @@ function mockProviderOnce(questionText: string) {
     calls += 1;
     capturedMessages = request.messages;
     return {
-      output: { action: "question", question_text: questionText, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove().
+      output: {
+        action: "question",
+        question_text: questionText,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
@@ -121,22 +136,26 @@ test("REQUIRED 1 & 8: the opening turn is Q1 with zero provider calls, and each 
 
 // --- REQUIRED 9/10/11: Phase Two starts only after Phase One, with handoff -
 
-test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes, receives sandbox+specificity, and the guidance version reflects only the V2.8.4.3 final-action contract", async () => {
+test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One AND Living's mandatory Layer Two gate complete, receives sandbox+specificity, and the guidance version reflects only the V2.8.5 Layer Two contract", async () => {
   // REQUIRED 11 (as of V2.8.4) pinned the version so a Phase Two change could
-  // not slip in unnoticed. V2.8.4.3 bumped it for an unrelated reason — the
-  // no-concession final-action contract, not Phase One/Two reasoning — so
-  // this now pins the CURRENT expected value instead of forbidding any bump.
+  // not slip in unnoticed. It has since moved for two unrelated reasons — the
+  // V2.8.4.3 no-concession final-action contract, then V2.8.5's Layer Two
+  // Reasoning Engine — so this now pins the CURRENT expected value instead of
+  // forbidding any bump.
   assert.equal(
     RACER_PROMPT_VERSION,
-    "racer/4.0.1",
-    "prompt version must be exactly the V2.8.4.3 final-action-contract bump, not a Phase One/Two change"
+    "racer/5.0.0",
+    "prompt version must be exactly the V2.8.5 Layer Two contract, not an unrelated Phase One/Two change"
   );
 
   const { gameId } = await makeGame("en");
 
   // Answering the LAST Phase One question generates the next turn in the
   // SAME request -- so the provider guard must already be lifted before
-  // that specific answer, not after it.
+  // that specific answer, not after it. V2.8.5 — Living's mandatory Layer
+  // Two gate (section 10) is itself deterministic, so it must ALSO stay
+  // inside the guarded region: the provider must not be reached until that
+  // gate is answered too, not merely once Phase One's own spine completes.
   const guard = failIfCalled();
   let rev: number;
   try {
@@ -145,14 +164,19 @@ test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes
     const afterQ1 = await answer(gameId, "YES", rev); // locks Living, deterministically asks specificity
     rev = afterQ1.revision;
     assert.equal(afterQ1.qa_log[1].question_text, "Does the correct answer need to identify one uniquely identifiable individual?");
+
+    const afterSpec = await answer(gameId, "NO", rev); // kind/category -> Phase One complete -> mandatory Layer Two gate
+    rev = afterSpec.revision;
+    assert.match(afterSpec.qa_log[2].question_text, /kind of whole biological organism/);
+    assert.equal(afterSpec.qa_log[2].model_id, null, "REQUIRED 9: the mandatory gate itself must not reach the model");
   } finally {
     guard.restore();
   }
 
   const mock = mockProviderOnce("Does it live in water?");
   try {
-    const afterSpec = await answer(gameId, "NO", rev); // kind/category -> Phase One complete -> Phase Two's first real turn
-    assert.equal(mock.callCount(), 1, "REQUIRED 9: exactly one provider call, only once Phase One ended");
+    const afterModelTurn = await answer(gameId, "YES", rev); // whole organism -> the gate's own answer -> Phase Two's first real turn
+    assert.equal(mock.callCount(), 1, "REQUIRED 9: exactly one provider call, only once Phase One AND the mandatory gate ended");
     const messages = mock.lastMessages() as Array<{ content: string }>;
     const joined = messages.map((m) => m.content).join("\n");
     assert.match(
@@ -160,8 +184,8 @@ test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes
       /Deterministic opening classification: living \(a kind\/category/,
       "REQUIRED 10: sandbox+specificity must reach the Racer's own message"
     );
-    assert.equal(afterSpec.qa_log[2].question_text, "Does it live in water?");
-    assert.notEqual(afterSpec.qa_log[2].model_id, null, "REQUIRED 23: a real Phase Two turn must carry real model provenance");
+    assert.equal(afterModelTurn.qa_log[3].question_text, "Does it live in water?");
+    assert.notEqual(afterModelTurn.qa_log[3].model_id, null, "REQUIRED 23: a real Phase Two turn must carry real model provenance");
   } finally {
     mock.restore();
   }
@@ -395,17 +419,20 @@ test("V2.8.4.1 CORRECTION 2: clarification YES completes Phase One as kind/categ
   try {
     const afterPrimary = await reachPrimaryScopeQuestion(gameId);
     const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
-    rev = afterAmbiguous.revision;
+    const afterClarified = await answer(gameId, "YES", afterAmbiguous.revision); // kind -> Phase One complete -> mandatory Layer Two gate
+    assert.match(afterClarified.qa_log[3].question_text, /kind of whole biological organism/);
+    assert.equal(afterClarified.qa_log[3].model_id, null, "the mandatory gate itself must not reach the model");
+    rev = afterClarified.revision;
   } finally {
     guard.restore();
   }
   const mock = mockProviderOnce("Does it live in water?");
   try {
-    const afterClarified = await answer(gameId, "YES", rev);
-    assert.equal(mock.callCount(), 1, "clarification YES must complete Phase One and trigger exactly one Phase Two turn");
+    const afterGate = await answer(gameId, "YES", rev); // whole organism -> the gate's own answer -> Phase Two's first real turn
+    assert.equal(mock.callCount(), 1, "the mandatory gate's own answer must trigger exactly one Phase Two turn");
     const joined = mock.lastMessages().map((m) => (m as { content: string }).content).join("\n");
     assert.match(joined, /Deterministic opening classification: living \(a kind\/category/);
-    assert.equal(afterClarified.qa_log[3].question_text, "Does it live in water?");
+    assert.equal(afterGate.qa_log[4].question_text, "Does it live in water?");
   } finally {
     mock.restore();
   }
@@ -418,17 +445,19 @@ test("V2.8.4.1 CORRECTION 3: clarification NO completes Phase One as particular 
   try {
     const afterPrimary = await reachPrimaryScopeQuestion(gameId);
     const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
-    rev = afterAmbiguous.revision;
+    const afterClarified = await answer(gameId, "NO", afterAmbiguous.revision); // particular -> Phase One complete -> mandatory Layer Two gate
+    assert.match(afterClarified.qa_log[3].question_text, /Is this specific target itself a whole biological organism/);
+    rev = afterClarified.revision;
   } finally {
     guard.restore();
   }
   const mock = mockProviderOnce("Is it kept indoors?");
   try {
-    const afterClarified = await answer(gameId, "NO", rev);
-    assert.equal(mock.callCount(), 1, "clarification NO must complete Phase One and trigger exactly one Phase Two turn");
+    const afterGate = await answer(gameId, "YES", rev); // whole organism -> the gate's own answer -> Phase Two's first real turn
+    assert.equal(mock.callCount(), 1, "the mandatory gate's own answer must trigger exactly one Phase Two turn");
     const joined = mock.lastMessages().map((m) => (m as { content: string }).content).join("\n");
     assert.match(joined, /Deterministic opening classification: living \(a particular instance/);
-    assert.equal(afterClarified.qa_log[3].question_text, "Is it kept indoors?");
+    assert.equal(afterGate.qa_log[4].question_text, "Is it kept indoors?");
   } finally {
     mock.restore();
   }

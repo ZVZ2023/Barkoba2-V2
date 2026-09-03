@@ -8,6 +8,18 @@ import {
 } from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
 import { derivePhaseOneState } from "@/lib/phaseOne";
+import {
+  deriveLayerTwoState,
+  nextMandatoryGate,
+  resolveLivingRoute,
+  resolvePlaceRoute,
+  type LayerTwoState,
+} from "@/lib/layerTwo";
+import {
+  deriveSandboxClarificationState,
+  isSandboxClarificationEntry,
+  sandboxClarificationRawOutput,
+} from "@/lib/sandboxClarification";
 import { advanceHighWaterMark, effectiveConsumed } from "@/lib/rewind";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent, racerModelFor } from "@/lib/prompts/racer";
@@ -34,6 +46,7 @@ import {
 import { env } from "@/lib/env";
 import type {
   ComposerAnswer,
+  GameLanguage,
   GameRecord,
   GuessIntentOutcome,
   ModelProvenance,
@@ -41,6 +54,20 @@ import type {
   RacerPublicState,
   RacerTurnOutput,
 } from "@/lib/types";
+
+/**
+ * V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (localization) — this route's
+ * other error messages are, by longstanding pre-existing convention, plain
+ * Hungarian regardless of game.game_language (unrelated to this ticket, and
+ * out of scope to relitigate here). The "+1" corridor's failure message is
+ * called out specifically because an English game must not receive a
+ * Hungarian terminal message at exactly the point where the player needs to
+ * understand why the game stopped.
+ */
+const SANDBOX_CLARIFICATION_FAILED_MESSAGE: Record<GameLanguage, string> = {
+  hu: "Nem sikerült egyértelmű célkategóriát megállapítani a megadott válaszokból. Kérlek, kezdj új játékot pontosabban megfogalmazott céllal.",
+  en: "Could not establish a clear target category from the answers given. Please start a new game with a more precisely defined target.",
+};
 
 // This route deliberately imports neither lib/secretStore.ts nor anything that
 // does. It runs the entire question loop on public state alone.
@@ -259,7 +286,8 @@ async function runOneRacerAttempt(
   gameId: string,
   revisionAtLockTime: number,
   providerDeadlineAt: number,
-  attemptNumber: number
+  attemptNumber: number,
+  layerTwoState?: LayerTwoState
 ): Promise<RacerAttemptOutcome> {
   // S2 / RB-2 — the shared provider-time budget's EARLY gate. Cheap and
   // approximate: it avoids wasting a daily spend-ceiling slot and a
@@ -361,6 +389,7 @@ async function runOneRacerAttempt(
         forceFinal,
         provider: racerProvider,
         signal,
+        layerTwoState,
       })
     );
     turn = racerResult.output;
@@ -652,18 +681,23 @@ export async function POST(
         pending.ambiguous_explanation = null;
       }
 
-      // Every question the Racer asks costs one of its 20, whatever answer
-      // comes back. YES, NO and AMBIGUOUS are all worth exactly one question.
-      const questionCountBefore = game.question_count;
-      game.question_count += 1;
-      // V2.8.4.2 — correction-budget integrity. Keeps the durable floor in
-      // step with ordinary play, so the very first correction (if any) has
-      // an accurate mark to freeze rather than starting from a stale one.
-      game.question_count_high_water_mark = advanceHighWaterMark(
-        questionCountBefore,
-        game.question_count_high_water_mark,
-        game.question_count
-      );
+      // V2.8.5 — the "+1" corridor (lib/sandboxClarification.ts) is a
+      // private exchange with the Setter, never a Racer question: it must
+      // consume no budget. Every ordinary question still costs one of the
+      // 20, whatever answer comes back — YES, NO and AMBIGUOUS are worth
+      // exactly one question.
+      if (!isSandboxClarificationEntry(pending)) {
+        const questionCountBefore = game.question_count;
+        game.question_count += 1;
+        // V2.8.4.2 — correction-budget integrity. Keeps the durable floor in
+        // step with ordinary play, so the very first correction (if any) has
+        // an accurate mark to freeze rather than starting from a stale one.
+        game.question_count_high_water_mark = advanceHighWaterMark(
+          questionCountBefore,
+          game.question_count_high_water_mark,
+          game.question_count
+        );
+      }
     }
 
     // -------------------------------------------------------------------------
@@ -765,13 +799,175 @@ export async function POST(
       return respond(game);
     }
 
+    // -------------------------------------------------------------------------
+    // V2.8.5 — the "+1" corridor (lib/sandboxClarification.ts). Phase One
+    // classified this game "unclassified": before Layer Two's adaptive
+    // routing ever reaches the model, ask the Setter privately which
+    // intended sense governs. Consumes no Racer question (the Step 1
+    // increment above is skipped for these entries specifically) and never
+    // reaches the Racer's transcript (lib/racerState.ts filters them out) —
+    // only the resulting sandbox contract does, via the ordinary
+    // racerState.phase_one summary below.
+    // -------------------------------------------------------------------------
+    let effectiveSandbox = phaseOneState.sandbox;
+    let clarificationMixedSenses: [string, string] | null = null;
+    if (phaseOneState.complete && phaseOneState.sandbox === "unclassified" && !forceFinal) {
+      const clarificationState = deriveSandboxClarificationState(game.qa_log, game.game_language);
+
+      if (!clarificationState.complete) {
+        const entry = newLogEntry(game.qa_log.length + 1);
+        entry.question_text = clarificationState.nextQuestionText;
+        entry.racer_output_raw = sandboxClarificationRawOutput(clarificationState.nextQuestionText);
+        game.qa_log.push(entry);
+
+        const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+        if (!saved.ok) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}) ` +
+              `during the +1 sandbox-clarification corridor; expected ${revisionAtLockTime}, actual ${saved.revision}`
+          );
+          const canonical = await getGame(gameId);
+          return staleTurn(canonical ?? game);
+        }
+        game.revision = saved.revision;
+        return respond(game);
+      }
+
+      if (clarificationState.failed) {
+        // Section 14 — no coherent contract could be established. The
+        // Composer's own just-recorded answer must still be persisted, but
+        // no further turn is generated and the game does not resolve to any
+        // outcome — reframing/restart is required, exactly as specified,
+        // never unrestricted guessing.
+        const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+        if (!saved.ok) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}) ` +
+              `during the +1 sandbox-clarification corridor's failure path`
+          );
+          const canonical = await getGame(gameId);
+          return staleTurn(canonical ?? game);
+        }
+        game.revision = saved.revision;
+        return NextResponse.json(
+          {
+            error: "sandbox_clarification_failed",
+            message: SANDBOX_CLARIFICATION_FAILED_MESSAGE[game.game_language],
+            game,
+          },
+          { status: 409 }
+        );
+      }
+
+      effectiveSandbox = clarificationState.resolvedSandbox;
+      clarificationMixedSenses = clarificationState.mixedSenses;
+    }
+
+    // -------------------------------------------------------------------------
+    // V2.8.5 — Layer Two traversal state, derived EARLY (before the mandatory
+    // gate check below). V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (finding 2)
+    // — this must happen before the gate check specifically so a successful
+    // sandbox repair's ACTIVE sandbox (not Phase One's original one) is what
+    // gets gated: a repair from Physical into Living/Place is brand new
+    // territory this game has never faced a gate for, and skipping that gate
+    // would let the repaired card activate without ever asking the
+    // whole-organism/Earth-membership question section 10/12 requires.
+    // -------------------------------------------------------------------------
+    let layerTwoState: LayerTwoState | undefined;
+    if (phaseOneState.complete && effectiveSandbox !== null && effectiveSandbox !== "unclassified") {
+      layerTwoState = deriveLayerTwoState(game.qa_log, effectiveSandbox);
+    }
+    const activeSandboxForGate = layerTwoState?.activeSandbox ?? effectiveSandbox;
+
+    // -------------------------------------------------------------------------
+    // V2.8.5 — Living/Place mandatory deterministic opening gates (sections
+    // 10, 12). Zero model involvement, exactly like Phase One's own spine —
+    // injected before Layer Two's adaptive routing ever reaches the model,
+    // and never on the forced-final turn (which must always reach the model
+    // to produce the mandatory guess). Gated on the ACTIVE sandbox (which a
+    // successful repair may have changed), never the raw Phase One result.
+    // -------------------------------------------------------------------------
+    if ((activeSandboxForGate === "living" || activeSandboxForGate === "place") && !forceFinal) {
+      const gate = nextMandatoryGate(
+        game.qa_log,
+        activeSandboxForGate,
+        // Guaranteed non-null here: activeSandboxForGate can only be
+        // "living"/"place" if effectiveSandbox itself was ("living"/"place",
+        // hence non-null) OR layerTwoState exists (which requires
+        // effectiveSandbox !== null to have been derived at all).
+        effectiveSandbox!,
+        phaseOneState.specificity,
+        game.game_language
+      );
+      if (gate) {
+        const entry = newLogEntry(game.qa_log.length + 1);
+        entry.question_text = gate.questionText;
+        entry.racer_output_raw = JSON.stringify({
+          action: "question",
+          question_text: gate.questionText,
+          guess_text: null,
+          rationale: "layer_two_deterministic",
+          ...gate.meta,
+        });
+        game.qa_log.push(entry);
+
+        const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+        if (!saved.ok) {
+          // eslint-disable-next-line no-console
+          console.error(
+            `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}) ` +
+              `during a Layer Two mandatory gate; expected ${revisionAtLockTime}, actual ${saved.revision}`
+          );
+          const canonical = await getGame(gameId);
+          return staleTurn(canonical ?? game);
+        }
+        game.revision = saved.revision;
+        return respond(game);
+      }
+    }
+
     const racerState = toRacerPublicState(game);
-    if (phaseOneState.complete && phaseOneState.sandbox !== null) {
-      racerState.phase_one = {
-        sandbox: phaseOneState.sandbox,
-        specificity: phaseOneState.specificity,
-        mixed_spine_questions: phaseOneState.mixedSpineQuestions,
-      };
+    if (phaseOneState.complete && effectiveSandbox !== null) {
+      // V2.8.5 — Layer Two only applies once a real sandbox is in effect;
+      // "unclassified" without a resolved +1 contract never reaches here
+      // (the corridor above always returns first in that case).
+      if (layerTwoState) {
+        // ENGINE-CONTRACT CORRECTION (defect 3) — racerState.phase_one.sandbox
+        // reflects the REPLAY-DERIVED effective sandbox (originalSandbox,
+        // unless a repair succeeded with YES), never the historical Phase One
+        // result directly. Phase One's own record (phaseOneState.sandbox,
+        // still exactly `effectiveSandbox` here before any repair) is never
+        // overwritten anywhere — this is a card-selection value only.
+        racerState.phase_one = {
+          sandbox: layerTwoState.activeSandbox,
+          specificity: phaseOneState.specificity,
+          mixed_spine_questions: phaseOneState.mixedSpineQuestions,
+        };
+        racerState.layer_two = {
+          activeDimension: layerTwoState.activeDimension,
+          stalledDimensions: Array.from(layerTwoState.stalledDimensions),
+          blockedPropositions: Array.from(layerTwoState.blockedPropositions),
+          typicalOnlySupported: Array.from(layerTwoState.typicalOnlySupported),
+          contestedPropositions: Array.from(layerTwoState.contestedPropositions),
+          pendingPremiseAudit: layerTwoState.pendingPremiseAudit,
+          sandboxRepairUsed: layerTwoState.sandboxRepairUsed,
+          secondarySense: clarificationMixedSenses ? clarificationMixedSenses[1] : null,
+          originalSandbox: layerTwoState.originalSandbox,
+          activeSandbox: layerTwoState.activeSandbox,
+          repairContested: layerTwoState.repairContested,
+          livingRoute:
+            layerTwoState.activeSandbox === "living" ? resolveLivingRoute(game.qa_log, phaseOneState.specificity) : null,
+          placeRoute: layerTwoState.activeSandbox === "place" ? resolvePlaceRoute(game.qa_log) : null,
+        };
+      } else {
+        racerState.phase_one = {
+          sandbox: effectiveSandbox,
+          specificity: phaseOneState.specificity,
+          mixed_spine_questions: phaseOneState.mixedSpineQuestions,
+        };
+      }
     }
 
     // V2.5-B3 — WHO is playing this seat, read from the game and not from the
@@ -839,7 +1035,8 @@ export async function POST(
           gameId,
           revisionAtLockTime,
           providerDeadlineAt,
-          attemptNumber
+          attemptNumber,
+          layerTwoState
         );
         if (!outcome.ok) return { ok: false, failure: outcome.response };
 
