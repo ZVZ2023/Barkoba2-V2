@@ -140,7 +140,7 @@ async function reachPhaseTwo(gameId: string) {
   let rev = opening.data.game.revision;
   const afterQ1 = await answer(gameId, "YES", rev); // locks Living
   rev = afterQ1.revision;
-  assert.equal(afterQ1.qa_log[1].question_text, "Is it one particular living being?");
+  assert.equal(afterQ1.qa_log[1].question_text, "Does the correct answer need to identify one uniquely identifiable individual?");
 
   const mock = mockProviderSequence(["Does it live in water?"]);
   let afterSpec;
@@ -161,7 +161,7 @@ test("HANDOFF 1: completed Phase One with no trailing entry returns the expected
   // Exercised at the pure level in test/phaseOne.test.ts's REQUIRED 3; kept
   // here too as the baseline HANDOFF 2/3 build on by appending trailing
   // Phase Two entries.
-  const log = [mkEntry("Is it alive?", "YES"), mkEntry("Is it one particular living being?", "NO")];
+  const log = [mkEntry("Is it alive?", "YES"), mkEntry("Does the correct answer need to identify one uniquely identifiable individual?", "NO")];
   const state = derivePhaseOneState(log, "en");
   assert.equal(state.complete, true);
   assert.equal(state.sandbox, "living");
@@ -169,7 +169,7 @@ test("HANDOFF 1: completed Phase One with no trailing entry returns the expected
 });
 
 test("HANDOFF 2 & 3 (pure): appending one, then several, model-authored Phase Two entries never changes the frozen summary", () => {
-  const base = [mkEntry("Is it alive?", "YES"), mkEntry("Is it one particular living being?", "NO")];
+  const base = [mkEntry("Is it alive?", "YES"), mkEntry("Does the correct answer need to identify one uniquely identifiable individual?", "NO")];
   const before = derivePhaseOneState(base, "en");
 
   const modelEntry = (questionText: string, answer: ComposerAnswer | null) =>

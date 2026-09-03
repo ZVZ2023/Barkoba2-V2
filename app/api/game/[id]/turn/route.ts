@@ -696,6 +696,30 @@ export async function POST(
     // carrying whatever partial classification exists so far.
     // -------------------------------------------------------------------------
     const phaseOneState = derivePhaseOneState(game.qa_log, game.game_language);
+    if (!phaseOneState.complete && phaseOneState.unresolved) {
+      // V2.8.4.1 correction — REFERENT SCOPE, doubly ambiguous (IS-IS on
+      // both the primary question and its deterministic clarification).
+      // Referent scope is the Setter's own choice, not an external fact —
+      // Phase One does not guess a value here, and this must never reach the
+      // provider. Nothing further to generate, but the human's own just-
+      // recorded IS-IS answer (Step 1, above) must still be persisted —
+      // this is the same save every other no-new-turn exit path in this
+      // route already performs (see Step 1b, just above). The Setter
+      // resolves this the ordinary way, by correcting one of the two scope
+      // answers.
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+      if (!saved.ok) {
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}) ` +
+            `during the unresolved-referent-scope block; expected ${revisionAtLockTime}, actual ${saved.revision}`
+        );
+        const canonical = await getGame(gameId);
+        return staleTurn(canonical ?? game);
+      }
+      game.revision = saved.revision;
+      return respond(game);
+    }
     if (!phaseOneState.complete && !forceFinal) {
       const entry = newLogEntry(game.qa_log.length + 1);
       entry.turn_type = "question";

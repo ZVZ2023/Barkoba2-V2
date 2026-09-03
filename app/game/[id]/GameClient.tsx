@@ -2,10 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
+import { derivePhaseOneState, isReferentScopeQuestion } from "@/lib/phaseOne";
 import { questionNumbers } from "@/lib/questionNumbers";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
 import {
   createRequestOwnership,
+  mergeViewIntoGame,
+  reconciliationShowsProgress,
   runOwnedTurnRequest,
   type RequestOwnership,
   type TurnResponseBody,
@@ -14,6 +17,13 @@ import type { GameView } from "@/lib/gameView";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import EvaluationState from "@/app/components/EvaluationState";
+import ThinkingIndicator from "@/app/components/ThinkingIndicator";
+
+// V2.8.4.1 — the retry delay for a turn_in_progress response (the server's
+// turn lock is already held, most often by a still-finishing provider call
+// from a prior attempt). Long enough that a bounded retry loop cannot hammer
+// the endpoint; short enough that the player never notices a stall.
+const TURN_LOCK_RETRY_DELAY_MS = 3000;
 
 interface Props {
   initialGame: GameRecord;
@@ -109,6 +119,11 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   // Suspends only the AUTOMATIC path; see lib/turnRecovery.ts for why clearing
   // the ref alone would turn one failure into a retry loop.
   const [turnFailed, setTurnFailed] = useState(false);
+  // V2.8.4.1 — the server's turn lock is already held by another in-flight
+  // request (see lib/turnRequestGuard.ts's turn_in_progress handling). This
+  // is transient, not a failure: a dedicated effect below retries quietly
+  // after a short delay instead of surfacing a dead-looking error.
+  const [awaitingTurnLock, setAwaitingTurnLock] = useState(false);
 
   // S1 / RB-1 — request ownership. See lib/turnRequestGuard.ts. One tracker
   // for the life of this screen; only the most recently begun sendTurn() may
@@ -129,6 +144,14 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
   const clueWanted = pendingClueRequest(game);
+  // V2.8.4.1 correction — referent scope answered IS-IS twice (the primary
+  // question and its deterministic clarification). Phase One does not guess
+  // a value here and must never hand this to Phase Two — the Setter has to
+  // correct one of the two scope answers before play can continue. Computed
+  // straight from the same pure replay GameClient already trusts for the
+  // "my Swiss Army knife" helper text; the server enforces the actual block
+  // (see app/api/game/[id]/turn/route.ts), this is purely the explanation.
+  const phaseOneScopeUnresolved = derivePhaseOneState(game.qa_log, game.game_language).unresolved;
   const [clueText, setClueText] = useState("");
 
   const sendClue = useCallback(async () => {
@@ -207,6 +230,7 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             //   not turn one failure into a loop against a failing provider.
             autoTurnFor.current = null;
           },
+          setTurnInProgress: setAwaitingTurnLock,
         }
       );
     },
@@ -327,6 +351,67 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
     void sendTurn();
   }, [game, busy, turnFailed, sendTurn]);
 
+  // V2.8.4.1 — turn_in_progress: the server's lock is already held (most
+  // often a still-finishing provider call from a prior attempt). Quiet,
+  // bounded retry after a short delay — never a dead-looking screen, never an
+  // immediate hot loop against a lock that has not cleared yet.
+  useEffect(() => {
+    if (!awaitingTurnLock || busy) return;
+    const timer = setTimeout(() => {
+      void sendTurn();
+    }, TURN_LOCK_RETRY_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [awaitingTurnLock, busy, sendTurn]);
+
+  // V2.8.4.1 — reconcile on return from the background. A fetch suspended
+  // while the tab was hidden is neither a confirmed success nor a confirmed
+  // failure; assuming failure would show a false error over a turn the
+  // server may already have completed. Reuses the SAME canonical-truth
+  // helpers lib/turnRequestGuard.ts's own failure path already trusts — no
+  // new reconciliation logic, just a second trigger for the existing one.
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState !== "visible") return;
+      // An in-flight request will itself resolve or reconcile on failure —
+      // a concurrent proactive read here would only race it.
+      if (busy) return;
+      void (async () => {
+        try {
+          const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+          const body = (await res.json()) as { view?: GameView };
+          if (!res.ok || !body.view) return;
+          const before = gameRef.current;
+          const reconciled = mergeViewIntoGame(before, body.view);
+          if (reconciliationShowsProgress(before, reconciled)) {
+            setGame(reconciled);
+            setError(null);
+            setTurnFailed(false);
+          }
+        } catch {
+          // Best-effort background refresh, not a user action — silent.
+        }
+      })();
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [busy]);
+
+  // V2.8.4.1 — the three-stage AI-activity indicator's episode clock. Owned
+  // here (not by ThinkingIndicator's own mount time) so a turn_in_progress
+  // retry mid-wait does not reset the stage back to "eager": the indicator
+  // stays mounted continuously across the gap between attempts because
+  // `waitingForAi` stays true (awaitingTurnLock) even while `busy` is
+  // momentarily false between the two requests.
+  const waitingForAi = (busy || awaitingTurnLock) && !clueWanted && !guessRevealPending;
+  const [waitStartedAt, setWaitStartedAt] = useState<number | null>(null);
+  useEffect(() => {
+    if (waitingForAi) {
+      setWaitStartedAt((prev) => prev ?? Date.now());
+    } else {
+      setWaitStartedAt(null);
+    }
+  }, [waitingForAi]);
+
   const offerTurnRetry = shouldOfferTurnRetry({
     phase: game.phase,
     hasPendingQuestion: pending !== null,
@@ -386,10 +471,170 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
       </p>
 
       <section className="flex flex-col gap-4">
-        {turns.length === 0 && !pending && (
-          <p className="text-sm text-[var(--ink-soft)]">
-            {busy ? "Az AI gondolkodik…" : "Várjuk az AI első kérdését."}
-          </p>
+        {/*
+          V2.8.4.1 — ACTIVE AREA, always first: whatever needs the player's
+          attention right now (a clue request, the pre-guess checkpoint, or
+          the current question) appears directly below the header, before the
+          completed transcript, so a new question never requires scrolling to
+          the bottom to find it. Exactly one of these four is ever true at a
+          given moment — clueWanted/guessRevealPending/pending are mutually
+          exclusive by construction (each checks the qa_log's single LAST
+          entry's turn_type).
+        */}
+        {clueWanted && (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--blue)]/35 bg-[var(--blue)]/6 p-4">
+            <p className="text-sm text-[var(--blue)]">
+              Az AI súgót kért. Segíts neki — ez nem számít bele a kérdéseibe.
+            </p>
+            <textarea
+              spellCheck
+              autoCorrect="on"
+              autoCapitalize="sentences"
+              className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--blue)]"
+              value={clueText}
+              onChange={(e) => setClueText(e.target.value)}
+              placeholder="pl. Nem a lakásban keresd."
+              disabled={busy}
+            />
+            <button
+              onClick={() => void sendClue()}
+              disabled={busy || !clueText.trim()}
+              className="min-h-11 self-start rounded-md bg-[var(--blue)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+            >
+              Súgok
+            </button>
+          </div>
+        )}
+
+        {!clueWanted && guessRevealPending && (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
+            <p className="text-sm text-[var(--ink)]">
+              Az AI a végső tippjére készül. Mielőtt megmutatnánk, nézd át az
+              utolsó válaszod itt fent — utoljára most tudod javítani, utána
+              már nem.
+            </p>
+            <button
+              onClick={() => setGuessConfirmed(true)}
+              disabled={busy || correcting !== null}
+              className="min-h-12 self-start rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40"
+            >
+              Tovább, jöhet a tipp
+            </button>
+          </div>
+        )}
+
+        {!clueWanted && !guessRevealPending && pending && pending.question_text && (
+          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
+            <div className="flex min-w-0 gap-3">
+              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
+                #{numbers.get(pending.id) ?? pending.turn_index}
+              </span>
+              <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
+            </div>
+
+            {/*
+              V2.8.4.1 — REFERENT SCOPE helper text. Only for the current
+              (new-wording) question; an in-progress game still showing the
+              old wording gets no helper text, matching what it shipped with.
+            */}
+            {isReferentScopeQuestion(pending.question_text) && (
+              <p className="min-w-0 break-words text-xs text-[var(--ink-soft)] sm:pl-11">
+                „A zsebkésem” = IGEN. „Egy zsebkés” = NEM.
+              </p>
+            )}
+
+            {!ambiguousMode ? (
+              <div className="flex flex-wrap gap-2 sm:pl-11">
+                <button
+                  onClick={() => void sendTurn("YES")}
+                  disabled={busy}
+                  className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
+                >
+                  IGEN
+                </button>
+                <button
+                  onClick={() => void sendTurn("NO")}
+                  disabled={busy}
+                  className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
+                >
+                  NEM
+                </button>
+                <button
+                  onClick={() => setAmbiguousMode(true)}
+                  disabled={busy}
+                  className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
+                >
+                  IS-IS
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-2 sm:pl-11">
+                <p className="text-xs text-[var(--ink-soft)]">
+                  IS-IS: sem az IGEN, sem a NEM nem lenne pontos pontosítás nélkül. Írd le, miért — az AI látja ezt a megjegyzést. Kitöltése nem kötelező.
+                </p>
+                <textarea
+                  spellCheck
+                  autoCorrect="on"
+                  autoCapitalize="sentences"
+                  className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
+                  value={explanation}
+                  onChange={(e) => setExplanation(e.target.value)}
+                  placeholder="pl. attól függ, beleszámít-e a fogantyú"
+                />
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => void sendTurn("AMBIGUOUS", explanation)}
+                    disabled={busy}
+                    className="min-h-12 flex-1 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40 sm:flex-none"
+                  >
+                    IS-IS küldése
+                  </button>
+                  <button
+                    onClick={() => {
+                      setAmbiguousMode(false);
+                      setExplanation("");
+                    }}
+                    disabled={busy}
+                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
+                  >
+                    Mégsem
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {waitingForAi && waitStartedAt !== null && (
+              <div className="sm:pl-11">
+                {/* V2.8.4.1 — shell language is Hungarian regardless of
+                    game_language; see lib/gameLanguage.ts's own module doc. */}
+                <ThinkingIndicator startedAt={waitStartedAt} language="hu" />
+              </div>
+            )}
+          </div>
+        )}
+
+        {!clueWanted && !guessRevealPending && !pending && (
+          <div className="flex flex-col gap-3">
+            {phaseOneScopeUnresolved ? (
+              <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-4">
+                <p className="text-sm text-[var(--red)]">
+                  A hatókör kérdésére kétszer is IS-IS érkezett, ezért a kör
+                  nem folytatható.
+                </p>
+                <p className="mt-1 text-sm text-[var(--ink)]">
+                  Javítsd ki az egyik választ fent, a korábbi kérdéseknél:
+                  IGEN, ha kizárólag egyetlen konkrét példány a jó válasz;
+                  NEM, ha bármelyik megfelelő példány elfogadható.
+                </p>
+              </div>
+            ) : waitingForAi && waitStartedAt !== null ? (
+              <ThinkingIndicator startedAt={waitStartedAt} language="hu" />
+            ) : (
+              turns.length === 0 && (
+                <p className="text-sm text-[var(--ink-soft)]">Várjuk az AI első kérdését.</p>
+              )
+            )}
+          </div>
         )}
 
         {turns.map((entry) => (
@@ -571,124 +816,6 @@ export default function GameClient({ initialGame, versionLabel }: Props) {
             )}
           </div>
         ))}
-
-        {clueWanted && (
-          <div className="flex flex-col gap-3 rounded-md border border-[var(--blue)]/35 bg-[var(--blue)]/6 p-4">
-            <p className="text-sm text-[var(--blue)]">
-              Az AI súgót kért. Segíts neki — ez nem számít bele a kérdéseibe.
-            </p>
-            <textarea
-              spellCheck
-              autoCorrect="on"
-              autoCapitalize="sentences"
-              className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--blue)]"
-              value={clueText}
-              onChange={(e) => setClueText(e.target.value)}
-              placeholder="pl. Nem a lakásban keresd."
-              disabled={busy}
-            />
-            <button
-              onClick={() => void sendClue()}
-              disabled={busy || !clueText.trim()}
-              className="min-h-11 self-start rounded-md bg-[var(--blue)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
-            >
-              Súgok
-            </button>
-          </div>
-        )}
-
-        {guessRevealPending && (
-          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
-            <p className="text-sm text-[var(--ink)]">
-              Az AI a végső tippjére készül. Mielőtt megmutatnánk, nézd át az
-              utolsó válaszod itt fent — utoljára most tudod javítani, utána
-              már nem.
-            </p>
-            <button
-              onClick={() => setGuessConfirmed(true)}
-              disabled={busy || correcting !== null}
-              className="min-h-12 self-start rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40"
-            >
-              Tovább, jöhet a tipp
-            </button>
-          </div>
-        )}
-
-        {pending && pending.question_text && (
-          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
-            <div className="flex min-w-0 gap-3">
-              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                #{numbers.get(pending.id) ?? pending.turn_index}
-              </span>
-              <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
-            </div>
-
-            {!ambiguousMode ? (
-              <div className="flex flex-wrap gap-2 sm:pl-11">
-                <button
-                  onClick={() => void sendTurn("YES")}
-                  disabled={busy}
-                  className="min-h-11 flex-1 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
-                >
-                  IGEN
-                </button>
-                <button
-                  onClick={() => void sendTurn("NO")}
-                  disabled={busy}
-                  className="min-h-11 flex-1 rounded-md bg-[var(--red)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40 sm:flex-none"
-                >
-                  NEM
-                </button>
-                <button
-                  onClick={() => setAmbiguousMode(true)}
-                  disabled={busy}
-                  className="min-h-11 flex-1 rounded-md border border-[var(--red)]/45 px-4 py-2.5 text-sm font-medium text-[var(--ink)] disabled:opacity-40 sm:flex-none"
-                >
-                  IS-IS
-                </button>
-              </div>
-            ) : (
-              <div className="flex flex-col gap-2 sm:pl-11">
-                <p className="text-xs text-[var(--ink-soft)]">
-                  IS-IS: sem az IGEN, sem a NEM nem lenne pontos pontosítás nélkül. Írd le, miért — az AI látja ezt a megjegyzést. Kitöltése nem kötelező.
-                </p>
-                <textarea
-                  spellCheck
-                  autoCorrect="on"
-                  autoCapitalize="sentences"
-                  className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
-                  value={explanation}
-                  onChange={(e) => setExplanation(e.target.value)}
-                  placeholder="pl. attól függ, beleszámít-e a fogantyú"
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => void sendTurn("AMBIGUOUS", explanation)}
-                    disabled={busy}
-                    className="min-h-12 flex-1 rounded-md bg-[var(--green)] px-5 py-3 text-base font-semibold text-[var(--parchment)] shadow-sm disabled:opacity-40 sm:flex-none"
-                  >
-                    IS-IS küldése
-                  </button>
-                  <button
-                    onClick={() => {
-                      setAmbiguousMode(false);
-                      setExplanation("");
-                    }}
-                    disabled={busy}
-                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
-                  >
-                    Mégsem
-                  </button>
-                </div>
-              </div>
-            )}
-
-          </div>
-        )}
-
-        {busy && pending && (
-          <p className="text-sm text-[var(--ink-soft)]">Az AI gondolkodik…</p>
-        )}
       </section>
 
       {/*
