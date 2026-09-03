@@ -507,3 +507,171 @@ async function reconcileAfterFailure(
   state.clearAutoTurnGuard();
   state.setTurnFailed(true);
 }
+
+// ---------------------------------------------------------------------------
+// V2.8.5.2 — the SAME bounded-lifecycle pattern applied to /resolve.
+//
+// THE DEFECT THIS REPAIRS — production forensic, game
+// a0b7743b-5599-45ac-9909-e1dd23a6316c: the Composer saw
+// "Hálózati hiba a lezárásnál — próbáld újra." (the client's own fetch-threw
+// fallback text) at a moment the server's own logs show a fully-completed,
+// cleanly-answered request. resolveGame()'s fetch had no AbortController and
+// no timeout at all — the exact gap CLIENT_TURN_TIMEOUT_MS closed for /turn
+// in V2.8.5.1, never applied here. Reuses RequestOwnership,
+// ActiveRequestHandle, mergeViewIntoGame, and reconciliationShowsProgress
+// unchanged: /resolve's canonical "did it actually finish" signal is exactly
+// the same phase-advanced-to-"complete" fact reconciliationShowsProgress
+// already checks (`after.phase !== before.phase`), so no new reconciliation
+// logic is needed, only a new (smaller, /resolve-shaped) request/state
+// contract and the same abort-on-timeout wiring.
+// ---------------------------------------------------------------------------
+
+/**
+ * V2.8.5.2 — bounds /resolve's own wait. app/api/game/[id]/resolve/route.ts
+ * declares `export const maxDuration = 60` (Vercel's own execution ceiling
+ * for this route — far shorter than /turn's 270s, since /resolve makes at
+ * most one Adjudicator call plus up to two bounded Integrity Review
+ * attempts, never an open-ended duplicate-question loop). 90_000ms gives a
+ * documented 30s margin beyond that platform ceiling for network overhead —
+ * the same style of margin app/api/game/[id]/turn/route.ts's own
+ * maxDuration(270s) < TURN_LOCK_TTL_SECONDS(300s) documents, scaled to
+ * /resolve's own (much shorter) legitimate duration rather than reused
+ * verbatim from /turn's.
+ */
+export const RESOLVE_CLIENT_TIMEOUT_MS = 90_000;
+
+/** The shape every real POST /api/game/[id]/resolve response carries. */
+export interface ResolveResponseBody {
+  game?: GameRecord;
+  error?: string;
+  message?: string;
+}
+
+export interface ResolveRequestResult {
+  ok: boolean;
+  data: ResolveResponseBody | null | undefined;
+}
+
+export interface ResolveRequestIO {
+  /** See TurnRequestIO.requestTurn's doc — the same signal-forwarding requirement applies here. */
+  requestResolve(signal: AbortSignal): Promise<ResolveRequestResult>;
+  requestView(): Promise<ViewRequestResult>;
+}
+
+export const RESOLVE_NETWORK_ERROR_MESSAGE = "Hálózati hiba a lezárásnál — próbáld újra.";
+
+/** Every piece of state S1's /resolve analogue requires to be ownership-guarded. */
+export interface ResolveRequestState {
+  getGame(): GameRecord;
+  setGame(game: GameRecord): void;
+  setResolveError(message: string | null): void;
+  setResolving(resolving: boolean): void;
+  /** The auto-resolve effect's own `resolveFired.current = false` — re-armed on any failure, exactly like clearAutoTurnGuard for /turn. */
+  clearResolveGuard(): void;
+  registerActiveRequest?(handle: ActiveRequestHandle): void;
+  clearActiveRequest?(): void;
+}
+
+/**
+ * The full owned-resolve workflow — see runOwnedTurnRequest's doc; this is
+ * its /resolve-shaped twin, sharing the same ownership/reconciliation
+ * primitives. A superseded call's success, failure, or reconciled outcome
+ * cannot overwrite what a newer call already established, and a stale/late
+ * settlement cannot clobber a newer request's active-handle registration
+ * (same ownership-gated `clearActiveRequest` fix as V2.8.5.1's /turn path).
+ */
+export async function runOwnedResolveRequest(
+  ownership: RequestOwnership,
+  io: ResolveRequestIO,
+  state: ResolveRequestState,
+  timeoutMs: number = RESOLVE_CLIENT_TIMEOUT_MS
+): Promise<void> {
+  const token = ownership.begin();
+
+  state.setResolving(true);
+  state.setResolveError(null);
+
+  let transportFailed = false;
+  let result: ResolveRequestResult | null = null;
+
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  state.registerActiveRequest?.({ abort: () => controller.abort(), startedAt });
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    result = await io.requestResolve(controller.signal);
+    if (!result.data || !result.data.game) transportFailed = true;
+  } catch {
+    transportFailed = true;
+  } finally {
+    clearTimeout(timeoutId);
+    if (ownership.isCurrent(token)) {
+      state.clearActiveRequest?.();
+    }
+  }
+
+  if (!ownership.isCurrent(token)) return; // superseded — nothing below may run
+
+  if (transportFailed) {
+    await reconcileResolveAfterFailure(ownership, token, io, state);
+  } else if (result) {
+    const data = result.data as ResolveResponseBody;
+    if (data.game) state.setGame(data.game);
+    if (!result.ok) {
+      // /resolve's error taxonomy (integrity_review_unavailable,
+      // adjudicator_unavailable, budget_exhausted/unavailable, wrong_phase,
+      // resolution_failed) is uniform from the client's point of view: every
+      // one of them preserves the game unchanged server-side (still
+      // "resolving") and is safely retryable — unlike /turn, there is no
+      // stale_turn/turn_in_progress special case to distinguish here.
+      state.setResolveError(data.message || "Nem sikerült lezárni a játékot.");
+      state.clearResolveGuard();
+    } else {
+      state.setResolveError(null);
+    }
+  }
+
+  if (ownership.isCurrent(token)) {
+    state.setResolving(false);
+  }
+}
+
+/**
+ * ONE canonical read, never a second /resolve call. Applies the result only
+ * if it shows genuine progress (here: the phase actually advanced to
+ * "complete" server-side while the client was waiting) — the same
+ * reconciliationShowsProgress this module already uses for /turn.
+ */
+async function reconcileResolveAfterFailure(
+  ownership: RequestOwnership,
+  token: number,
+  io: ResolveRequestIO,
+  state: ResolveRequestState
+): Promise<void> {
+  const before = state.getGame();
+  let view: GameView | null = null;
+  let viewOk = false;
+
+  try {
+    const viewResult = await io.requestView();
+    viewOk = viewResult.ok;
+    view = viewResult.view;
+  } catch {
+    viewOk = false;
+  }
+
+  if (!ownership.isCurrent(token)) return; // superseded while reconciling
+
+  if (viewOk && view) {
+    const reconciled = mergeViewIntoGame(before, view);
+    if (reconciliationShowsProgress(before, reconciled)) {
+      state.setGame(reconciled);
+      state.setResolveError(null);
+      return;
+    }
+  }
+
+  state.setResolveError(RESOLVE_NETWORK_ERROR_MESSAGE);
+  state.clearResolveGuard();
+}

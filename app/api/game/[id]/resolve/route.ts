@@ -167,9 +167,22 @@ export async function POST(
   // -------------------------------------------------------------------------
   if (needsIntegrityReview(game.final_action, adjudicatorVerdict)) {
     const MAX_INTEGRITY_REVIEW_ATTEMPTS = 2;
+    // V2.8.5.2 — adaptive output capacity. Production forensic (game
+    // a0b7743b-5599-45ac-9909-e1dd23a6316c): all 8 sub-attempts across 4
+    // /resolve calls hit the OLD flat 768-token cap deterministically on one
+    // long/complex qa_log, never a transient flake — no number of retries at
+    // the same cap could have succeeded. A truncated or otherwise incomplete
+    // first attempt now gets a materially larger second try rather than an
+    // identical one. Review quality/reasoning requirements are unchanged —
+    // only the output budget grows; IntegrityReviewIncompleteError's own
+    // non-empty-reasoning requirement is untouched.
+    const INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT = [1280, 2048] as const;
     let review: Awaited<ReturnType<typeof runIntegrityReview>> | null = null;
 
     for (let attempt = 1; attempt <= MAX_INTEGRITY_REVIEW_ATTEMPTS && !review; attempt += 1) {
+      const maxTokensForAttempt =
+        INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT[attempt - 1] ??
+        INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT[INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT.length - 1];
       const budget = await consumeModelCall("resolve");
       if (!budget.allowed) {
         return NextResponse.json(
@@ -190,16 +203,21 @@ export async function POST(
           privateClarification: secret.private_clarification,
           qaLog: game.qa_log,
           gameLanguage: game.game_language,
+          maxTokens: maxTokensForAttempt,
         });
       } catch (err) {
         const incomplete = err instanceof IntegrityReviewIncompleteError;
+        // V2.8.5.2 — attempt number and cap identify WHICH budget truncated,
+        // without logging target/qaLog/reasoning content (the game object
+        // itself is never passed to console.error anywhere in this route).
         // eslint-disable-next-line no-console
         console.error(
-          `[barkoba] Integrity Review call failed${incomplete ? " (no usable reasoning)" : ""}:`,
+          `[barkoba] Integrity Review call failed on attempt ${attempt}/${MAX_INTEGRITY_REVIEW_ATTEMPTS} ` +
+            `(maxTokens=${maxTokensForAttempt})${incomplete ? " (no usable reasoning)" : ""}:`,
           err
         );
         if (incomplete && attempt < MAX_INTEGRITY_REVIEW_ATTEMPTS) {
-          continue; // one bounded retry, same mechanism, next loop iteration
+          continue; // one bounded retry, now with a materially larger cap, same mechanism
         }
         return NextResponse.json(
           {

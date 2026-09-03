@@ -313,3 +313,84 @@ test("REGRESSION TEST 6b — GameClient.tsx's stale-foreground path only aborts 
     "the stale-foreground branch must only abort the existing request, never fire a fresh one itself"
   );
 });
+
+// ---------------------------------------------------------------------------
+// V2.8.5.2 (D) — synchronous submission guard. Production forensic (game
+// a0b7743b-5599-45ac-9909-e1dd23a6316c): dense clusters of 409s consistent
+// with two answer submissions landing before React's `disabled={busy}`
+// re-render could commit. A plain ref update is synchronous, unlike React
+// state, so the guard must be checked and claimed BEFORE any `await` —
+// verified two ways below: the general claim-release PATTERN works
+// (pure, no React), and GameClient.tsx's sendTurn()/resolveGame() actually
+// use it (source contract, since this file has no rendering harness for the
+// component itself — the same discipline test 6b above already uses).
+// ---------------------------------------------------------------------------
+
+/** The exact claim-synchronously/release-on-completion pattern sendTurn() and resolveGame() both use, tested in isolation from React. */
+async function withSynchronousGuard(ref: { current: boolean }, fn: () => Promise<void>): Promise<void> {
+  if (ref.current) return;
+  ref.current = true;
+  try {
+    await fn();
+  } finally {
+    ref.current = false;
+  }
+}
+
+test("V2.8.5.2 (D) REQUIRED TEST — rapid repeated calls through the synchronous guard produce exactly one underlying invocation", async () => {
+  const ref = { current: false };
+  let calls = 0;
+  const underlying = async () => {
+    calls += 1;
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  };
+
+  // Fire five "taps" back-to-back, without awaiting between them — the
+  // scenario a real double/triple-tap produces before any state (or even a
+  // microtask) can run in between.
+  const attempts = [
+    withSynchronousGuard(ref, underlying),
+    withSynchronousGuard(ref, underlying),
+    withSynchronousGuard(ref, underlying),
+    withSynchronousGuard(ref, underlying),
+    withSynchronousGuard(ref, underlying),
+  ];
+  await Promise.all(attempts);
+
+  assert.equal(calls, 1, "only the FIRST tap's call may reach the underlying request — every other tap for the same active episode must return without one");
+  assert.equal(ref.current, false, "ownership must be released once the owned request reaches its terminal state, allowing a genuinely later attempt to proceed");
+});
+
+test("V2.8.5.2 (D) REQUIRED TEST — once released, a genuinely later call is allowed through (this is a de-duplication guard, not a permanent lock)", async () => {
+  const ref = { current: false };
+  let calls = 0;
+  const underlying = async () => {
+    calls += 1;
+  };
+  await withSynchronousGuard(ref, underlying);
+  await withSynchronousGuard(ref, underlying);
+  assert.equal(calls, 2, "a call that begins after the previous one fully released must go through -- e.g. the quiet turn_in_progress retry, or a real Retry tap after a genuine failure");
+});
+
+test("V2.8.5.2 (D): GameClient.tsx's sendTurn() claims answerInFlightRef synchronously before any await, and releases it only once runOwnedTurnRequest settles", () => {
+  const sendTurnBlock = CLIENT.slice(CLIENT.indexOf("const sendTurn = useCallback("), CLIENT.indexOf("const retryTurn = useCallback("));
+  assert.match(sendTurnBlock, /if \(answerInFlightRef\.current\) return;/);
+  assert.match(sendTurnBlock, /answerInFlightRef\.current = true;/);
+  assert.match(sendTurnBlock, /answerInFlightRef\.current = false;/);
+  // The guard must be the FIRST thing in the function body -- before the
+  // runOwnedTurnRequest call it protects, not merely present somewhere in it.
+  const guardIndex = sendTurnBlock.indexOf("if (answerInFlightRef.current) return;");
+  const requestIndex = sendTurnBlock.indexOf("await runOwnedTurnRequest(");
+  assert.ok(guardIndex >= 0 && requestIndex >= 0 && guardIndex < requestIndex);
+});
+
+test("V2.8.5.2 (C.5/D): GameClient.tsx's resolveGame() claims resolveInFlightRef synchronously before any await, and releases it only once runOwnedResolveRequest settles", () => {
+  const resolveBlock = CLIENT.slice(CLIENT.indexOf("const resolveGame = useCallback("), CLIENT.indexOf("const guessCheckpoint ="));
+  assert.match(resolveBlock, /if \(resolveInFlightRef\.current\) return;/);
+  assert.match(resolveBlock, /resolveInFlightRef\.current = true;/);
+  assert.match(resolveBlock, /resolveInFlightRef\.current = false;/);
+  assert.match(resolveBlock, /runOwnedResolveRequest\(/);
+  const guardIndex = resolveBlock.indexOf("if (resolveInFlightRef.current) return;");
+  const requestIndex = resolveBlock.indexOf("await runOwnedResolveRequest(");
+  assert.ok(guardIndex >= 0 && requestIndex >= 0 && guardIndex < requestIndex);
+});

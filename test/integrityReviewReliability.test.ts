@@ -2,7 +2,11 @@ import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resetSamplingParamCache } from "../lib/anthropic";
-import { IntegrityReviewIncompleteError, runIntegrityReview } from "../lib/prompts/integrityReview";
+import {
+  DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS,
+  IntegrityReviewIncompleteError,
+  runIntegrityReview,
+} from "../lib/prompts/integrityReview";
 
 // ---------------------------------------------------------------------------
 // V2.8.4.3 — the "PC" incident: a completed Integrity Review (verdict
@@ -148,6 +152,124 @@ test("10b. the retry loop exists, is bounded, and retries only an incomplete rev
   assert.match(RESOLVE_ROUTE, /MAX_INTEGRITY_REVIEW_ATTEMPTS = 2/);
   assert.match(RESOLVE_ROUTE, /const incomplete = err instanceof IntegrityReviewIncompleteError/);
   assert.match(RESOLVE_ROUTE, /if \(incomplete && attempt < MAX_INTEGRITY_REVIEW_ATTEMPTS\)/);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.5.2 — adaptive Integrity Review output capacity. Production forensic
+// (game a0b7743b-5599-45ac-9909-e1dd23a6316c): all 8 provider sub-attempts
+// across 4 /resolve calls hit the OLD flat 768-token cap deterministically,
+// never a transient flake — the qa_log was genuinely too complex to review
+// within that budget. Unit tests exercise runIntegrityReview()'s maxTokens
+// forwarding directly (hermetic, same fetch-stub pattern as tests 8/8b/8c
+// above); the retry SCHEDULE and safety invariants are proven from the
+// route's own source, matching this file's existing tests 9/10/10b — the
+// established pattern for this route, since secretStore.ts is deliberately
+// unreachable from test/ (scripts/check-isolation.mjs scans test/ too, and
+// no test file is on secretStore's importer allowlist; a real end-to-end
+// /resolve call needs a real secret record, so this codebase never builds
+// one from a route-level test — it tests the reviewer function and the
+// route's orchestration of it separately, as this file already does).
+// ---------------------------------------------------------------------------
+
+test("V2.8.5.2 — 13. DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS is 1280 (the first attempt's raised cap), and runIntegrityReview forwards it by default", async () => {
+  let capturedMaxTokens: number | undefined;
+  globalThis.fetch = (async (_url: unknown, opts: { body: string }) => {
+    capturedMaxTokens = JSON.parse(opts.body).max_tokens;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ type: "tool_use", input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
+      }),
+    };
+  }) as unknown as typeof fetch;
+
+  assert.equal(DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS, 1280);
+  await runIntegrityReview(PARAMS);
+  assert.equal(capturedMaxTokens, 1280);
+});
+
+test("V2.8.5.2 — 13b. an explicit maxTokens override (the second attempt's larger cap) is forwarded, not silently capped back down", async () => {
+  let capturedMaxTokens: number | undefined;
+  globalThis.fetch = (async (_url: unknown, opts: { body: string }) => {
+    capturedMaxTokens = JSON.parse(opts.body).max_tokens;
+    return {
+      ok: true,
+      status: 200,
+      json: async () => ({
+        content: [{ type: "tool_use", input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
+      }),
+    };
+  }) as unknown as typeof fetch;
+
+  await runIntegrityReview({ ...PARAMS, maxTokens: 2048 });
+  assert.equal(capturedMaxTokens, 2048);
+});
+
+test("V2.8.5.2 — 13c. a genuinely larger budget lets an otherwise-truncated-length review complete: reasoning is preserved verbatim regardless of which cap supplied it", async () => {
+  // Not a claim about the model's real behavior under truncation (that is
+  // exactly the untestable-without-a-provider part) — only that the
+  // reviewer function itself treats a 2048-token response no differently
+  // from a 1280-token one once reasoning is present: no quality/requirement
+  // is silently relaxed by raising the cap.
+  globalThis.fetch = (async () => ({
+    ok: true,
+    status: 200,
+    json: async () => ({
+      content: [
+        {
+          type: "tool_use",
+          input: {
+            reasoning: "A hosszabb válasz is helyesen kezelve, csonkítás nélkül.",
+            verdict: "upheld",
+            contradicting_turns: [],
+          },
+        },
+      ],
+    }),
+  })) as unknown as typeof fetch;
+
+  const result = await runIntegrityReview({ ...PARAMS, maxTokens: 2048 });
+  assert.equal(result.reasoning, "A hosszabb válasz is helyesen kezelve, csonkítás nélkül.");
+  assert.equal(result.verdict, "upheld");
+});
+
+test("V2.8.5.2 — 14. the route's retry schedule is exactly [1280, 2048], indexed by attempt, preserving the 2-attempt bound", () => {
+  assert.match(
+    RESOLVE_ROUTE,
+    /const INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT = \[1280, 2048\] as const/
+  );
+  assert.match(
+    RESOLVE_ROUTE,
+    /maxTokensForAttempt =\s*\n?\s*INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT\[attempt - 1\]/
+  );
+  assert.match(RESOLVE_ROUTE, /maxTokens: maxTokensForAttempt/, "the schedule must actually reach runIntegrityReview's call");
+});
+
+test("V2.8.5.2 — 15. the truncation/attempt log identifies WHICH attempt and cap failed, without logging target, qaLog, or reasoning content", () => {
+  const logLine = RESOLVE_ROUTE.slice(
+    RESOLVE_ROUTE.indexOf("console.error(\n          `[barkoba] Integrity Review call failed on attempt"),
+    RESOLVE_ROUTE.indexOf(");", RESOLVE_ROUTE.indexOf("console.error(\n          `[barkoba] Integrity Review call failed on attempt"))
+  );
+  assert.match(logLine, /attempt \$\{attempt\}\/\$\{MAX_INTEGRITY_REVIEW_ATTEMPTS\}/);
+  assert.match(logLine, /maxTokens=\$\{maxTokensForAttempt\}/);
+  // Never interpolates the secret, the transcript, or the model's own reasoning text.
+  assert.doesNotMatch(logLine, /secret\.target|secret\.private_clarification|game\.qa_log|review\.reasoning/);
+});
+
+test("V2.8.5.2 — 16. two incomplete attempts still leave phase 'resolving' and no result — the adaptive cap does not weaken the never-decide-on-error rule", () => {
+  // Reuses test 10's own boundary extraction: the same failureBlock this
+  // file already proves never sets phase/result must ALSO be the block that
+  // now computes maxTokensForAttempt -- i.e. the adaptive-cap change lives
+  // strictly inside the pre-existing safe failure envelope, not alongside it.
+  const failureBlock = RESOLVE_ROUTE.slice(
+    RESOLVE_ROUTE.indexOf("if (needsIntegrityReview("),
+    RESOLVE_ROUTE.indexOf("// ---", RESOLVE_ROUTE.indexOf("if (needsIntegrityReview("))
+  );
+  assert.match(failureBlock, /INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT/);
+  assert.match(failureBlock, /error: "integrity_review_unavailable"/);
+  assert.doesNotMatch(failureBlock, /game\.phase = "complete"/);
+  assert.doesNotMatch(failureBlock, /game\.result = /);
 });
 
 // --- 11: Hungarian lexical interpretation + materiality, in the prompt ----

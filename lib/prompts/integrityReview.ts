@@ -134,11 +134,25 @@ function renderTranscript(qaLog: QuestionLogEntry[]): string {
   return rows.length > 0 ? rows.join("\n\n") : "No questions were answered.";
 }
 
+/**
+ * V2.8.5.2 — the first attempt's output budget. Raised from the original
+ * 768 after a production forensic (game a0b7743b-5599-45ac-9909-e1dd23a6316c)
+ * found all 8 provider sub-attempts across 4 /resolve calls hitting this
+ * EXACT cap, deterministically, on one long/complex qa_log — not a transient
+ * flake. See app/api/game/[id]/resolve/route.ts's own
+ * INTEGRITY_REVIEW_MAX_TOKENS_BY_ATTEMPT for the second (larger) attempt's
+ * budget; the schedule lives there, next to the retry loop it governs, not
+ * here.
+ */
+export const DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS = 1280;
+
 export async function runIntegrityReview(params: {
   target: string;
   privateClarification: string;
   qaLog: QuestionLogEntry[];
   gameLanguage: GameLanguage;
+  /** V2.8.5.2 — defaults to DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS; the caller's retry loop passes a materially larger value on a truncated/incomplete first attempt. Never lowers review quality or reasoning requirements — only the output budget changes. */
+  maxTokens?: number;
 }): Promise<IntegrityReviewResult> {
   const result = await callAnthropicTool<IntegrityReviewResult>({
     model: env.modelStrong(),
@@ -163,7 +177,7 @@ export async function runIntegrityReview(params: {
     toolName: "submit_integrity_review",
     toolDescription: "Submit the integrity verdict on the Composer's answers.",
     inputSchema: INPUT_SCHEMA,
-    maxTokens: 768,
+    maxTokens: params.maxTokens ?? DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS,
     // Deterministic judgment — see lib/anthropic.ts.
     temperature: 0,
   });
