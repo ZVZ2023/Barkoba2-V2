@@ -679,6 +679,49 @@ test("V2.8.4.1: an ordinary success clears turnInProgress (a stale true from a p
   assert.equal(lastValueOf(calls, "setTurnInProgress"), false);
 });
 
+// ---------------------------------------------------------------------------
+// V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — a sandbox_clarification_failed
+// response must not fall through to the generic gameplay-failure banner. It
+// clears any stale error/turnFailed state and instead signals the caller
+// (GameClient.tsx) to show the dedicated, localized restart/reframe panel via
+// the optional setSandboxClarificationFailed setter.
+// ---------------------------------------------------------------------------
+
+test("V2.8.5: a sandbox_clarification_failed response clears the ordinary error/turnFailed state and signals setSandboxClarificationFailed(true)", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state: baseState, calls, getCurrentGame } = recordingState(g0);
+  const sandboxClarificationCalls: boolean[] = [];
+  const state: TurnRequestState = {
+    ...baseState,
+    setSandboxClarificationFailed: (failed) => sandboxClarificationCalls.push(failed),
+  };
+
+  const canonicalGame = game({
+    qa_log: [entry({ id: "clar1", turn_index: 1, question_text: "Privately, for you only: is more than one major sense essential..." })],
+  });
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({
+      ok: false,
+      data: {
+        error: "sandbox_clarification_failed",
+        message: "Nem sikerült egyértelmű célkategóriát megállapítani a megadott válaszokból. Kérlek, kezdj új játékot pontosabban megfogalmazott céllal.",
+        game: canonicalGame,
+      },
+    }),
+    requestView: async () => {
+      throw new Error("must not reconcile — the response already carried a usable `game`");
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(getCurrentGame(), canonicalGame, "the server's own canonical (persisted) state must still be applied");
+  assert.equal(lastValueOf(calls, "setError"), null, "must not show the generic error banner");
+  assert.equal(lastValueOf(calls, "setTurnFailed"), false, "must not offer the generic explicit-retry control");
+  assert.deepEqual(sandboxClarificationCalls, [true], "must signal the dedicated restart/reframe panel exactly once");
+});
+
 test("V2.8.4.1: a genuine gameplay failure also clears turnInProgress, so the explicit-retry UI is not confused with the quiet-retry state", async () => {
   const ownership = createRequestOwnership();
   const g0 = game();

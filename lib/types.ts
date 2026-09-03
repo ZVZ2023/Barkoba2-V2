@@ -588,6 +588,51 @@ export interface RacerPublicState {
   clue_credits_available: number;
   /** V2.8.4 — set once the deterministic Phase One engine has locked a sandbox. Null otherwise. */
   phase_one: RacerPhaseOneSummary | null;
+  /**
+   * V2.8.5 — the Layer Two Reasoning Engine's replay-derived traversal
+   * summary (lib/layerTwo.ts), set by the turn route once Phase One has
+   * handed off. Null before that point, exactly like phase_one above.
+   */
+  layer_two: RacerLayerTwoSummary | null;
+}
+
+/**
+ * V2.8.5 — plain context the Layer Two engine hands the Racer: which
+ * dimension is currently stalled (if any) and which propositions are
+ * currently off-limits. Carries no target information — every value here is
+ * derived only from the Setter's own public yes/no/IS-IS answers.
+ */
+export interface RacerLayerTwoSummary {
+  activeDimension: string | null;
+  stalledDimensions: string[];
+  blockedPropositions: string[];
+  typicalOnlySupported: string[];
+  contestedPropositions: string[];
+  pendingPremiseAudit: string | null;
+  sandboxRepairUsed: boolean;
+  /** Present only for a "mixed" +1 resolution — the second sense alongside phase_one.sandbox. See lib/sandboxClarification.ts. */
+  secondarySense: string | null;
+  /**
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 3) — the sandbox Phase One (or
+   * the "+1" corridor) originally handed off, BEFORE any repair. The turn
+   * route sets phase_one.sandbox to activeSandbox (below) for card-selection
+   * purposes, so this field is what lets the prompt (or a test) detect that
+   * a repair actually changed something, by comparing it against activeSandbox.
+   */
+  originalSandbox: string;
+  /**
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 3) — the sandbox actually in
+   * effect right now (lib/layerTwo.ts's LayerTwoState.activeSandbox), which
+   * may differ from originalSandbox after a successful (YES) repair.
+   * phase_one.sandbox is set to THIS value by the turn route.
+   */
+  activeSandbox: string;
+  /** True only when the one repair was used and left the departed-from sense contested (IS-IS) rather than resolved either way. */
+  repairContested: boolean;
+  /** Living's resolved route once its mandatory gate is answered, else null. See lib/layerTwo.ts's LivingRoute. */
+  livingRoute: "whole_organism" | "part_product" | "contested" | null;
+  /** Place's resolved route once its mandatory gate is answered, else null. See lib/layerTwo.ts's PlaceRoute. */
+  placeRoute: "earth" | "off_earth" | "contested" | null;
 }
 
 export interface RacerClueTurn {
@@ -614,6 +659,48 @@ export interface RacerTurnOutput {
   question_text: string | null;
   guess_text: string | null;
   rationale: string;
+  /**
+   * V2.8.5 — Layer Two Reasoning Engine metadata (lib/layerTwo.ts).
+   *
+   * The `?` here is about PERSISTED-DATA compatibility, not about what a
+   * fresh provider response may omit. A HISTORICAL turn (written before
+   * these keys existed) simply lacks them, which lib/layerTwo.ts treats as
+   * "no Layer Two metadata was ever declared," never as an invented
+   * default — that is the whole reason this stays optional at the type
+   * level rather than being migrated. No new persisted column and no
+   * migration — this whole object is serialized verbatim into the
+   * pre-existing racer_output_raw string field, which flows unchanged into
+   * corpus.game_turns.raw_output (jsonb, no fixed shape).
+   *
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — a NEW, ordinary
+   * ("question") Layer Two provider response is a different matter: it is
+   * REQUIRED to declare dimension, question_kind, proposition_id,
+   * parent_proposition (key present, value may be null), predicate_strength,
+   * and sandbox_repair (plus its reason/target, when true) — the provider
+   * schema (turnInputSchema() in lib/prompts/racer.ts) marks them required,
+   * and validateCandidateMove() independently rejects a question missing or
+   * malformed on any of them. "Optional" below describes what an old
+   * PERSISTED record may lack, not what a new response may skip.
+   */
+  dimension?: string | null;
+  question_kind?: "branch_gate" | "discriminator" | "premise_audit" | "operationalization" | "adaptive_partition" | "guess" | null;
+  proposition_id?: string | null;
+  parent_proposition?: string | null;
+  predicate_strength?: "stable" | "typical" | null;
+  /** Section 8 — set true on the one turn that spends the game's single permitted sandbox repair. */
+  sandbox_repair?: boolean;
+  /**
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 3) — required (non-null)
+   * whenever sandbox_repair is true; must be null otherwise. Why the repair
+   * is being attempted.
+   */
+  sandbox_repair_reason?: "invariant_contradiction" | "structural_dead_end" | null;
+  /**
+   * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 3) — the proposed replacement
+   * sandbox; required (non-null, and different from the active sandbox)
+   * whenever sandbox_repair is true; must be null otherwise.
+   */
+  sandbox_repair_to?: "living" | "physical" | "place" | "event" | "abstract" | null;
 }
 
 export interface GuessIntentResolution {

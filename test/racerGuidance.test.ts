@@ -450,11 +450,12 @@ test("no provider module authors, suppresses or rewrites the strategy text", () 
 // Provenance — the database claim.
 // ---------------------------------------------------------------------------
 
-test("the Racer guidance version is racer/4.0.1", () => {
+test("the Racer guidance version is racer/5.0.0", () => {
   // V2.8.4.3 bumped this from racer/4.0.0 for the no-concession final-action
-  // contract ONLY — CORE_RACER_RULES (the reasoning block below) is unchanged;
-  // see RACER_PROMPT_VERSION's own racer/4.0.1 doc.
-  assert.equal(RACER_PROMPT_VERSION, "racer/4.0.1");
+  // contract; V2.8.5 bumped it again for the Layer Two Reasoning Engine.
+  // CORE_RACER_RULES (the reasoning block below) is unchanged by either — see
+  // RACER_PROMPT_VERSION's own racer/5.0.0 doc.
+  assert.equal(RACER_PROMPT_VERSION, "racer/5.0.0");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/2.7.0", "the RG v2 version must not be reused");
   assert.notEqual(RACER_PROMPT_VERSION, "racer/3.0.0", "the pre-Hierarchy-gate RG v3 version must not be reused");
   assert.notEqual(
@@ -471,6 +472,11 @@ test("the Racer guidance version is racer/4.0.1", () => {
     RACER_PROMPT_VERSION,
     "racer/4.0.0",
     "the pre-no-concession final-action contract must not be reused"
+  );
+  assert.notEqual(
+    RACER_PROMPT_VERSION,
+    "racer/4.0.1",
+    "the pre-Layer-Two-Reasoning-Engine version must not be reused"
   );
 });
 
@@ -489,7 +495,7 @@ test("a stamped turn carries the version AND the guidance, and model identity is
       forceFinal: false,
       provider: "xai",
     });
-    assert.equal(result.provenance.prompt_version, "racer/4.0.1");
+    assert.equal(result.provenance.prompt_version, "racer/5.0.0");
     // Model identity must be exactly as before — the intervention changes
     // guidance, not who is playing.
     assert.equal(result.provenance.model_provider, "xai");

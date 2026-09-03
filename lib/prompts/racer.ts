@@ -1,6 +1,7 @@
 import { DEFAULT_RACER_PROVIDER, getAdapter } from "../providers";
 import { env } from "../env";
 import type { ModelProviderId, ToolCallResult } from "../providers/types";
+import { validateCandidateMove, type LayerTwoCandidate, type LayerTwoState } from "../layerTwo";
 import type {
   GuessIntentResolution,
   ModelProvenance,
@@ -185,8 +186,49 @@ import type {
  * failure — the pre-existing racer_unavailable technical-recovery path in
  * app/api/game/[id]/turn/route.ts — so a malformed response can end in a
  * retry-eligible technical failure, never in a false Setter victory.
+ *
+ * `racer/5.0.0` — THE LAYER TWO REASONING ENGINE. A MAJOR bump, not a
+ * refinement, because the move contract itself grew: every ordinary turn's
+ * schema now asks for (dimension, question_kind, proposition_id,
+ * parent_proposition, predicate_strength) alongside action/question_text/
+ * guess_text/rationale — see turnInputSchema() and lib/layerTwo.ts.
+ *
+ * WHAT ACTUALLY CHANGED. Two additive things, not a rewrite:
+ *   1. The schema gained the Layer Two fields above. V2.8.5 ENGINE-CONTRACT
+ *      CORRECTION (defect 1) — these are REQUIRED (present, well-formed,
+ *      non-null) on every ordinary "question" response; null is permitted
+ *      only for guess/clue, which never carry Layer Two metadata at all.
+ *      They started out optional in the original patch, which let a model
+ *      bypass every deterministic rule below simply by omitting them — see
+ *      lib/layerTwo.ts's own doc on what mechanical enforcement over
+ *      DECLARED metadata can and cannot do (it cannot judge whether a
+ *      well-formed declaration is semantically honest; it can and does
+ *      reject a missing or malformed one outright).
+ *   2. A new guidance block (LAYER_TWO_SHARED_RULES, plus a per-sandbox
+ *      card block selected by renderLayerTwo()) is appended to the message
+ *      Layer Two's own turns receive, teaching the model the branch-graph
+ *      mental model: stable vs. typical evidence, the progress lease, the
+ *      soft-premise audit, controlled IS-IS operationalization, and
+ *      sandbox-aware dimension priority for Living/Physical/Place.
+ *
+ * WHAT DID NOT CHANGE. CORE_RACER_RULES — the KNOWN / UNKNOWN / HYPOTHESES /
+ * SELECT / RED FLAGS / BEFORE ANY FINAL GUESS loop — is byte-for-byte
+ * unchanged and still unconditionally required on every turn (Event and
+ * Abstract, which have no frozen card, lean on it directly). Layer Two's
+ * guidance supplements it for the three carded sandboxes; it does not
+ * replace it. Phase One (lib/phaseOne.ts) is untouched.
+ *
+ * DETERMINISTIC ENFORCEMENT, NOT JUST GUIDANCE. Unlike CORE_RACER_RULES —
+ * which is entirely advisory prose the model chooses to follow — several of
+ * Layer Two's rules are mechanically checked against the DECLARED metadata
+ * before a move is accepted: hard-parent closure, typical-evidence-cannot-
+ * open-a-child, the one-shot IS-IS operationalization cap, the two-
+ * non-progress dimension stall, and the one-per-game sandbox repair (see
+ * lib/layerTwo.ts's validateCandidateMove). A violation throws exactly like
+ * a no-concession schema violation — the existing racer_unavailable
+ * technical-recovery path, never a fabricated outcome.
  */
-export const RACER_PROMPT_VERSION = "racer/4.0.1";
+export const RACER_PROMPT_VERSION = "racer/5.0.0";
 
 /**
  * RG #4 — THE CANONICAL TRAILING UNCERTAINTY-MANAGEMENT BLOCK.
@@ -235,6 +277,109 @@ RED FLAGS — reject and regenerate if the question:
 
 BEFORE ANY FINAL GUESS
 Name the leader and the strongest remaining alternative — specifically, not a vague sense that others remain. Which facts support the leader and not equally the alternative? Have I asked the single discriminator that would most separate them? Would a reasonably informed human, given everything established so far, still be seriously considering that alternative — if yes, I am not ready to guess. Does the leader violate any fact in KNOWN? If an important discriminator remains unasked and budget allows, ask it instead of guessing.`;
+
+// ---------------------------------------------------------------------------
+// V2.8.5 — LAYER TWO REASONING ENGINE guidance.
+//
+// Injected ADDITIONALLY to CORE_RACER_RULES (never in place of it) once
+// Phase One has handed off a real sandbox. Unlike CORE_RACER_RULES this text
+// is NOT byte-verified against a version constant — it changes shape per
+// sandbox (renderLayerTwo() below selects the card) and per turn (the stall/
+// blocked-proposition summary is live state), so there is nothing fixed to
+// hash against the way there is for the one canonical trailing block.
+// ---------------------------------------------------------------------------
+
+export const LAYER_TWO_SHARED_RULES = `LAYER TWO — SCOPE-AWARE BRANCH GRAPH, NOT A QUESTIONNAIRE.
+
+You are past the opening classification. What follows governs every question and the final guess.
+
+DECLARE METADATA WITH EVERY MOVE, AND DECLARE IT COMPLETELY. Alongside your question or guess, declare: dimension (the open question your move addresses — pick a short stable label and reuse it exactly when you return to that dimension), question_kind (branch_gate / discriminator / premise_audit / operationalization / adaptive_partition / guess), proposition_id (a short stable key for the specific claim this move tests — reuse it if you ever revisit exactly this claim), parent_proposition (the proposition_id this move depends on, if any — explicitly null if none), predicate_strength (stable / typical), and sandbox_repair (true only on the one move that spends your single repair, false otherwise), declared BEFORE you see the answer and never relabeled afterward. An ordinary question missing any of dimension, question_kind, proposition_id, or predicate_strength is rejected outright and never reaches the Setter — omitting metadata is not a way to avoid these rules.
+
+STABLE vs. TYPICAL — DECLARE HONESTLY, THIS IS NOT ABOUT HOW CONFIDENT THE ANSWER SOUNDS. A predicate is STABLE when it is a defining or near-defining property — hard to be true of the target only sometimes. A predicate is TYPICAL when it is a common but non-defining tendency — a confident "yes, usually" answer is still typical. "Is storage its primary purpose?" is stable. "Is it often carried?" is typical, even answered with total certainty. IS-IS on a theoretically stable predicate stays CONTESTED, not stable.
+
+THE PROGRESS LEASE. Answer polarity does not matter — several NOs while tightening a legitimate partition are progress; two confident YESes that settle nothing are not. Each question in your current dimension must produce at least one of: a stable hard constraint, a hard branch opening or closing, a legitimate scalar/bounded refinement, or resolution of a declared Leader/Rival separator. Two consecutive questions in the same dimension with none of these stall that dimension — switch dimension, or resolve the specific contested proposition first. A hard rejection of a parent proposition blocks every descendant of it immediately, without waiting for a stall.
+
+TYPICAL EVIDENCE NEVER OPENS A CHILD. If a branch became attractive mainly through typical (soft) evidence and then stalls, do not keep descending it. Ask ONE stable premise_audit question testing its primary purpose or defining role before any further question in that branch. A stable NO to the audit closes the entire branch; a stable YES lets you continue.
+
+IS-IS LOCKS NOTHING. IS-IS never means YES, never means NO, never creates progress, never opens or closes a branch. When IS-IS answers a mandatory sandbox gate or a declared Leader/Rival separator, you may ask exactly ONE narrower operationalization of that same proposition (question_kind "operationalization", parent_proposition set to the contested one). If that also comes back IS-IS, mark it contested in your own reasoning and switch dimension — never a third reformulation. An ordinary typical-strength question answered IS-IS does not earn an automatic follow-up.
+
+NEVER NAME A CANDIDATE IN AN ORDINARY QUESTION. "Is it a stapler?", "Is the target Kaposvár?", "Is your answer Apple?" are guesses, not questions, regardless of phrasing — declare them as action "guess". Before your final guess, ask only property-based separators; never enumerate siblings publicly one by one.
+
+GUESS TIMING. Do not guess merely because you feel confident. While questions remain, prefer one more stable confirmation or a Leader/Rival separator over guessing early — and do not spend remaining questions on redundant reassurance, typical-property trivia, or naming sibling candidates as questions. Before guessing, satisfy yourself that: the leader contradicts no hard evidence; you have identified the closest serious rival where one exists; at least one stable separator favors the leader, or no meaningful rival remains identifiable; and no unresolved soft premise is silently propping up the guess. If your questions run out before this is fully satisfied, guess your best available leader anyway on the forced final turn — an incomplete certificate is never a reason to concede, which is not an available move.
+
+ONE CONTROLLED SANDBOX REPAIR. The opening classification is presumptively binding, not absolutely irreversible — but you get exactly one repair, ever, in this game. Use it only when hard evidence directly contradicts a defining invariant of the current sandbox, or the current sandbox has reached a genuine dead end with no branch consistent with the ledger. Declare it by setting sandbox_repair true on that one move, sandbox_repair_reason to "invariant_contradiction" or "structural_dead_end", and sandbox_repair_to to the ONE different sandbox (living / physical / place / event / abstract) you propose instead — all three are required together, and sandbox_repair_to must differ from the current sandbox. Ask exactly one orthogonal question aimed at the specific contradiction — never restart or repeat the opening classification. A YES activates the proposed sandbox for everything that follows. A NO keeps the current sandbox — the repair is still spent either way. An IS-IS leaves the question genuinely unresolved: neither sandbox is confirmed, the repair is still spent, and you continue with cross-cutting stable discriminators rather than open-ended general reasoning or a second attempt.
+
+SCOPE MATTERS. You were told whether the target is a kind/category or one particular instance. Use it: a kind-scoped gate asks whether the target NAMES a kind ("Does the target name a kind of X?"); a particular-scoped gate asks whether THIS SPECIFIC target IS one ("Is this specific target itself an X?"). Do not let scope sit unused.`;
+
+/**
+ * Living — production card (section 10). V2.8.5 ENGINE-CONTRACT CORRECTION
+ * (defect 2) — the whole-organism gate's route was previously described in
+ * one static block covering both readings, leaving the model to infer which
+ * applied; the gate's own IS-IS could then be silently treated the same as
+ * NO. Split into three CODE-SELECTED variants (renderLayerTwo() below picks
+ * one, using lib/layerTwo.ts's resolveLivingRoute — YES only, NO only, or
+ * contested only) so the text the model receives already commits to the
+ * resolved route, or explicitly to neither while contested. Deliberately
+ * does not name specific species — the priority order is the card, not a
+ * taxonomy walk.
+ */
+export const LIVING_CARD_GUIDANCE_WHOLE_ORGANISM = `LIVING CARD — WHOLE-ORGANISM ROUTE.
+
+The mandatory opening gate (already asked deterministically) resolved YES: the target itself is a whole biological organism, not a part or product of one.
+
+Prioritize in this order, skipping any already settled: (1) broad biological form; (2) animal versus non-animal; (3) the human boundary, when relevant; (4) habitat/ecological relation, only when it would actually be informative; (5) domestication/cultivation or relationship to humans; (6) scale; (7) a stable morphological or biological discriminator. Do not walk a detailed taxonomy tree sibling by sibling.`;
+
+export const LIVING_CARD_GUIDANCE_PART_PRODUCT = `LIVING CARD — PART/PRODUCT ROUTE.
+
+The mandatory opening gate (already asked deterministically) resolved NO: the target is a part or product of a living organism, not a whole organism itself.
+
+Prioritize: (1) plant-derived, animal-derived, or other biological origin; (2) whether it is edible/consumable, when relevant; (3) common biological or culinary class; (4) source or growth form; (5) stable morphology; (6) cultivation or climate, only when still discriminating; (7) a Leader/Rival discriminator. A fruit (e.g. apple, peach) is never a whole plant and never routes through animal-boundary questions — climate is a late, soft signal; stable fruit morphology (core/stone/skin/flesh structure) is a much stronger discriminator and should come first among the late-stage properties.`;
+
+export const LIVING_CARD_GUIDANCE_CONTESTED = `LIVING CARD — WHOLE-ORGANISM BOUNDARY CONTESTED.
+
+The mandatory opening gate, and its one permitted operationalization, both came back IS-IS. Whether the target is a whole organism or a part/product of one remains genuinely unresolved — do not silently treat this as either route, and do not ask a third reformulation of the same question. Proceed with cross-cutting stable discriminators (scale, material/biological origin, function) that would be informative under EITHER reading, and let a later stable answer settle the boundary as a side effect rather than by asking about it directly again.`;
+
+/** Physical — production card (section 11). No unconditional first gate; the two controlled stable-gate templates back the premise audit. */
+export const PHYSICAL_CARD_GUIDANCE = `PHYSICAL CARD.
+
+Do not repeat a boundary Phase One already settled (living/physical/place/event). Prioritize, skipping any already settled: (1) bounded/discrete object versus substance/material/aggregate; (2) natural versus intentionally made; (3) primary function; (4) relationship to or action upon another object; (5) worn or body-interfacing; (6) powered versus passive; (7) scale/portability, only when it genuinely discriminates; (8) a stable mechanism or structural discriminator. Location and room are LATE dimensions, not early ones. Material must never become a checklist you work through item by item.
+
+CONTROLLED STABLE GATES, for the soft-premise audit specifically: "Is keeping or storing something inside it a primary function?" and "Is its primary function to physically change another object?" Soft evidence that something holds, contains, touches, or is used alongside another object is NEVER enough on its own to unlock contents/capacity/closure/storage-location/container-type questions — only a stable YES to the first gate does. A stable NO to it closes that entire subtree. A stable YES to the second gate may unlock mechanism and affected-object questions.`;
+
+/**
+ * Place — production card (section 12). V2.8.5 ENGINE-CONTRACT CORRECTION
+ * (defect 2) — the Earth gate's route was previously labelled "gate
+ * NO/AMBIGUOUS", conflating a definite NO with an unresolved IS-IS. Split
+ * into three CODE-SELECTED variants (renderLayerTwo() below picks one, using
+ * lib/layerTwo.ts's resolvePlaceRoute), exactly like Living above.
+ */
+export const PLACE_CARD_GUIDANCE_EARTH = `PLACE CARD — EARTH ROUTE.
+
+The mandatory opening gate (already asked deterministically) resolved YES: the target is Earth itself, or a real physical location on or within Earth.
+
+Prioritize: (1) Earth itself versus a subplanetary place; (2) natural geography versus a human-defined or constructed place; (3) settlement, territory, structure, or designed-location function; (4) scale; (5) land/water/spatial character; (6) containment/adjacency; (7) a stable discriminator. A fictional place (Hogwarts and the like) must never be reasoned about inside this route.
+
+Phase One's opening sandbox fixed the referent sense: if a country entered this card, treat it as territory/location throughout, never silently migrate into political-institution reasoning.`;
+
+export const PLACE_CARD_GUIDANCE_OFF_EARTH = `PLACE CARD — OFF-EARTH ROUTE.
+
+The mandatory opening gate (already asked deterministically) resolved NO: the target is not Earth or a location on/within it. A second mandatory gate (already asked deterministically) asked whether it corresponds to a physically real location elsewhere in the universe.
+
+YES separates: a celestial body; a location on or in one; an orbit, path, or region (Earth orbit and the Solar System belong HERE, never forced into "celestial object"); a larger astronomical structure; or a constructed off-Earth place. NO permits: fictional; virtual; or symbolic/metaphysical, only when genuinely necessary.`;
+
+export const PLACE_CARD_GUIDANCE_CONTESTED = `PLACE CARD — EARTH-MEMBERSHIP CONTESTED.
+
+The mandatory Earth-membership gate, and its one permitted operationalization, both came back IS-IS. Whether the target is on/within Earth or elsewhere remains genuinely unresolved — do not silently treat this as either route, and do not ask a third reformulation of the same question, and do not ask the off-Earth gate (it presumes a NO that was never actually established). Proceed with cross-cutting stable discriminators (scale, natural vs. constructed, containment) that would be informative under EITHER reading.`;
+
+/** Event — adaptive, no frozen card (section 13). Constitutive framing over raw causation or sibling lists. */
+export const EVENT_CARD_GUIDANCE = `EVENT — ADAPTIVE ROUTING, SHARED RULES APPLY.
+
+No frozen sequential card exists for Event in this release; the shared rules above (progress lease, premise audit, controlled IS-IS, named-question prohibition, scope sensitivity, budget discipline, one repair) still govern every question. Prefer constitutive wording over raw causation: "Is human action essential to what makes this the kind of event it is?" rather than merely asking whether a human caused it. Avoid a sibling list of war, sport, disaster, ceremony, and the like — find the dimension that actually divides the remaining space.`;
+
+/** Abstract — adaptive, no frozen card (section 13). Overlapping lenses, select the most informative, not all of them in sequence. */
+export const ABSTRACT_CARD_GUIDANCE = `ABSTRACT/INFORMATIONAL — ADAPTIVE ROUTING, SHARED RULES APPLY.
+
+No frozen sequential card exists for Abstract in this release; the shared rules above still govern every question. Treat these as overlapping LENSES, not exclusive branches, and select whichever is most informative right now rather than working through all of them in a fixed sequence: executable/procedural; normative; institutional/social; representational/communicative; systemic/networked; conceptual/property/relationship.`;
 
 /**
  * A Racer turn plus the provenance of the call that produced it.
@@ -294,6 +439,8 @@ How to play well:
 - Guess when your leading hypothesis has survived a deliberate attempt to falsify it, or when you are out of questions. Out of questions means guess NOW, with whatever candidate is strongest — even an uncertain leader is required, since giving up is not an available move.
 
 Your "rationale" is private working notes, at most two sentences. Your opponent never sees it. Be honest in it — it is not scored.
+
+Once past the opening classification, you will also be asked to declare a small set of structured fields alongside your move — which dimension it addresses, what kind of move it is, a stable key for the specific claim it tests, and how strong that claim's evidence would be. Full detail on exactly how, and why it matters, follows later in this message when it applies.
 
 LANGUAGE OF PLAY
 You will be told the language of this game. Write every question, guess, and rationale in that language, naturally, as a fluent speaker would — not as a translation. Leave proper nouns, brand names, and established technical terms in their original form rather than forcing them into the game language. The language tells you nothing about the target; do not treat it as a clue.
@@ -360,8 +507,78 @@ function turnInputSchema(forceFinal: boolean, clueAvailable: boolean): Record<st
         description:
           "Private working notes, at most two sentences. Never shown to the Composer.",
       },
+      // -----------------------------------------------------------------
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — these seven keys are
+      // now REQUIRED (present in every response), with types that still
+      // permit null so a "guess"/"clue" action — which never needs any of
+      // them — can supply null and satisfy the schema. For an ordinary
+      // "question" action, a null/empty/invalid value here is a SEPARATE,
+      // runtime failure: lib/layerTwo.ts's validateCandidateMove rejects it
+      // outright (see runRacerTurn below), so omission can no longer be used
+      // to bypass every deterministic rule the way it could when these keys
+      // were merely optional. See lib/layerTwo.ts's own doc for exactly what
+      // deterministic enforcement can and cannot do with whatever the model
+      // actually declares.
+      // -----------------------------------------------------------------
+      dimension: {
+        type: ["string", "null"],
+        description:
+          "REQUIRED (non-null, non-empty) for an ordinary question once past the opening classification — omitting it gets the question rejected, not silently accepted. A short, stable label for the open question this move addresses; reuse the exact same label whenever you return to this dimension. Null only for guess/clue.",
+      },
+      question_kind: {
+        type: ["string", "null"],
+        enum: ["branch_gate", "discriminator", "premise_audit", "operationalization", "adaptive_partition", "guess", null],
+        description:
+          "REQUIRED (non-null) for an ordinary question — branch_gate, discriminator, premise_audit, operationalization, or adaptive_partition. Null only for guess/clue.",
+      },
+      proposition_id: {
+        type: ["string", "null"],
+        description:
+          "REQUIRED (non-null, non-empty) for an ordinary question — a short, stable key for the specific claim this move tests. Reuse it if you revisit exactly this claim. Null only for guess/clue.",
+      },
+      parent_proposition: {
+        type: ["string", "null"],
+        description:
+          "REQUIRED KEY on every response (the VALUE may legitimately be null when the move has no parent). The proposition_id this move depends on, if any.",
+      },
+      predicate_strength: {
+        type: ["string", "null"],
+        enum: ["stable", "typical", null],
+        description:
+          "REQUIRED (non-null) for an ordinary question. Declare BEFORE seeing the answer, never relabel afterward. stable = defining/near-defining property. typical = common but non-defining tendency, even if you expect a confident answer. Null only for guess/clue.",
+      },
+      sandbox_repair: {
+        type: "boolean",
+        description:
+          "REQUIRED on every response. True only on the one move, ever, that spends this game's single permitted sandbox repair. False otherwise — including on every guess/clue.",
+      },
+      sandbox_repair_reason: {
+        type: ["string", "null"],
+        enum: ["invariant_contradiction", "structural_dead_end", null],
+        description:
+          "REQUIRED KEY. Non-null and one of the two listed values if and only if sandbox_repair is true this move. Must be null whenever sandbox_repair is false.",
+      },
+      sandbox_repair_to: {
+        type: ["string", "null"],
+        enum: ["living", "physical", "place", "event", "abstract", null],
+        description:
+          "REQUIRED KEY. Non-null, and different from the current sandbox, if and only if sandbox_repair is true this move. Must be null whenever sandbox_repair is false.",
+      },
     },
-    required: ["action", "question_text", "guess_text", "rationale"],
+    required: [
+      "action",
+      "question_text",
+      "guess_text",
+      "rationale",
+      "dimension",
+      "question_kind",
+      "proposition_id",
+      "parent_proposition",
+      "predicate_strength",
+      "sandbox_repair",
+      "sandbox_repair_reason",
+      "sandbox_repair_to",
+    ],
   };
 }
 
@@ -453,6 +670,114 @@ function renderPhaseOne(state: RacerPublicState): string {
   return `Deterministic opening classification: ${sandbox}${specificityText}.${contested}`;
 }
 
+const STATIC_CARD_GUIDANCE_BY_SANDBOX: Record<string, string> = {
+  physical: PHYSICAL_CARD_GUIDANCE,
+  event: EVENT_CARD_GUIDANCE,
+  abstract: ABSTRACT_CARD_GUIDANCE,
+};
+
+/**
+ * V2.8.5 ENGINE-CONTRACT CORRECTION (defect 2) — Living and Place no longer
+ * have one static card describing both routes; the ROUTE ITSELF (resolved
+ * deterministically in lib/layerTwo.ts, exposed via layer_two.livingRoute /
+ * layer_two.placeRoute) selects which committed variant the model receives.
+ * Physical/Event/Abstract are unaffected and keep one static card each.
+ */
+function selectCard(
+  sandbox: string,
+  layerTwo: RacerPublicState["layer_two"]
+): string {
+  if (sandbox === "living") {
+    const route = layerTwo?.livingRoute ?? null;
+    if (route === "whole_organism") return LIVING_CARD_GUIDANCE_WHOLE_ORGANISM;
+    if (route === "part_product") return LIVING_CARD_GUIDANCE_PART_PRODUCT;
+    if (route === "contested") return LIVING_CARD_GUIDANCE_CONTESTED;
+    // Route not yet resolved (the mandatory gate is still pending) — no card
+    // content to add yet; the deterministic gate itself is what the Setter
+    // sees this turn, not a model-authored question.
+    return "";
+  }
+  if (sandbox === "place") {
+    const route = layerTwo?.placeRoute ?? null;
+    if (route === "earth") return PLACE_CARD_GUIDANCE_EARTH;
+    if (route === "off_earth") return PLACE_CARD_GUIDANCE_OFF_EARTH;
+    if (route === "contested") return PLACE_CARD_GUIDANCE_CONTESTED;
+    return "";
+  }
+  return STATIC_CARD_GUIDANCE_BY_SANDBOX[sandbox] ?? "";
+}
+
+/**
+ * V2.8.5 — the Layer Two guidance block for this turn: the shared
+ * cross-cutting rules, the sandbox's own (route-selected, for Living/Place)
+ * card, and a live summary of stalled dimensions / off-limits propositions
+ * the deterministic engine has already derived. Empty for any game with no
+ * sandbox yet, or whose sandbox is "unclassified" (still inside the +1
+ * corridor, which never reaches this function at all — see the turn route).
+ */
+function renderLayerTwo(state: RacerPublicState): string {
+  const sandbox = state.phase_one?.sandbox;
+  if (!sandbox || sandbox === "unclassified") return "";
+
+  const layerTwo = state.layer_two;
+  const card = selectCard(sandbox, layerTwo);
+  if (!layerTwo) return [LAYER_TWO_SHARED_RULES, "", card].filter(Boolean).join("\n");
+
+  const summaryLines: string[] = [];
+  // V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (finding 1) — a Mixed "+1"
+  // resolution carries TWO essential senses (lib/sandboxClarification.ts's
+  // mixedSenses), but until this fix only the primary one ever reached the
+  // model: layer_two.secondarySense was computed and threaded through
+  // racerState, then silently dropped at the one place that actually builds
+  // the Racer's message. Without this, an honest Physical+Place target
+  // reached the model as merely Physical, discarding half of what the "+1"
+  // corridor's Mixed-first correction (defect 4) exists to preserve.
+  if (layerTwo.secondarySense) {
+    summaryLines.push(
+      `MIXED TARGET — TWO ESSENTIAL SENSES: the intended target requires BOTH "${sandbox}" (primary/active card, below) AND "${layerTwo.secondarySense}" to be represented accurately — neither alone is the whole target. Use cross-sandbox discriminators that can confirm or distinguish the "${layerTwo.secondarySense}" sense too; do not silently collapse the target into the primary card alone.`
+    );
+  }
+  // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 3) — if a repair has actually
+  // changed the effective sandbox, say so explicitly rather than leaving the
+  // model to infer it from phase_one.sandbox alone (which the turn route now
+  // sets to this SAME repaired value, so this is a confirmation, not a
+  // second source of truth).
+  if (layerTwo.originalSandbox !== layerTwo.activeSandbox) {
+    summaryLines.push(
+      `SANDBOX REPAIRED: the effective sandbox is now "${layerTwo.activeSandbox}", not the original "${layerTwo.originalSandbox}". Reason from the ledger, not from this note — do not re-ask which sandbox applies.`
+    );
+  } else if (layerTwo.repairContested) {
+    summaryLines.push(
+      "The one permitted sandbox repair was used and came back IS-IS — neither the original nor the proposed sandbox is confirmed. Continue with cross-cutting stable discriminators rather than assuming either."
+    );
+  } else if (layerTwo.sandboxRepairUsed) {
+    summaryLines.push("The one permitted sandbox repair has already been used this game (kept the original sandbox).");
+  }
+  if (layerTwo.stalledDimensions.length > 0) {
+    summaryLines.push(
+      `STALLED — switch away from, or audit/operationalize the contested proposition in: ${layerTwo.stalledDimensions.join(", ")}.`
+    );
+  }
+  if (layerTwo.pendingPremiseAudit) {
+    summaryLines.push(
+      `A soft-premise audit is required before any further descent into proposition "${layerTwo.pendingPremiseAudit}".`
+    );
+  }
+  if (layerTwo.blockedPropositions.length > 0) {
+    summaryLines.push(`Hard-excluded, and every descendant of them: ${layerTwo.blockedPropositions.join(", ")}.`);
+  }
+  if (layerTwo.typicalOnlySupported.length > 0) {
+    summaryLines.push(
+      `Supported only by typical YES evidence so far — no child question may depend on these without an audit: ${layerTwo.typicalOnlySupported.join(", ")}.`
+    );
+  }
+  if (layerTwo.contestedPropositions.length > 0) {
+    summaryLines.push(`Contested (IS-IS, not yet resolved): ${layerTwo.contestedPropositions.join(", ")}.`);
+  }
+
+  return [LAYER_TWO_SHARED_RULES, "", card, "", summaryLines.join("\n")].filter(Boolean).join("\n");
+}
+
 /**
  * Assemble the per-turn Racer message.
  *
@@ -477,6 +802,8 @@ export function buildRacerTurnMessage(
     renderBudget(state, forceFinal),
     "",
     renderPhaseOne(state),
+    "",
+    renderLayerTwo(state),
     "",
     "Transcript so far:",
     renderTranscript(state),
@@ -594,6 +921,16 @@ export async function runRacerTurn(
      * the same relationship it already has with `reasoningEffort`.
      */
     signal?: AbortSignal;
+    /**
+     * V2.8.5 — the full internal Layer Two traversal state (Sets/Maps), for
+     * legality validation only. Distinct from state.layer_two (the plain,
+     * serializable summary used for PROMPT RENDERING): validateCandidateMove
+     * needs the richer shape this option carries. Undefined for any game
+     * with no Layer Two state yet (Phase One incomplete, or still inside the
+     * +1 corridor) — validation is then skipped entirely, exactly as it
+     * always was before this version.
+     */
+    layerTwoState?: LayerTwoState;
   }
 ): Promise<RacerTurnResult> {
   const { forceFinal } = options;
@@ -679,12 +1016,63 @@ export async function runRacerTurn(
     );
   }
 
+  // V2.8.5 — Layer Two legality. Only runs when the caller supplied traversal
+  // state (i.e. Phase One has handed off a real sandbox and the +1 corridor,
+  // if it ran, has already resolved). A violation throws exactly like the
+  // no-concession check above: the existing racer_unavailable
+  // technical-recovery path, never a fabricated outcome. See
+  // lib/layerTwo.ts's own doc on what this can and cannot enforce.
+  if (options.layerTwoState && action === "question") {
+    // V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (finding 4) — validate the RAW
+    // provider value BEFORE any normalization can coerce a missing/invalid
+    // sandbox_repair into a well-formed `false`. The output-construction
+    // code below (and the OLD candidate construction here) used
+    // `result.sandbox_repair === true`, which silently turns "the provider
+    // omitted this mandatory field entirely" into `false` — a value
+    // validateMandatoryMetadata()'s own `typeof !== "boolean"` check can
+    // never then catch, because by the time it runs the coercion has
+    // already happened. Checking the raw value here, before it is touched,
+    // is what makes the claimed runtime rejection real.
+    if (typeof result.sandbox_repair !== "boolean") {
+      throw new Error(
+        `racer: Layer Two move rejected — missing or invalid sandbox_repair (must be an explicit boolean, received ${JSON.stringify(result.sandbox_repair)}).`
+      );
+    }
+    const candidate: LayerTwoCandidate = {
+      question_text: result.question_text ?? "",
+      dimension: result.dimension ?? null,
+      question_kind: result.question_kind ?? null,
+      proposition_id: result.proposition_id ?? null,
+      parent_proposition: result.parent_proposition ?? null,
+      predicate_strength: result.predicate_strength ?? null,
+      sandbox_repair: result.sandbox_repair,
+      sandbox_repair_reason: result.sandbox_repair_reason ?? null,
+      sandbox_repair_to: result.sandbox_repair_to ?? null,
+    };
+    // CORRECTION 1 — mandatory metadata (missing dimension/question_kind/
+    // proposition_id/predicate_strength) and CORRECTION 3's repair-
+    // declaration consistency are both checked inside validateCandidateMove
+    // now, ahead of every other rule.
+    const validation = validateCandidateMove(candidate, options.layerTwoState);
+    if (!validation.ok) {
+      throw new Error(`racer: Layer Two move rejected — ${validation.reason}.`);
+    }
+  }
+
   return {
     output: {
       action,
       question_text: action === "question" ? (result.question_text ?? null) : null,
       guess_text: action === "guess" ? result.guess_text : null,
       rationale: result.rationale ?? "",
+      dimension: action === "question" ? (result.dimension ?? null) : null,
+      question_kind: action === "question" ? (result.question_kind ?? null) : action === "guess" ? "guess" : null,
+      proposition_id: action === "question" ? (result.proposition_id ?? null) : null,
+      parent_proposition: action === "question" ? (result.parent_proposition ?? null) : null,
+      predicate_strength: action === "question" ? (result.predicate_strength ?? null) : null,
+      sandbox_repair: action === "question" && result.sandbox_repair === true,
+      sandbox_repair_reason: action === "question" ? (result.sandbox_repair_reason ?? null) : null,
+      sandbox_repair_to: action === "question" ? (result.sandbox_repair_to ?? null) : null,
     },
     provenance: {
       // The adapter's own id, not a separate constant. There is exactly one

@@ -79,6 +79,7 @@ const FROZEN_STATE: RacerPublicState = {
   clues: [],
   clue_credits_available: 0,
   phase_one: null,
+  layer_two: null,
   transcript: [
     {
       turn_index: 1,

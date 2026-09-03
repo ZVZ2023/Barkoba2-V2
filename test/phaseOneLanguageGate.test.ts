@@ -109,7 +109,22 @@ function mockRacerOnce(questionText: string) {
     calls += 1;
     capturedMessages = request.messages;
     return {
-      output: { action: "question", question_text: questionText, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove().
+      output: {
+        action: "question",
+        question_text: questionText,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof xaiAdapter.callTool;
@@ -213,19 +228,25 @@ test("REAL FLOW: Phase Two's Racer receives the same corrected language as Phase
     mock.restore();
   }
 
-  // Fast-forward all 5 spine questions (all NO -> Unclassified, no specificity
-  // question) to reach Phase Two's first real (mocked) Racer turn.
+  // Fast-forward to Phase Two's first real (mocked) Racer turn. V2.8.5 — this
+  // now locks "physical" (NO, YES, then a specificity answer) rather than
+  // the old 5x-NO path to "unclassified": "unclassified" now routes through
+  // the private "+1" sandbox-clarification corridor first (see
+  // lib/sandboxClarification.ts) instead of reaching the model directly, and
+  // "physical" has no Layer Two mandatory opening gate either, so it still
+  // reaches the model in the very next answer — exactly what this test (about
+  // language propagation, not sandbox specifics) needs.
   const opening = await callTurn(gameId!);
   let rev = opening.data.game.revision;
-  for (let i = 0; i < 4; i += 1) {
-    const g = await answer(gameId!, "NO", rev);
-    rev = g.revision;
-  }
+  let g = await answer(gameId!, "NO", rev); // -> "physical" gate question
+  rev = g.revision;
+  g = await answer(gameId!, "YES", rev); // locks physical -> specificity question
+  rev = g.revision;
 
   const racer = mockRacerOnce("Van benne elektronika?");
   let final;
   try {
-    final = await answer(gameId!, "NO", rev); // Q5 NO -> Unclassified -> Phase Two's first turn
+    final = await answer(gameId!, "NO", rev); // kind -> Phase One complete -> Phase Two's first turn
     assert.equal(racer.callCount(), 1);
     const messages = racer.lastMessages() as Array<{ content: string }>;
     const joined = messages.map((m) => m.content).join("\n");
@@ -237,7 +258,7 @@ test("REAL FLOW: Phase Two's Racer receives the same corrected language as Phase
   } finally {
     racer.restore();
   }
-  assert.equal(final.qa_log[5].question_text, "Van benne elektronika?");
+  assert.equal(final.qa_log[3].question_text, "Van benne elektronika?");
 });
 
 // --- REQUIRED (d)(5): no target content reaches the Racer or Phase One -----

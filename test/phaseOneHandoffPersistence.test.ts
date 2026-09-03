@@ -119,7 +119,22 @@ function mockProviderSequence(questionTexts: string[]) {
     calls += 1;
     capturedMessagesByCall.push(request.messages);
     return {
-      output: { action: "question", question_text: text, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove().
+      output: {
+        action: "question",
+        question_text: text,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
@@ -134,7 +149,18 @@ function mockProviderSequence(questionTexts: string[]) {
 
 const LIVING_KIND_HANDOFF = "Deterministic opening classification: living (a kind/category, not one particular instance).";
 
-/** Locks Living/kind and returns the game + revision positioned to answer Phase Two's first question. */
+/**
+ * Locks Living/kind and returns the game + revision positioned to answer
+ * Phase Two's first question.
+ *
+ * V2.8.5 — Living now has a mandatory, deterministic Layer Two opening gate
+ * (lib/layerTwo.ts's nextMandatoryGate) that sits between Phase One's
+ * specificity completion and the first model-driven turn. Answered here with
+ * YES (a genuine whole biological organism) — its own answer does not affect
+ * phase_one.sandbox/specificity, only Layer Two's internal traversal state,
+ * so it is immaterial to what this file actually tests. Every downstream
+ * qa_log index in this file shifts by exactly one turn to account for it.
+ */
 async function reachPhaseTwo(gameId: string) {
   const opening = await callTurn(gameId); // Q1
   let rev = opening.data.game.revision;
@@ -142,10 +168,15 @@ async function reachPhaseTwo(gameId: string) {
   rev = afterQ1.revision;
   assert.equal(afterQ1.qa_log[1].question_text, "Does the correct answer need to identify one uniquely identifiable individual?");
 
+  const afterSpecificity = await answer(gameId, "NO", rev); // kind/category -> Phase One complete -> Layer Two's mandatory gate
+  rev = afterSpecificity.revision;
+  assert.match(afterSpecificity.qa_log[2].question_text, /kind of whole biological organism/);
+  assert.equal(afterSpecificity.qa_log[2].model_id, null, "the mandatory gate must not reach the model");
+
   const mock = mockProviderSequence(["Does it live in water?"]);
   let afterSpec;
   try {
-    afterSpec = await answer(gameId, "NO", rev); // kind/category -> Phase One complete -> Phase Two turn #1
+    afterSpec = await answer(gameId, "YES", rev); // whole organism -> the gate's own answer; Phase Two turn #1 follows
     assert.equal(mock.callCount(), 1);
     const joined = mock.messagesForCall(0).map((m) => m.content).join("\n");
     assert.match(joined, /Deterministic opening classification: living \(a kind\/category/);
@@ -192,8 +223,8 @@ test("HANDOFF 2 & 3 (pure): appending one, then several, model-authored Phase Tw
 test("HANDOFF 2 & 3: two successive Phase Two turns both receive the identical phase_one handoff", async () => {
   const { gameId } = await makeGame("en");
   const afterTurn1 = await reachPhaseTwo(gameId);
-  assert.equal(afterTurn1.qa_log[2].question_text, "Does it live in water?");
-  assert.notEqual(afterTurn1.qa_log[2].model_id, null, "a real Phase Two turn must carry real provenance");
+  assert.equal(afterTurn1.qa_log[3].question_text, "Does it live in water?");
+  assert.notEqual(afterTurn1.qa_log[3].model_id, null, "a real Phase Two turn must carry real provenance");
 
   // Answer Phase Two's first question -> triggers Phase Two's SECOND real
   // (mocked) turn. Before this fix, phase_one was already lost by this point.
@@ -211,7 +242,7 @@ test("HANDOFF 2 & 3: two successive Phase Two turns both receive the identical p
   } finally {
     mock2.restore();
   }
-  assert.equal(afterTurn2.qa_log[3].question_text, "Is it a mammal?");
+  assert.equal(afterTurn2.qa_log[4].question_text, "Is it a mammal?");
 
   // A third Phase Two turn, to prove this holds beyond just "the second one."
   const mock3 = mockProviderSequence(["Does it have fur?"]);
@@ -220,7 +251,7 @@ test("HANDOFF 2 & 3: two successive Phase Two turns both receive the identical p
     assert.equal(mock3.callCount(), 1);
     const joined = mock3.messagesForCall(0).map((m) => m.content).join("\n");
     assert.match(joined, /Deterministic opening classification: living \(a kind\/category/);
-    assert.equal(afterTurn3.qa_log[4].question_text, "Does it have fur?");
+    assert.equal(afterTurn3.qa_log[5].question_text, "Does it have fur?");
   } finally {
     mock3.restore();
   }
@@ -280,32 +311,55 @@ test("HANDOFF 6: a legacy game whose first question is not the deterministic pre
 
 // --- 7. Correction/rewind back into Phase One still recomputes incomplete --
 
-test("HANDOFF 7: correcting Q1 AFTER multiple Phase Two turns rewinds all the way back to the incomplete spine, not a frozen stale summary", async () => {
+// V2.8.5 — this test used to correct Q1 AFTER two Phase Two turns existed
+// (question_count 3 at that point, so Q1 was still inside the V2.8.4.2
+// correction window). Living's new mandatory Layer Two gate (section 10) is
+// itself a real, charged question, so Phase One + the gate alone now consume
+// all 3 of CORRECTION_WINDOW_SIZE's slots for this sandbox — the instant
+// even one Phase Two turn is added, Q1 falls outside the latest-3 window and
+// correcting it is correctly rejected with correction_window_closed (see
+// lib/rewind.ts; that behavior is the V2.8.4.2 rule working exactly as
+// designed, not something this release may weaken — "correction-budget
+// high-water-mark behavior from v2.8.4.2 must remain intact"). This test
+// therefore corrects Q1 immediately after the gate, before any Phase Two
+// turn — still fully exercising "rewinds all the way back to the incomplete
+// spine." The "AFTER Phase Two has already started" variant remains covered
+// for a non-gated sandbox by test/phaseOneIntegration.test.ts's REQUIRED 17.
+test("HANDOFF 7: correcting Q1 after the mandatory Layer Two gate rewinds all the way back to the incomplete spine, not a frozen stale summary", async () => {
   const { gameId } = await makeGame("en");
-  const afterTurn1 = await reachPhaseTwo(gameId);
+  const opening = await callTurn(gameId); // Q1
+  let rev = opening.data.game.revision;
+  const afterQ1 = await answer(gameId, "YES", rev); // locks Living
+  rev = afterQ1.revision;
+  const afterSpecificity = await answer(gameId, "NO", rev); // kind -> Phase One complete -> mandatory gate
+  rev = afterSpecificity.revision;
+  assert.match(afterSpecificity.qa_log[2].question_text, /kind of whole biological organism/);
 
-  const mock2 = mockProviderSequence(["Is it a mammal?"]);
-  let afterTurn2;
+  // Answering the gate is itself the last deterministic step for Living, so
+  // this SAME request immediately reaches the (mocked) model for Layer Two's
+  // first real turn — exactly like reachPhaseTwo's own final answer() call.
+  const mockGateAnswer = mockProviderSequence(["Does it live in water?"]);
+  let afterGate;
   try {
-    afterTurn2 = await answer(gameId, "NO", afterTurn1.revision);
+    afterGate = await answer(gameId, "YES", rev); // whole organism
   } finally {
-    mock2.restore();
+    mockGateAnswer.restore();
   }
-  assert.equal(afterTurn2.qa_log.length, 4);
+  assert.equal(afterGate.qa_log.length, 4);
 
   // Correct the ORIGINAL Q1 (YES -> NO). This must discard everything built
-  // on top of it -- the specificity question and both Phase Two turns -- and
+  // on top of it -- the specificity question and the mandatory gate -- and
   // resume the spine at Q2, deterministically, with no provider call.
   const { POST: correctPOST } = await import("../app/api/game/[id]/correct/route");
   const correctReq = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ turn_index: 1, answer: "NO", expected_log_length: afterTurn2.qa_log.length }),
+    body: JSON.stringify({ turn_index: 1, answer: "NO", expected_log_length: afterGate.qa_log.length }),
   });
   const correctRes = await correctPOST(correctReq, { params: { id: gameId } });
   const correctData = await correctRes.json();
   assert.equal(correctRes.status, 200, JSON.stringify(correctData));
-  assert.equal(correctData.game.qa_log.length, 1, "the specificity question and both Phase Two turns must be discarded");
+  assert.equal(correctData.game.qa_log.length, 1, "the specificity question and the mandatory gate must be discarded");
 
   const state = derivePhaseOneState(correctData.game.qa_log, correctData.game.game_language);
   assert.equal(state.complete, false, "the corrected log must be recognized as incomplete again, not frozen complete");

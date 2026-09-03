@@ -5,6 +5,7 @@ import { pendingClueRequest } from "@/lib/clueCredits";
 import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { derivePhaseOneState, isReferentScopeQuestion } from "@/lib/phaseOne";
 import { questionNumbers } from "@/lib/questionNumbers";
+import { isSandboxClarificationEntry } from "@/lib/sandboxClarification";
 import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
 import {
@@ -16,7 +17,7 @@ import {
   type TurnResponseBody,
 } from "@/lib/turnRequestGuard";
 import type { GameView } from "@/lib/gameView";
-import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "@/lib/types";
+import type { ComposerAnswer, GameLanguage, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import AccountControl from "@/app/components/AccountControl";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -43,6 +44,34 @@ const ANSWER_HU: Record<string, string> = {
   AMBIGUOUS: "IS-IS",
 };
 
+/**
+ * V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (localization) — the "+1"
+ * corridor's UI text was hard-coded Hungarian, so an English game received
+ * Hungarian copy at exactly the moment it most needs to be legible: a
+ * private clarification question, or the terminal restart/reframe state.
+ * Selected by game.game_language, matching the pattern ResultPanel.tsx's
+ * own integrityFallbackNotice() already established for bilingual copy.
+ */
+const SANDBOX_CLARIFICATION_LABEL: Record<GameLanguage, string> = {
+  hu: "Privát célpont-tisztázás — nem az AI kérdése, és nem számít bele a kérdéseibe.",
+  en: "Private target clarification — not a question from the AI, and it does not count against your questions.",
+};
+
+const SANDBOX_CLARIFICATION_FAILURE_HEADING: Record<GameLanguage, string> = {
+  hu: "Nem sikerült egyértelmű célkategóriát megállapítani",
+  en: "Could not establish a clear target category",
+};
+
+const SANDBOX_CLARIFICATION_FAILURE_BODY: Record<GameLanguage, string> = {
+  hu: "A megadott válaszokból nem alakult ki egyértelmű, privát célkategória-szerződés. Ez a játék így nem folytatható — kérünk, kezdj új játékot egy pontosabban körülhatárolt céllal.",
+  en: "Your answers did not settle into a clear, private target-category contract. This game cannot continue — please start a new game with a more precisely bounded target.",
+};
+
+const SANDBOX_CLARIFICATION_NEW_GAME_LABEL: Record<GameLanguage, string> = {
+  hu: "Új játék",
+  en: "New game",
+};
+
 function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
   const last = game.qa_log.length > 0 ? game.qa_log[game.qa_log.length - 1] : undefined;
   if (!last) return null;
@@ -58,7 +87,13 @@ function discardCount(game: GameRecord, turnIndex: number): number {
 
 function answeredTurns(game: GameRecord): QuestionLogEntry[] {
   return game.qa_log.filter(
-    (e) => e.turn_type !== "question" || e.composer_response !== null
+    (e) =>
+      (e.turn_type !== "question" || e.composer_response !== null) &&
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — a completed "+1"
+      // private sandbox-clarification entry is not a Racer question and must
+      // not appear in the ordinary Racer-question history at all, numbered
+      // or not.
+      !isSandboxClarificationEntry(e)
   );
 }
 
@@ -108,6 +143,11 @@ export default function GameClient({
   const [game, setGame] = useState<GameRecord>(initialGame);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — the "+1" corridor's
+  // truthful "no coherent contract" terminal state. Distinct from `error`:
+  // this is not a retryable gameplay failure, so it gets its own localized,
+  // actionable panel rather than the generic red error banner.
+  const [sandboxClarificationFailed, setSandboxClarificationFailed] = useState(false);
   const [ambiguousMode, setAmbiguousMode] = useState(false);
   const [explanation, setExplanation] = useState("");
   // V2.6.x — set only by the pre-guess checkpoint's own confirm button. While
@@ -229,6 +269,7 @@ export default function GameClient({
           getGame: () => gameRef.current,
           setGame: (next) => setGame(next),
           setError,
+          setSandboxClarificationFailed,
           setTurnFailed,
           setBusy,
           setAmbiguousMode,
@@ -548,11 +589,33 @@ export default function GameClient({
         )}
 
         {!clueWanted && !guessRevealPending && pending && pending.question_text && (
-          <div className="flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4">
+          <div
+            className={
+              isSandboxClarificationEntry(pending)
+                ? "flex flex-col gap-3 rounded-md border border-[var(--blue)]/35 bg-[var(--blue)]/6 p-4"
+                : "flex flex-col gap-3 rounded-md border border-[var(--ink)]/25 bg-white/60 p-4"
+            }
+          >
+            {/*
+              V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — the "+1" private
+              sandbox-clarification corridor must visibly identify itself as
+              private and state plainly that it costs no Racer question, and
+              must NOT carry a numbered badge that would read as though it
+              were the AI's Nth question (it is a question to the SETTER, not
+              from the Racer, and lib/questionNumbers.ts already excludes it
+              from the count these badges show elsewhere).
+            */}
+            {isSandboxClarificationEntry(pending) ? (
+              <p className="text-xs font-medium uppercase tracking-wide text-[var(--blue)]">
+                {SANDBOX_CLARIFICATION_LABEL[game.game_language]}
+              </p>
+            ) : null}
             <div className="flex min-w-0 gap-3">
-              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                #{numbers.get(pending.id) ?? pending.turn_index}
-              </span>
+              {!isSandboxClarificationEntry(pending) && (
+                <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
+                  #{numbers.get(pending.id) ?? pending.turn_index}
+                </span>
+              )}
               <p className="min-w-0 break-words text-sm text-[var(--ink)]">{pending.question_text}</p>
             </div>
 
@@ -875,6 +938,31 @@ export default function GameClient({
           error={resolveError}
           onRetry={() => void resolveGame()}
         />
+      )}
+
+      {/*
+        V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — the "+1" corridor's
+        truthful terminal state. Not a retryable failure (no retry button —
+        there is nothing left to retry), and not the generic red error
+        banner: an honest explanation plus the existing New Game navigation,
+        matching the requirement that this never surface as a raw/generic
+        409 error.
+      */}
+      {sandboxClarificationFailed && (
+        <section className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-4">
+          <h2 className="text-base font-semibold text-[var(--ink)]">
+            {SANDBOX_CLARIFICATION_FAILURE_HEADING[game.game_language]}
+          </h2>
+          <p className="mt-2 text-sm text-[var(--ink-soft)]">
+            {SANDBOX_CLARIFICATION_FAILURE_BODY[game.game_language]}
+          </p>
+          <a
+            href="/"
+            className="mt-4 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
+          >
+            {SANDBOX_CLARIFICATION_NEW_GAME_LABEL[game.game_language]}
+          </a>
+        </section>
       )}
 
       {error && (

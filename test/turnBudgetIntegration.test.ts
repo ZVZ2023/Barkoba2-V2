@@ -55,7 +55,25 @@ function stubRacerQuestions(questions: string[]) {
     const q = questions[calls];
     calls += 1;
     return {
-      output: { action: "question", question_text: q ?? `unexpected-call-${calls}`, guess_text: null, rationale: "test" },
+      // V2.8.5 ENGINE-CONTRACT CORRECTION (defect 1) — an ordinary Layer Two
+      // question now requires this metadata to pass validateCandidateMove();
+      // this suite tests turn-budget/telemetry mechanics, not Layer Two
+      // semantics, so a fixed, always-legal (stable discriminator, no
+      // parent) declaration is used throughout.
+      output: {
+        action: "question",
+        question_text: q ?? `unexpected-call-${calls}`,
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: `test.generic.p${calls}`,
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
@@ -82,7 +100,20 @@ function stubRacerControlled() {
     resolveNext: (questionText: string) => {
       assert.ok(resolveFn, "no pending Racer call to resolve");
       resolveFn!({
-        output: { action: "question", question_text: questionText, guess_text: null, rationale: "test" },
+        output: {
+          action: "question",
+          question_text: questionText,
+          guess_text: null,
+          rationale: "test",
+          dimension: "test.generic",
+          question_kind: "discriminator",
+          proposition_id: `test.generic.${questionText}`,
+          parent_proposition: null,
+          predicate_strength: "stable",
+          sandbox_repair: false,
+          sandbox_repair_reason: null,
+          sandbox_repair_to: null,
+        },
         resolvedModel: "stub",
       } as ToolCallResult<unknown>);
       resolveFn = null;
@@ -108,14 +139,25 @@ function stubRacerControlled() {
  * opener, just now reached after Phase One instead of at turn 1.
  */
 async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
-  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
-  for (let i = 0; i < 4; i += 1) {
-    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
-    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
-    rev = result.data.game.revision;
-  }
+  // V2.8.5 — locks "physical" (NO, then YES) rather than the old NO-x4 path
+  // to "unclassified". "physical" has no Layer Two mandatory opening gate and
+  // no "+1" corridor, so completing its specificity question still reaches
+  // the (stubbed) model in the SAME request, exactly as this helper's own
+  // callers already expect — "unclassified" no longer does, since it now
+  // routes through the private sandbox-clarification corridor first (see
+  // lib/sandboxClarification.ts). This file tests turn-budget/telemetry
+  // mechanics, not sandbox-specific behavior, so which real sandbox it
+  // reaches is otherwise immaterial.
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1: "Is it alive?"
+  let result = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // -> "Is it a physical thing or substance?"
+  assert.equal(result.status, 200, "phase one step 1 must succeed");
+  rev = result.data.game.revision;
+  result = await callTurn(gameId, { answer: "YES", expected_revision: rev }); // locks physical -> specificity question
+  assert.equal(result.status, 200, "phase one step 2 must succeed");
+  rev = result.data.game.revision;
+
   const opener = stubRacerQuestions([openingQuestion]);
-  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev }); // kind -> Phase One complete, straight to the model
   opener.restore();
   return { opening, rev: opening.data.game.revision };
 }
@@ -286,16 +328,21 @@ test("REQUIRED 14: corpus-write telemetry does not change the CAS/save outcome",
 
 test("REQUIRED 16: two concurrent generation attempts for the same turn — only one lands, via the existing lock, not a new mechanism", async () => {
   const { gameId } = await makeGame();
-  // Reach Q5 pending, unanswered -- four real answers, zero provider calls.
-  // Answering Q5 is what completes Phase One and triggers the FIRST real
-  // generation, so that is where this test relocates its concurrency check
-  // (originally "game creation" -> first turn, before Phase One existed).
+  // Reach the specificity question pending, unanswered -- two real answers,
+  // zero provider calls, locking "physical" (no Layer Two mandatory gate, no
+  // "+1" corridor). Answering it is what completes Phase One and triggers
+  // the FIRST real generation, so that is where this test relocates its
+  // concurrency check (originally "game creation" -> first turn, before
+  // Phase One existed). V2.8.5 — was 4x NO to "unclassified", which no
+  // longer reaches the model directly (see fastForwardPastPhaseOne's own
+  // V2.8.5 note above).
   let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
-  for (let i = 0; i < 4; i += 1) {
-    const step = await callTurn(gameId, { answer: "NO", expected_revision: rev });
-    assert.equal(step.status, 200);
-    rev = step.data.game.revision;
-  }
+  let step = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  assert.equal(step.status, 200);
+  rev = step.data.game.revision;
+  step = await callTurn(gameId, { answer: "YES", expected_revision: rev }); // locks physical
+  assert.equal(step.status, 200);
+  rev = step.data.game.revision;
 
   const controlled = stubRacerControlled();
   try {
@@ -312,7 +359,7 @@ test("REQUIRED 16: two concurrent generation attempts for the same turn — only
     assert.equal(resultA.status, 200);
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 6, "exactly one generation landed (5 deterministic + 1 model-driven)");
+    assert.equal(canonical!.qa_log.length, 4, "exactly one generation landed (3 deterministic + 1 model-driven)");
   } finally {
     controlled.restore();
   }
@@ -608,7 +655,11 @@ test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INS
         // values[0] is game.game_id (used in the subquery ahead of the
         // jsonb_to_recordset() call); the turns payload is values[1].
         const turns = JSON.parse(String(values[1])) as Array<{ latency_ms: unknown; turn_index: number }>;
-        const phaseTwoTurn = turns.find((t) => t.turn_index === 6);
+        // V2.8.5 — fastForwardPastPhaseOne now reaches "physical" in 3
+        // deterministic turns (Q1, the physical gate, the specificity
+        // question), so the first model-driven turn is turn_index 4, not the
+        // old 6 (which counted "unclassified"'s 5-question spine).
+        const phaseTwoTurn = turns.find((t) => t.turn_index === 4);
         if (phaseTwoTurn) phaseTwoLatencyInPayload = phaseTwoTurn.latency_ms;
         return [];
       }
@@ -798,7 +849,20 @@ test("FINDING 6: the telemetry INSERT is issued before the real provider invocat
   anthropicAdapter.callTool = (async () => {
     order.push("provider_call");
     return {
-      output: { action: "question", question_text: "Q2?", guess_text: null, rationale: "test" },
+      output: {
+        action: "question",
+        question_text: "Q2?",
+        guess_text: null,
+        rationale: "test",
+        dimension: "test.generic",
+        question_kind: "discriminator",
+        proposition_id: "test.generic.q2",
+        parent_proposition: null,
+        predicate_strength: "stable",
+        sandbox_repair: false,
+        sandbox_repair_reason: null,
+        sandbox_repair_to: null,
+      },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;

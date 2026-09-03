@@ -28,6 +28,13 @@ const SHOULD_FLAG: Array<[string, string]> = [
   ["declared guess in prose", "My guess is a screwdriver."],
   ["addresses the secret directly", "Is your secret the color red?"],
   ["quotes a name verbatim", 'Is it "Kaposvár"?'],
+  // V2.8.5 REGRESSION — bare, unquoted. Named as a required example in the
+  // Layer Two named-question-prohibition spec. Previously missed entirely:
+  // the bare-candidate token class was ASCII-only `\w`, which does not
+  // include "á" — the regex failed to match past it at all, rather than
+  // merely truncating the capture. Fixed by extending the class with
+  // Hungarian's accented letters (see BARE_CANDIDATE_EN's own doc).
+  ["bare candidate with a Hungarian accented letter", "Is the target Kaposvár?"],
   ["fully specified possession", "Is it the Ford Mustang in your garage?"],
   ["final-answer framing", "Is that my final answer, the red bicycle?"],
 ];
