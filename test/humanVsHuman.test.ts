@@ -42,7 +42,7 @@ function hhGame(o: Partial<GameRecord> = {}): GameRecord {
     phase: "questioning", created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(), max_questions: 20, game_language: "hu",
     private_target: false, composer_kind: "human", racer_kind: "human", racer_provider: null,
-    difficulty: null, clue_mode: null, question_count: 0, ambiguous_count: 0,
+    difficulty: null, clue_mode: null, question_count: 0, question_count_high_water_mark: 0, ambiguous_count: 0,
     qa_log: [], final_action: null, final_guess_text: null, result: null,
     integrity_notes: null, integrity_flagged_turns: null, adjudication_notes: null,
     adjudicator_verdict: null, integrity_verdict: null, adjudication_confidence: null,

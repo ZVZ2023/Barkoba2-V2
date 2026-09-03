@@ -3,16 +3,20 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
 // ---------------------------------------------------------------------------
-// PROTECTED INVESTIGATION — no policy was changed to make this pass.
+// PROTECTED INVESTIGATION — the underlying POLICY has never been weakened.
 //
 // The field test submitted an IS-IS whose explanation stated the literal binary
 // answer: "the correct answer is NO, but here is a hint — personal hygiene
 // item." The open question was whether final adjudication would punish the
 // Composer for answering AMBIGUOUS when their own note contains the truth.
 //
-// These assertions record what the SHIPPED prompts already do, so the answer is
-// evidence rather than opinion — and so a future prompt edit that changes it
-// fails the build instead of changing scoring silently.
+// V2.8.4.2 reworded lib/prompts/integrityReview.ts (added a materiality
+// requirement and an explicit answer-classification step — see
+// test/integrityReviewMateriality.test.ts) but deliberately PRESERVED, and
+// strengthened, this exact guarantee: an IS-IS/AMBIGUOUS answer can never by
+// itself produce a violation. The regexes below were updated to match the new
+// wording; if a future edit weakens the underlying policy rather than merely
+// the phrasing, this file is where that must fail loudly.
 // ---------------------------------------------------------------------------
 
 const integrity = readFileSync("lib/prompts/integrityReview.ts", "utf8");
@@ -23,18 +27,18 @@ test("FINDING: the Integrity Review cannot penalise an AMBIGUOUS answer at all",
   // so an explanation attached to one cannot become evidence of dishonesty.
   assert.match(
     integrity,
-    /AMBIGUOUS answers\. They are a legitimate move and are outside your scope entirely/
+    /AMBIGUOUS \/ IS-IS answers\. They are a legitimate move, always outside your scope/
   );
   assert.match(
     integrity,
-    /whatever you think of the Composer's reason for using one/,
-    "the reviewer is told not to judge WHY ambiguous was chosen — which is exactly the field-test case"
+    /Never award a violation, in whole or in part, because an IS-IS answer existed/,
+    "the reviewer is told an IS-IS can never itself cause a violation — which is exactly the field-test case, made explicit and load-bearing rather than implicit"
   );
 });
 
 test("FINDING: a violation requires a false YES or NO, never an ambiguous one", () => {
-  assert.match(integrity, /A YES answer to a question whose truthful answer.*is clearly no/s);
-  assert.match(integrity, /A NO answer to a question whose truthful answer.*is clearly yes/s);
+  assert.match(integrity, /INCORRECT — clearly, unarguably false given the target/);
+  assert.match(integrity, /AMBIGUOUS \/ IS-IS — the Composer declined to give a hard yes or no/);
   assert.match(integrity, /DEFAULT TO UPHELD/);
 });
 

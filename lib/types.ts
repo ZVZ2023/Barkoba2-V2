@@ -396,6 +396,29 @@ export interface GameRecord {
   /** Only ever non-"none" on Hard. Null in 0.3.x games. */
   clue_mode: ClueMode | null;
   question_count: number;
+  /**
+   * V2.8.4.2 — CORRECTION-BUDGET INTEGRITY. The highest `question_count`
+   * this game has ever reached. Exclusively read/written by the AI-Racer
+   * routes (app/api/game/[id]/turn and .../correct — the only two callers
+   * of lib/rewind.ts's exports), so Human↔Human and AI-Composer games are
+   * structurally unaffected regardless of what this field holds for them.
+   *
+   * MONOTONIC, UNLIKE question_count ITSELF. lib/rewind.ts's
+   * recomputeCounters recomputes question_count from the SURVIVING qa_log
+   * after a correction, so it CAN decrease when a correction discards
+   * trailing answered questions — that recomputation is correct and
+   * unchanged. This field never decreases: see lib/rewind.ts's
+   * advanceHighWaterMark, called everywhere question_count changes, which
+   * is what makes "corrected questions are not refunded" durable across a
+   * correction, a reload, and a retry.
+   *
+   * Backfilled by lib/gameStore.ts's getGame() for any game that predates
+   * this field, exactly like ambiguous_count and every other field that
+   * arrived after 0.3.0 — the correct backfill is question_count itself: a
+   * game that has never had a correction discard anything already has the
+   * two values agree, so backfilling neither grants nor removes capacity.
+   */
+  question_count_high_water_mark: number;
   /** Total AMBIGUOUS answers given, free and costed alike. */
   ambiguous_count: number;
   qa_log: QuestionLogEntry[];

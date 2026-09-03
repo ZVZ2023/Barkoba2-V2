@@ -82,6 +82,7 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     difficulty: "hard",
     clue_mode: "none",
     question_count: 1,
+    question_count_high_water_mark: 1,
     ambiguous_count: 0,
     qa_log: [],
     final_action: null,

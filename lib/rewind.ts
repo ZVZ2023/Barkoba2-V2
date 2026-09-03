@@ -128,3 +128,81 @@ export function isPreGuessCheckpointCorrection(
   if (!preceding || preceding.turn_index !== turnIndex) return false;
   return true;
 }
+
+// ---------------------------------------------------------------------------
+// V2.8.4.2 — CORRECTION-BUDGET INTEGRITY (competitive correction behavior).
+//
+// Until explicit game modes exist, the current AI-Racer game (the exclusive
+// caller of every export in this module — see app/api/game/[id]/turn and
+// .../correct) treats a correction as competitive: a discarded question is
+// gone, not refunded, and only a short recent window of answers may be
+// corrected at all. Human↔Human and AI-Composer games never call into this
+// module, so neither is affected by anything below.
+// ---------------------------------------------------------------------------
+
+/** Only the latest N answered questions may be corrected at all. */
+export const CORRECTION_WINDOW_SIZE = 3;
+
+/**
+ * Is `turnIndex` one of the latest CORRECTION_WINDOW_SIZE answered
+ * questions in the CURRENT (already possibly corrected) qa_log? Computed
+ * fresh from the log every time — nothing to keep in sync after a prior
+ * correction moves the window, exactly like derivePhaseOneState's own
+ * replay-not-stored-position design. Enforced server-side regardless of
+ * what the UI shows, so a stale or manually crafted request naming an
+ * older turn is refused the same as one the UI never offered.
+ */
+export function isWithinCorrectionWindow(qaLog: readonly QuestionLogEntry[], turnIndex: number): boolean {
+  const answered = qaLog.filter((e) => e.turn_type === "question" && e.composer_response !== null);
+  const eligible = answered.slice(-CORRECTION_WINDOW_SIZE);
+  return eligible.some((e) => e.turn_index === turnIndex);
+}
+
+/**
+ * The new high-water-mark after `question_count` is about to change from
+ * `currentQuestionCount` to `newQuestionCount`.
+ *
+ * NOT simply the max of the three inputs — that would let ordinary play,
+ * resumed after a correction has already made question_count fall behind
+ * the mark, silently buy back the discarded questions. Concretely: mark=19,
+ * a correction drops question_count to 17, then ONE genuinely new question
+ * is asked and answered (count 17 -> 18). That new answer is a real,
+ * never-seen-before consumption event and must push the true total from 19
+ * to 20 — `Math.max(19, 18)` would wrongly leave it at 19, silently
+ * refunding the question the correction had already spent by giving the
+ * next new question a "discount".
+ *
+ * So this tracks the ACTUAL DELTA of this specific change (clamped at 0,
+ * since a correction's recompute only ever holds or lowers question_count,
+ * never raises it) and adds that delta on top of the higher of the prior
+ * mark and the prior count:
+ * - Ordinary play, no correction has ever run (mark === count going in):
+ *   delta is exactly +1 per new answer, so the mark tracks question_count
+ *   exactly, as it always did before this field existed.
+ * - A correction's recompute (newQuestionCount <= currentQuestionCount):
+ *   delta is 0 — no new consumption occurred, so the mark holds exactly
+ *   where it already was.
+ * - Ordinary play resumed AFTER a correction (mark > count going in): delta
+ *   is still +1 per new answer, correctly added on top of the held mark,
+ *   not the lower, post-correction count.
+ */
+export function advanceHighWaterMark(
+  currentQuestionCount: number,
+  currentHighWaterMark: number,
+  newQuestionCount: number
+): number {
+  const delta = Math.max(0, newQuestionCount - currentQuestionCount);
+  return Math.max(currentHighWaterMark, currentQuestionCount) + delta;
+}
+
+/**
+ * The count that actually governs remaining budget: never lower than what
+ * the game has ever reached, even if a correction just discarded trailing
+ * answered questions and lowered the game's own (recomputed) question_count.
+ */
+export function effectiveConsumed(game: {
+  question_count: number;
+  question_count_high_water_mark: number;
+}): number {
+  return Math.max(game.question_count, game.question_count_high_water_mark);
+}

@@ -56,7 +56,7 @@ function game(log: QuestionLogEntry[]): GameRecord {
     expires_at: new Date().toISOString(), max_questions: 20, game_language: "en",
     private_target: false, composer_kind: "human", racer_kind: "ai",
     racer_provider: null, difficulty: null, clue_mode: null,
-    question_count: log.length, ambiguous_count: 0, qa_log: log,
+    question_count: log.length, question_count_high_water_mark: log.length, ambiguous_count: 0, qa_log: log,
     final_action: null, final_guess_text: null, result: null,
     integrity_notes: null, integrity_flagged_turns: null, adjudication_notes: null,
     adjudicator_verdict: null, integrity_verdict: null, adjudication_confidence: null,

@@ -78,6 +78,7 @@ function game(o: Partial<GameRecord> = {}): GameRecord {
     difficulty: null,
     clue_mode: null,
     question_count: 0,
+    question_count_high_water_mark: 0,
     ambiguous_count: 0,
     qa_log: [],
     final_action: null,
