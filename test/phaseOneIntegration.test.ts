@@ -2,12 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
-import { createGame, getGame } from "../lib/gameStore";
+import { createGame, getGame, newLogEntry, saveGame } from "../lib/gameStore";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { POST as correctPOST } from "../app/api/game/[id]/correct/route";
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import type { ToolCallResult } from "../lib/providers/types";
 import { RACER_PROMPT_VERSION } from "../lib/prompts/racer";
+import { derivePhaseOneState } from "../lib/phaseOne";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
 
 // ---------------------------------------------------------------------------
@@ -135,7 +136,7 @@ test("REQUIRED 9, 10 & 11: the provider is invoked only once Phase One completes
     rev = opening.data.game.revision;
     const afterQ1 = await answer(gameId, "YES", rev); // locks Living, deterministically asks specificity
     rev = afterQ1.revision;
-    assert.equal(afterQ1.qa_log[1].question_text, "Is it one particular living being?");
+    assert.equal(afterQ1.qa_log[1].question_text, "Does the correct answer need to identify one uniquely identifiable individual?");
   } finally {
     guard.restore();
   }
@@ -262,7 +263,7 @@ test("REQUIRED 16: correcting a Phase One answer rebuilds the deterministic path
     // specificity question, not resume Q2 (physical) and not call the provider.
     const next = await callTurn(gameId);
     assert.equal(next.status, 200);
-    assert.equal(next.data.game.qa_log[1].question_text, "Is it one particular living being?");
+    assert.equal(next.data.game.qa_log[1].question_text, "Does the correct answer need to identify one uniquely identifiable individual?");
   } finally {
     guard.restore();
   }
@@ -342,4 +343,195 @@ test("REQUIRED 21: RacerPublicState.phase_one carries no target-shaped content",
   // level: a Sandbox/Specificity value literally cannot be a substring of a
   // Setter's private target.
   assert.ok(true);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.4.1 CORRECTION — REFERENT SCOPE, RESOLVED NOT GUESSED.
+//
+// IS-IS on the primary referent-scope question must ask exactly one
+// deterministic clarification instead of completing with a guessed "mixed".
+// IS-IS on the clarification too must leave the game fully unresolved --
+// never handed to Phase Two, never calling the provider -- until whoever set
+// the target corrects one of the two scope answers.
+// ---------------------------------------------------------------------------
+
+const PRIMARY_SCOPE_QUESTION_EN = "Does the correct answer need to identify one uniquely identifiable individual?";
+const CLARIFICATION_QUESTION_EN =
+  "Would more than one example fully matching the intended target count as a correct answer?";
+
+/** Locks Living and returns the game positioned to answer the primary referent-scope question. */
+async function reachPrimaryScopeQuestion(gameId: string) {
+  const opening = await callTurn(gameId); // Q1
+  const afterQ1 = await answer(gameId, "YES", opening.data.game.revision); // locks Living
+  assert.equal(afterQ1.qa_log[1].question_text, PRIMARY_SCOPE_QUESTION_EN);
+  return afterQ1;
+}
+
+test("V2.8.4.1 CORRECTION 1: IS-IS on the primary referent-scope question asks the deterministic clarification, with zero provider calls", async () => {
+  const { gameId } = await makeGame("en");
+  const guard = failIfCalled();
+  try {
+    const afterPrimary = await reachPrimaryScopeQuestion(gameId);
+    const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
+    assert.equal(afterAmbiguous.qa_log[2].question_text, CLARIFICATION_QUESTION_EN);
+    assert.equal(afterAmbiguous.qa_log[2].model_id, null, "still deterministic, not a Racer turn");
+  } finally {
+    guard.restore();
+  }
+});
+
+test("V2.8.4.1 CORRECTION 2: clarification YES completes Phase One as kind/category and hands off to Phase Two", async () => {
+  const { gameId } = await makeGame("en");
+  let rev: number;
+  const guard = failIfCalled();
+  try {
+    const afterPrimary = await reachPrimaryScopeQuestion(gameId);
+    const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
+    rev = afterAmbiguous.revision;
+  } finally {
+    guard.restore();
+  }
+  const mock = mockProviderOnce("Does it live in water?");
+  try {
+    const afterClarified = await answer(gameId, "YES", rev);
+    assert.equal(mock.callCount(), 1, "clarification YES must complete Phase One and trigger exactly one Phase Two turn");
+    const joined = mock.lastMessages().map((m) => (m as { content: string }).content).join("\n");
+    assert.match(joined, /Deterministic opening classification: living \(a kind\/category/);
+    assert.equal(afterClarified.qa_log[3].question_text, "Does it live in water?");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("V2.8.4.1 CORRECTION 3: clarification NO completes Phase One as particular and hands off to Phase Two", async () => {
+  const { gameId } = await makeGame("en");
+  let rev: number;
+  const guard = failIfCalled();
+  try {
+    const afterPrimary = await reachPrimaryScopeQuestion(gameId);
+    const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
+    rev = afterAmbiguous.revision;
+  } finally {
+    guard.restore();
+  }
+  const mock = mockProviderOnce("Is it kept indoors?");
+  try {
+    const afterClarified = await answer(gameId, "NO", rev);
+    assert.equal(mock.callCount(), 1, "clarification NO must complete Phase One and trigger exactly one Phase Two turn");
+    const joined = mock.lastMessages().map((m) => (m as { content: string }).content).join("\n");
+    assert.match(joined, /Deterministic opening classification: living \(a particular instance/);
+    assert.equal(afterClarified.qa_log[3].question_text, "Is it kept indoors?");
+  } finally {
+    mock.restore();
+  }
+});
+
+test("V2.8.4.1 CORRECTION 4: clarification IS-IS remains unresolved -- no new turn is generated, zero provider calls, never reaches Phase Two", async () => {
+  const { gameId } = await makeGame("en");
+  const guard = failIfCalled();
+  try {
+    const afterPrimary = await reachPrimaryScopeQuestion(gameId);
+    const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
+    const afterDoublyAmbiguous = await answer(gameId, "AMBIGUOUS", afterAmbiguous.revision);
+    assert.equal(afterDoublyAmbiguous.qa_log.length, 3, "no new deterministic question, no Phase Two turn");
+    assert.equal(afterDoublyAmbiguous.qa_log[2].composer_response, "AMBIGUOUS");
+
+    // A follow-up poll must also do nothing and call no provider -- the
+    // block is stable, not a one-time refusal that then proceeds anyway.
+    const polled = await callTurn(gameId);
+    assert.equal(polled.status, 200);
+    assert.equal(polled.data.game.qa_log.length, 3, "still blocked on the next poll too");
+
+    const state = derivePhaseOneState(polled.data.game.qa_log, polled.data.game.game_language);
+    assert.equal(state.unresolved, true);
+    assert.equal(state.complete, false, "must never be handed to Phase Two");
+    assert.equal(state.specificity, null, "must not guess mixed");
+  } finally {
+    guard.restore();
+  }
+});
+
+test("V2.8.4.1 CORRECTION 5: reload reproduces the unresolved state, and correcting either scope answer resolves it and resumes play", async () => {
+  const { gameId } = await makeGame("en");
+  let afterDoublyAmbiguous;
+  const guard = failIfCalled();
+  try {
+    const afterPrimary = await reachPrimaryScopeQuestion(gameId);
+    const afterAmbiguous = await answer(gameId, "AMBIGUOUS", afterPrimary.revision);
+    afterDoublyAmbiguous = await answer(gameId, "AMBIGUOUS", afterAmbiguous.revision);
+  } finally {
+    guard.restore();
+  }
+
+  // Reload: re-fetching and re-deriving must show the exact same unresolved state.
+  const reloaded = await getGame(gameId);
+  const reloadedState = derivePhaseOneState(reloaded!.qa_log, reloaded!.game_language);
+  assert.equal(reloadedState.unresolved, true);
+  assert.equal(reloadedState.complete, false);
+
+  // Correction: fixing the CLARIFICATION answer (the last turn) to NO must
+  // resolve to particular and re-enable play, with no provider call from the
+  // correction itself.
+  const clarificationTurnIndex = afterDoublyAmbiguous.qa_log[2].turn_index;
+  const guard2 = failIfCalled();
+  try {
+    const corrected = await callCorrect(gameId, {
+      turn_index: clarificationTurnIndex,
+      answer: "NO",
+      expected_log_length: afterDoublyAmbiguous.qa_log.length,
+    });
+    assert.equal(corrected.status, 200, JSON.stringify(corrected.data));
+    const correctedGame = (corrected.data as { game: { qa_log: unknown[]; game_language: "en" | "hu" } }).game;
+    const correctedState = derivePhaseOneState(correctedGame.qa_log as never, correctedGame.game_language);
+    assert.equal(correctedState.unresolved, false);
+    assert.equal(correctedState.specificity, "particular");
+    assert.equal(correctedState.complete, true);
+  } finally {
+    guard2.restore();
+  }
+});
+
+test("V2.8.4.1 CORRECTION 6: a legacy game that already completed with a historical mixed scope remains readable and playable, unaffected by the correction", async () => {
+  const { gameId, game } = await makeGame("en");
+
+  // Simulate a v2.8.4 (pre-correction) game exactly as it would already sit
+  // in a real deployment: the primary question (legacy wording) answered
+  // AMBIGUOUS, already completed as "mixed", with one real Phase Two turn
+  // already recorded on top of it.
+  const q1 = newLogEntry(1);
+  q1.question_text = "Is it alive?";
+  q1.composer_response = "YES";
+  q1.answered_at = new Date().toISOString();
+  const scope = newLogEntry(2);
+  scope.question_text = "Is it one particular living being?"; // legacy (pre-hotfix) wording
+  scope.composer_response = "AMBIGUOUS";
+  scope.answered_at = new Date().toISOString();
+  const phaseTwo = newLogEntry(3);
+  phaseTwo.question_text = "Does it live in water?";
+  phaseTwo.model_id = "some-legacy-model";
+  phaseTwo.model_provider = "anthropic";
+  phaseTwo.prompt_version = RACER_PROMPT_VERSION;
+  game.qa_log = [q1, scope, phaseTwo];
+  game.question_count = 2;
+  await saveGame(game);
+
+  // Pure replay must reproduce exactly what already happened -- complete,
+  // mixed, not unresolved -- never retroactively reopened.
+  const state = derivePhaseOneState(game.qa_log, game.game_language);
+  assert.equal(state.complete, true, "must not strand the game as incomplete");
+  assert.equal(state.specificity, "mixed");
+  assert.equal(state.unresolved, false, "an already-completed historical handoff is not the new unresolved state");
+  assert.equal(state.sandbox, "living");
+
+  // The game must still be playable: answering the pending Phase Two
+  // question continues normally through the real (mocked) provider.
+  const mock = mockProviderOnce("Is it a mammal?");
+  try {
+    const reloaded = await getGame(gameId);
+    const afterAnswer = await answer(gameId, "NO", reloaded!.revision);
+    assert.equal(mock.callCount(), 1, "must not be blocked or ejected -- Phase Two continues exactly as before");
+    assert.equal(afterAnswer.qa_log[3].question_text, "Is it a mammal?");
+  } finally {
+    mock.restore();
+  }
 });

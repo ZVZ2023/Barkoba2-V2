@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { derivePhaseOneState } from "../lib/phaseOne";
+import { derivePhaseOneState, isReferentScopeQuestion } from "../lib/phaseOne";
 import type { ComposerAnswer, GameLanguage, QuestionLogEntry } from "../lib/types";
 
 // ---------------------------------------------------------------------------
@@ -14,6 +14,13 @@ import type { ComposerAnswer, GameLanguage, QuestionLogEntry } from "../lib/type
 // (spine[0]..spine[4]) type-checks as `string`, not `string | undefined`,
 // under this project's noUncheckedIndexedAccess. A variable index (spine[i])
 // still needs its own `!` at the call site -- TS cannot bound-check that.
+// V2.8.4.1 — REFERENT SCOPE. `specificity` below is the CURRENT (new-wording)
+// canonical text: the same sentence for every sandbox, per the approved fix
+// (the underlying distinction — one unique individual vs. any matching
+// example — does not depend on living/physical/place/event). `LEGACY_*` is
+// the pre-hotfix wording, kept only for the backward-compatibility tests
+// further down: an in-progress v2.8.4 game may already have this exact text
+// sitting unanswered, and replay must still recognize it.
 const EN = {
   spine: [
     "Is it alive?",
@@ -23,11 +30,18 @@ const EN = {
     "Is it primarily non-physical or informational?",
   ] as const satisfies readonly [string, string, string, string, string],
   specificity: {
-    living: "Is it one particular living being?",
-    physical: "Is it one particular physical item or substance?",
-    place: "Is it one particular place?",
-    event: "Is it one particular event?",
+    living: "Does the correct answer need to identify one uniquely identifiable individual?",
+    physical: "Does the correct answer need to identify one uniquely identifiable individual?",
+    place: "Does the correct answer need to identify one uniquely identifiable individual?",
+    event: "Does the correct answer need to identify one uniquely identifiable individual?",
   },
+};
+
+const LEGACY_EN_SPECIFICITY = {
+  living: "Is it one particular living being?",
+  physical: "Is it one particular physical item or substance?",
+  place: "Is it one particular place?",
+  event: "Is it one particular event?",
 };
 
 const HU = {
@@ -39,11 +53,18 @@ const HU = {
     "Elsősorban nem fizikai vagy információs természetű?",
   ] as const satisfies readonly [string, string, string, string, string],
   specificity: {
-    living: "Egy konkrét élőlényre gondoltál?",
-    physical: "Egy konkrét fizikai dologra vagy anyagra gondoltál?",
-    place: "Egy konkrét helyre gondoltál?",
-    event: "Egy konkrét eseményre gondoltál?",
+    living: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    physical: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    place: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    event: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
   },
+};
+
+const LEGACY_HU_SPECIFICITY = {
+  living: "Egy konkrét élőlényre gondoltál?",
+  physical: "Egy konkrét fizikai dologra vagy anyagra gondoltál?",
+  place: "Egy konkrét helyre gondoltál?",
+  event: "Egy konkrét eseményre gondoltál?",
 };
 
 let idCounter = 0;
@@ -215,12 +236,17 @@ test("REQUIRED 5: Q5 IS-IS classifies Unclassified, same as NO", () => {
   assert.equal(state.complete, true);
 });
 
-test("REQUIRED 5: IS-IS on a specificity question records mixed/unknown specificity, then completes", () => {
+test("REQUIRED 5 (V2.8.4.1 corrected): IS-IS on the primary referent-scope question does NOT complete Phase One -- it asks the deterministic clarification instead", () => {
   const log = [entry(EN.spine[0], "YES"), entry(EN.specificity.living, "AMBIGUOUS")];
   const state = derivePhaseOneState(log, "en");
   assert.equal(state.sandbox, "living");
-  assert.equal(state.specificity, "mixed");
-  assert.equal(state.complete, true);
+  assert.equal(state.specificity, null, "not guessed as mixed -- referent scope is resolved, not guessed");
+  assert.equal(state.complete, false);
+  assert.equal(state.unresolved, false, "not yet doubly-ambiguous -- the clarification hasn't been asked yet");
+  assert.equal(
+    state.nextQuestionText,
+    "Would more than one example fully matching the intended target count as a correct answer?"
+  );
 });
 
 test("REQUIRED 6: two literal consecutive NOs never skip a spine question", () => {
@@ -262,7 +288,10 @@ test("REQUIRED 7: derivePhaseOneState never produces a guess -- every non-comple
 test("REQUIRED 12: exact English spine and specificity strings", () => {
   assert.deepEqual(derivePhaseOneState([], "en").nextQuestionText, "Is it alive?");
   const log1 = [entry("Is it alive?", "YES")];
-  assert.equal(derivePhaseOneState(log1, "en").nextQuestionText, "Is it one particular living being?");
+  assert.equal(
+    derivePhaseOneState(log1, "en").nextQuestionText,
+    "Does the correct answer need to identify one uniquely identifiable individual?"
+  );
 });
 
 test("REQUIRED 13: exact Hungarian spine and specificity strings", () => {
@@ -270,7 +299,10 @@ test("REQUIRED 13: exact Hungarian spine and specificity strings", () => {
   const log1 = [entry("Élő?", "NO")];
   assert.equal(derivePhaseOneState(log1, "hu").nextQuestionText, "Fizikai dolog vagy anyag?");
   const log2 = [entry("Élő?", "NO"), entry("Fizikai dolog vagy anyag?", "YES")];
-  assert.equal(derivePhaseOneState(log2, "hu").nextQuestionText, "Egy konkrét fizikai dologra vagy anyagra gondoltál?");
+  assert.equal(
+    derivePhaseOneState(log2, "hu").nextQuestionText,
+    "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?"
+  );
 });
 
 test("REQUIRED 13: full Hungarian all-NO path matches exactly", () => {
@@ -352,4 +384,139 @@ test("REQUIRED 16: correcting Q1 from NO to YES (simulating rewind truncation) r
   const state = derivePhaseOneState(corrected, "en");
   assert.equal(state.sandbox, "living");
   assert.equal(state.nextQuestionText, EN.specificity.living);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.4.1 — REFERENT SCOPE hotfix. Backward-compatibility with the pre-hotfix
+// wording, and the new wording's YES/NO/IS-IS mapping.
+// ---------------------------------------------------------------------------
+
+test("V2.8.4.1 #1: the new referent-scope wording is asked for every sandbox, in EN and HU, with the unchanged YES/NO/IS-IS mapping", () => {
+  for (const lang of ["en", "hu"] as const) {
+    const table = lang === "en" ? EN : HU;
+    for (const [sandboxIndex, key] of (["living", "physical", "place", "event"] as const).entries()) {
+      const log: QuestionLogEntry[] = [];
+      for (let i = 0; i < sandboxIndex; i += 1) log.push(entry(table.spine[i]!, "NO"));
+      log.push(entry(table.spine[sandboxIndex]!, "YES"));
+      const asked = derivePhaseOneState(log, lang);
+      assert.equal(asked.nextQuestionText, table.specificity[key], `${lang}/${key}: must ask the new referent-scope wording`);
+
+      const yes = derivePhaseOneState([...log, entry(asked.nextQuestionText!, "YES")], lang);
+      assert.equal(yes.specificity, "particular", `${lang}/${key}: YES -> particular instance`);
+
+      const no = derivePhaseOneState([...log, entry(asked.nextQuestionText!, "NO")], lang);
+      assert.equal(no.specificity, "kind", `${lang}/${key}: NO -> kind/category`);
+
+      // V2.8.4.1 CORRECTION — IS-IS on the primary no longer completes Phase
+      // One with a guessed "mixed"; it asks exactly one deterministic
+      // clarification, whose own YES/NO decide particular vs. kind, and
+      // whose own IS-IS leaves the game fully unresolved.
+      const clarificationText =
+        lang === "en"
+          ? "Would more than one example fully matching the intended target count as a correct answer?"
+          : "Egynél több, a megadott célpontnak teljesen megfelelő példány is helyes válasznak számítana?";
+      const afterPrimaryAmbiguous = derivePhaseOneState([...log, entry(asked.nextQuestionText!, "AMBIGUOUS")], lang);
+      assert.equal(afterPrimaryAmbiguous.complete, false, `${lang}/${key}: IS-IS must not complete Phase One`);
+      assert.equal(afterPrimaryAmbiguous.specificity, null, `${lang}/${key}: must not guess a specificity`);
+      assert.equal(afterPrimaryAmbiguous.nextQuestionText, clarificationText, `${lang}/${key}: must ask the clarification`);
+
+      const clarificationLog = [...log, entry(asked.nextQuestionText!, "AMBIGUOUS")];
+
+      const clarifiedYes = derivePhaseOneState([...clarificationLog, entry(clarificationText, "YES")], lang);
+      assert.equal(clarifiedYes.specificity, "kind", `${lang}/${key}: clarification YES -> kind/category`);
+      assert.equal(clarifiedYes.complete, true);
+
+      const clarifiedNo = derivePhaseOneState([...clarificationLog, entry(clarificationText, "NO")], lang);
+      assert.equal(clarifiedNo.specificity, "particular", `${lang}/${key}: clarification NO -> particular`);
+      assert.equal(clarifiedNo.complete, true);
+
+      const clarifiedAmbiguous = derivePhaseOneState([...clarificationLog, entry(clarificationText, "AMBIGUOUS")], lang);
+      assert.equal(clarifiedAmbiguous.unresolved, true, `${lang}/${key}: doubly-ambiguous must be unresolved`);
+      assert.equal(clarifiedAmbiguous.complete, false, "must never complete -- Phase Two must never see this game");
+      assert.equal(clarifiedAmbiguous.specificity, null, "must not guess mixed");
+      assert.equal(clarifiedAmbiguous.nextQuestionText, null, "nothing further to ask deterministically");
+    }
+  }
+});
+
+test("V2.8.4.1 #2: an in-progress game already showing the OLD (pre-hotfix) wording still replays correctly, in EN and HU", () => {
+  for (const [lang, table] of [["en", { spine: EN.spine, legacy: LEGACY_EN_SPECIFICITY }], ["hu", { spine: HU.spine, legacy: LEGACY_HU_SPECIFICITY }]] as const) {
+    // The old wording is already stored (asked before the hotfix) and pending.
+    const pending = [entry(table.spine[0], "YES")];
+    const alreadyAskedOld = [...pending]; // sandbox locked as "living"; specificity question would be old wording
+
+    // A player now answers that OLD pending question -- replay must recognize
+    // it (not fall back to NOT_APPLICABLE / legacy Phase Two) and complete.
+    const answered = [...alreadyAskedOld, entry(table.legacy.living, "YES")];
+    const state = derivePhaseOneState(answered, lang);
+    assert.equal(state.sandbox, "living");
+    assert.equal(state.specificity, "particular", "old wording's YES must still map to particular");
+    assert.equal(state.complete, true, "must not be ejected into legacy/unclassified Phase Two");
+  }
+});
+
+test("V2.8.4.1 #3: a brand-new game only ever emits the NEW wording -- the legacy text is never produced as nextQuestionText", () => {
+  for (const lang of ["en", "hu"] as const) {
+    const table = lang === "en" ? EN : HU;
+    const legacy = lang === "en" ? LEGACY_EN_SPECIFICITY : LEGACY_HU_SPECIFICITY;
+    const log = [entry(table.spine[0], "YES")]; // fresh game, just locked Living
+    const state = derivePhaseOneState(log, lang);
+    assert.equal(state.nextQuestionText, table.specificity.living);
+    assert.notEqual(state.nextQuestionText, legacy.living, "a new question must never be the legacy wording");
+  }
+});
+
+test("V2.8.4.1 #4: reload (replaying the same log twice) and correction (rewinding into it) preserve Phase One state whether the pending specificity question used the old or the new wording", () => {
+  // Reload -- OLD wording, still pending.
+  const oldPending = [entry(EN.spine[0], "YES")];
+  const reloadOld1 = derivePhaseOneState(oldPending, "en");
+  const reloadOld2 = derivePhaseOneState(oldPending, "en");
+  assert.deepEqual(reloadOld1, reloadOld2);
+  assert.equal(reloadOld1.nextQuestionText, EN.specificity.living, "even mid-game, the question offered is the CURRENT wording");
+
+  // Reload -- OLD wording, already answered.
+  const oldAnswered = [entry(EN.spine[0], "YES"), entry(LEGACY_EN_SPECIFICITY.living, "NO")];
+  const reloadAnswered1 = derivePhaseOneState(oldAnswered, "en");
+  const reloadAnswered2 = derivePhaseOneState(oldAnswered, "en");
+  assert.deepEqual(reloadAnswered1, reloadAnswered2);
+  assert.equal(reloadAnswered1.specificity, "kind");
+
+  // Correction -- rewinding Q1 (YES -> NO) after the OLD-wording specificity
+  // question was already answered must discard it and resume the spine at
+  // Q2, exactly as it would for the new wording (test REQUIRED 16 above).
+  const corrected = [entry(EN.spine[0], "NO")];
+  const state = derivePhaseOneState(corrected, "en");
+  assert.equal(state.sandbox, null);
+  assert.equal(state.nextQuestionText, EN.spine[1]);
+});
+
+test("V2.8.4.1 #5: Swiss Army knife and the required examples classify as the ticket specifies -- kind/category unless the answer names one specific, unique instance", () => {
+  // Each example pairs the honest referent-scope answer a truthful Composer
+  // would give with the expected derived specificity. Phase One never sees
+  // the target text itself (derivePhaseOneState takes no such parameter) --
+  // this table exists to prove the WORDING captures the intended distinction,
+  // by checking what the engine derives for exactly that honest answer.
+  const examples: Array<{ label: string; answer: "YES" | "NO"; expected: "particular" | "kind" }> = [
+    { label: "Swiss Army knife (any matching one counts)", answer: "NO", expected: "kind" },
+    { label: "Victorinox Huntsman (any matching Huntsman counts)", answer: "NO", expected: "kind" },
+    { label: "my Swiss Army knife (one specific object)", answer: "YES", expected: "particular" },
+    { label: "pencil sharpener", answer: "NO", expected: "kind" },
+    { label: "the Eiffel Tower", answer: "YES", expected: "particular" },
+    { label: "Planet Earth", answer: "YES", expected: "particular" },
+    { label: "a planet", answer: "NO", expected: "kind" },
+  ];
+
+  for (const { label, answer, expected } of examples) {
+    const log = [entry(EN.spine[0], "NO"), entry(EN.spine[1], "YES"), entry(EN.specificity.physical, answer)];
+    const state = derivePhaseOneState(log, "en");
+    assert.equal(state.specificity, expected, label);
+  }
+});
+
+test("V2.8.4.1: isReferentScopeQuestion recognizes only the new wording, in either language, and nothing else", () => {
+  assert.equal(isReferentScopeQuestion(EN.specificity.living), true);
+  assert.equal(isReferentScopeQuestion(HU.specificity.living), true);
+  assert.equal(isReferentScopeQuestion(LEGACY_EN_SPECIFICITY.living), false);
+  assert.equal(isReferentScopeQuestion(LEGACY_HU_SPECIFICITY.living), false);
+  assert.equal(isReferentScopeQuestion("Is it alive?"), false);
 });

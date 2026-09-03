@@ -130,6 +130,15 @@ export interface TurnRequestState {
   setExplanation(text: string): void;
   /** The auto-turn effect's own `autoTurnFor.current = null`. */
   clearAutoTurnGuard(): void;
+  /**
+   * V2.8.4.1 — the server's turn lock is already held by another in-flight
+   * request (see acquireTurnLock in app/api/game/[id]/turn/route.ts),
+   * typically a still-finishing provider call from a prior attempt. This is
+   * transient, not a failure: true schedules a quiet, bounded retry rather
+   * than a dead-looking error banner requiring a manual tap. See
+   * GameClient.tsx's own awaitingTurnLock effect.
+   */
+  setTurnInProgress(inProgress: boolean): void;
 }
 
 export const NETWORK_ERROR_MESSAGE = "Hálózati hiba — próbáld újra.";
@@ -299,6 +308,9 @@ export async function runOwnedTurnRequest(
 
   state.setBusy(true);
   state.setError(null);
+  // This specific attempt hasn't reported anything yet -- if it turns out to
+  // be another turn_in_progress, the branch below sets this true again.
+  state.setTurnInProgress(false);
 
   let transportFailed = false;
   let result: TurnRequestResult | null = null;
@@ -323,6 +335,16 @@ export async function runOwnedTurnRequest(
         // from the pre-S1 behavior.
         state.setError(null);
         state.setTurnFailed(false);
+      } else if (data.error === "turn_in_progress") {
+        // V2.8.4.1 — another request already holds the server's turn lock
+        // (see acquireTurnLock in the /turn route), most often a still-
+        // finishing provider call from a prior attempt. `data.game` above is
+        // already the canonical current state, so nothing is stale or lost;
+        // this is not a gameplay failure and must not show one. GameClient's
+        // awaitingTurnLock effect schedules exactly one quiet retry.
+        state.setError(null);
+        state.setTurnFailed(false);
+        state.setTurnInProgress(true);
       } else {
         state.setError(data.message || "Valami hiba történt.");
         state.clearAutoTurnGuard();

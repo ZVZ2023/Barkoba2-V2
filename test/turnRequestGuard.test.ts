@@ -158,6 +158,7 @@ function recordingState(initial: GameRecord) {
     setAmbiguousMode: (a) => calls.push({ fn: "setAmbiguousMode", arg: a }),
     setExplanation: (e) => calls.push({ fn: "setExplanation", arg: e }),
     clearAutoTurnGuard: () => calls.push({ fn: "clearAutoTurnGuard" }),
+    setTurnInProgress: (p) => calls.push({ fn: "setTurnInProgress", arg: p }),
   };
   return { state, calls, getCurrentGame: () => currentGame };
 }
@@ -625,4 +626,72 @@ test("REQUIRED 5: a NEWLY pending clue (previously none pending) counts as progr
     view({ turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: null })] })
   );
   assert.equal(reconciliationShowsProgress(before, after), true);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.4.1 — turn_in_progress: the server's turn lock is already held by
+// another in-flight request. This must read as "still working," never as a
+// gameplay failure needing a manual retry tap.
+// ---------------------------------------------------------------------------
+
+test("V2.8.4.1: a turn_in_progress response applies the canonical game, clears any error, and signals turnInProgress -- not a failure", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, calls, getCurrentGame } = recordingState(g0);
+
+  const canonicalGame = game({
+    revision: 1,
+    qa_log: [entry({ id: "q1", turn_index: 1, question_text: "Q1?", composer_response: null })],
+  });
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({
+      ok: false,
+      data: { error: "turn_in_progress", message: "Már folyamatban van egy kör ebben a játékban.", game: canonicalGame },
+    }),
+    requestView: async () => {
+      throw new Error("must not reconcile — the response already carried a usable `game`");
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(getCurrentGame(), canonicalGame, "the server's own canonical state must be applied");
+  assert.equal(lastValueOf(calls, "setError"), null, "turn_in_progress must not show an error banner");
+  assert.equal(lastValueOf(calls, "setTurnFailed"), false, "must not require an explicit manual retry");
+  assert.equal(lastValueOf(calls, "setTurnInProgress"), true, "the caller must be told to schedule a quiet retry");
+  assert.equal(countCalls(calls, "clearAutoTurnGuard"), 0, "turn_in_progress is not the auto-turn-guard failure path");
+  assert.equal(lastValueOf(calls, "setBusy"), false, "the in-flight request itself has finished");
+});
+
+test("V2.8.4.1: an ordinary success clears turnInProgress (a stale true from a prior attempt must not linger)", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, calls } = recordingState(g0);
+
+  const newGame = game({ qa_log: [entry({ id: "q1", turn_index: 1, question_text: "Q1?" })] });
+  await runOwnedTurnRequest(
+    ownership,
+    { requestTurn: async () => ({ ok: true, data: { game: newGame } }), requestView: async () => { throw new Error("unused"); } },
+    state
+  );
+
+  assert.equal(lastValueOf(calls, "setTurnInProgress"), false);
+});
+
+test("V2.8.4.1: a genuine gameplay failure also clears turnInProgress, so the explicit-retry UI is not confused with the quiet-retry state", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, calls } = recordingState(g0);
+
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({ ok: false, data: { error: "provider_error", message: "Valami hiba történt.", game: g0 } }),
+    requestView: async () => {
+      throw new Error("unused — this is not a transport failure");
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(lastValueOf(calls, "setTurnFailed"), true);
+  assert.equal(lastValueOf(calls, "setTurnInProgress"), false);
 });

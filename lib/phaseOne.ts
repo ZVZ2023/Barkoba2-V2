@@ -71,8 +71,19 @@ export interface PhaseOneState {
   /** 1-based spine question numbers (1-4) answered IS-IS/AMBIGUOUS — contested evidence, not a NO. */
   mixedSpineQuestions: number[];
   complete: boolean;
-  /** The next deterministic question to ask, or null when `complete` or when a question is already pending an answer. */
+  /** The next deterministic question to ask, or null when `complete`, when a question is already pending an answer, or when `unresolved`. */
   nextQuestionText: string | null;
+  /**
+   * V2.8.4.1 correction — REFERENT SCOPE, doubly unresolved. True only when
+   * IS-IS was given on both the primary referent-scope question and its
+   * deterministic clarification. Never true alongside `complete: true` —
+   * referent scope is a rule the Setter chooses, not an uncertain fact, so
+   * Phase One does not guess a value and hand `specificity: "mixed"` to
+   * Phase Two; it stops, asks nothing further, and the caller must not call
+   * the provider. The Setter resolves this the ordinary way: correcting one
+   * of the two scope answers to a definite YES or NO.
+   */
+  unresolved: boolean;
 }
 
 const SANDBOX_ORDER: readonly PhaseOneSandbox[] = ["living", "physical", "place", "event"];
@@ -96,7 +107,44 @@ const SPINE_QUESTIONS: Record<GameLanguage, readonly [string, string, string, st
 
 type SpecificitySandbox = "living" | "physical" | "place" | "event";
 
+// ---------------------------------------------------------------------------
+// V2.8.4.1 — REFERENT SCOPE. The original specificity wording ("Is it one
+// particular X?") was ambiguous about what "particular" meant: "Swiss Army
+// knife" reads as more specific than "knife," but it is still a kind/category
+// — any matching Swiss Army knife is an acceptable answer. Only "MY Swiss Army
+// knife" identifies one uniquely identifiable individual. The new wording asks
+// for that distinction directly, and — per the approved fix — is the SAME
+// sentence for every sandbox rather than a sandbox-specific variant, since the
+// underlying question ("does the correct answer name one unique individual,
+// or would any matching example do?") does not actually depend on whether the
+// thing is living, physical, a place, or an event.
+// ---------------------------------------------------------------------------
 const SPECIFICITY_QUESTIONS: Record<GameLanguage, Record<SpecificitySandbox, string>> = {
+  en: {
+    living: "Does the correct answer need to identify one uniquely identifiable individual?",
+    physical: "Does the correct answer need to identify one uniquely identifiable individual?",
+    place: "Does the correct answer need to identify one uniquely identifiable individual?",
+    event: "Does the correct answer need to identify one uniquely identifiable individual?",
+  },
+  hu: {
+    living: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    physical: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    place: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+    event: "A helyes válasznak egyetlen, egyedileg azonosítható példányt kell megneveznie?",
+  },
+};
+
+/**
+ * V2.8.4 (pre-hotfix) wording, kept ONLY so derivePhaseOneState can still
+ * recognize a specificity question already asked/pending in an in-progress
+ * game's stored qa_log. Never emitted for a new question — see
+ * nextQuestionText below, which always reads from SPECIFICITY_QUESTIONS. A
+ * game that already has this exact text sitting unanswered keeps working
+ * (the player answers it, replay recognizes it, Phase One completes exactly
+ * as it would have before this hotfix); a NEW specificity question, for that
+ * same game or any other, is always the new referent-scope wording.
+ */
+const LEGACY_SPECIFICITY_QUESTIONS: Record<GameLanguage, Record<SpecificitySandbox, string>> = {
   en: {
     living: "Is it one particular living being?",
     physical: "Is it one particular physical item or substance?",
@@ -111,8 +159,38 @@ const SPECIFICITY_QUESTIONS: Record<GameLanguage, Record<SpecificitySandbox, str
   },
 };
 
+// ---------------------------------------------------------------------------
+// V2.8.4.1 CORRECTION — REFERENT SCOPE, RESOLVED NOT GUESSED. The first
+// referent-scope hotfix let IS-IS on the primary question complete Phase One
+// immediately with specificity "mixed", handing the ambiguity to Phase Two.
+// That was wrong: referent scope is a rule the SETTER chooses when writing
+// the target, not an external fact the Racer could ever resolve by asking
+// more questions. IS-IS on the primary question now asks exactly one more
+// deterministic clarification instead; IS-IS on THAT is left fully
+// unresolved (see PhaseOneState.unresolved) rather than guessed as "mixed".
+// ---------------------------------------------------------------------------
+const CLARIFICATION_QUESTIONS: Record<GameLanguage, string> = {
+  en: "Would more than one example fully matching the intended target count as a correct answer?",
+  hu: "Egynél több, a megadott célpontnak teljesen megfelelő példány is helyes válasznak számítana?",
+};
+
 function hasSpecificity(sandbox: PhaseOneSandbox): sandbox is SpecificitySandbox {
   return sandbox === "living" || sandbox === "physical" || sandbox === "place" || sandbox === "event";
+}
+
+/**
+ * True for the current (new-wording) referent-scope specificity question, in
+ * either language. UI-only: lets GameClient show the "my Swiss Army knife" /
+ * "a Swiss Army knife" helper text under this specific question without the
+ * client needing its own copy of the canonical strings. Deliberately false
+ * for the legacy wording — an in-progress game's old pending question does
+ * not need (and was never designed with) this helper text.
+ */
+export function isReferentScopeQuestion(questionText: string): boolean {
+  return (
+    questionText === SPECIFICITY_QUESTIONS.en.living ||
+    questionText === SPECIFICITY_QUESTIONS.hu.living
+  );
 }
 
 const NOT_APPLICABLE: PhaseOneState = {
@@ -121,6 +199,7 @@ const NOT_APPLICABLE: PhaseOneState = {
   mixedSpineQuestions: [],
   complete: true,
   nextQuestionText: null,
+  unresolved: false,
 };
 
 /**
@@ -132,11 +211,17 @@ const NOT_APPLICABLE: PhaseOneState = {
 export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language: GameLanguage): PhaseOneState {
   const spine = SPINE_QUESTIONS[language];
   const specificityText = SPECIFICITY_QUESTIONS[language];
+  const clarificationText = CLARIFICATION_QUESTIONS[language];
 
   let sandbox: PhaseOneSandbox | null = null;
   let specificity: PhaseOneSpecificity | null = null;
   const mixedSpineQuestions: number[] = [];
   let spineIndex = 0; // 0-based index into `spine`, i.e. how many spine questions are already answered
+  // Which of the two referent-scope questions Phase One is currently on.
+  // Only ever advances to "clarification" after IS-IS on the primary
+  // question, in a game where the clarification genuinely follows (see the
+  // legacy-compatibility branch below for the alternative).
+  let scopeStage: "primary" | "clarification" = "primary";
 
   const locked = (): PhaseOneState => ({
     sandbox,
@@ -144,9 +229,11 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
     mixedSpineQuestions,
     complete: true,
     nextQuestionText: null,
+    unresolved: false,
   });
 
-  for (const entry of qaLog) {
+  for (let i = 0; i < qaLog.length; i += 1) {
+    const entry = qaLog[i]!;
     if (entry.turn_type !== "question" || entry.model_id !== null) return NOT_APPLICABLE;
 
     if (sandbox === null) {
@@ -157,7 +244,7 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
         // generate; the route's own "pending question" check already keeps
         // callers from reaching here in practice, but replay stays correct
         // either way.
-        return { sandbox, specificity, mixedSpineQuestions, complete: false, nextQuestionText: null };
+        return { sandbox, specificity, mixedSpineQuestions, complete: false, nextQuestionText: null, unresolved: false };
       }
 
       if (spineIndex < 4) {
@@ -185,23 +272,74 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
     }
 
     if (hasSpecificity(sandbox) && specificity === null) {
-      if (entry.question_text !== specificityText[sandbox]) return NOT_APPLICABLE;
-      if (entry.composer_response === null) {
-        return { sandbox, specificity, mixedSpineQuestions, complete: false, nextQuestionText: null };
+      if (scopeStage === "primary") {
+        const legacyText = LEGACY_SPECIFICITY_QUESTIONS[language][sandbox];
+        if (entry.question_text !== specificityText[sandbox] && entry.question_text !== legacyText) {
+          return NOT_APPLICABLE;
+        }
+        if (entry.composer_response === null) {
+          return { sandbox, specificity, mixedSpineQuestions, complete: false, nextQuestionText: null, unresolved: false };
+        }
+        if (entry.composer_response === "YES") {
+          specificity = "particular";
+          return locked();
+        }
+        if (entry.composer_response === "NO") {
+          specificity = "kind";
+          return locked();
+        }
+
+        // AMBIGUOUS on the primary referent-scope question.
+        const next = qaLog[i + 1];
+        if (next && next.question_text !== clarificationText) {
+          // LEGACY COMPATIBILITY. Something other than the clarification
+          // question already follows — proof that Phase One already
+          // completed here under the pre-correction rule (IS-IS -> "mixed",
+          // handed straight to Phase Two) and Phase Two has already acted on
+          // it. That already happened; replay must reproduce it exactly, not
+          // retroactively reopen it. (A fresh IS-IS with nothing following
+          // yet, or with the clarification question following, falls through
+          // to the corrected behavior below instead.)
+          specificity = "mixed";
+          return locked();
+        }
+        scopeStage = "clarification";
+        continue;
       }
-      specificity =
-        entry.composer_response === "YES" ? "particular" : entry.composer_response === "NO" ? "kind" : "mixed";
-      // The specificity answer is Phase One's last deterministic step —
-      // freeze and return now. Everything qa_log holds after this entry is
-      // Phase Two's, and must never be matched, reinterpreted, or allowed to
-      // invalidate this summary.
-      return locked();
+
+      // scopeStage === "clarification"
+      if (entry.question_text !== clarificationText) return NOT_APPLICABLE;
+      if (entry.composer_response === null) {
+        return { sandbox, specificity, mixedSpineQuestions, complete: false, nextQuestionText: null, unresolved: false };
+      }
+      if (entry.composer_response === "YES") {
+        // More than one fully-matching example would count -> a category.
+        specificity = "kind";
+        return locked();
+      }
+      if (entry.composer_response === "NO") {
+        // Only one exact instance would count -> a particular.
+        specificity = "particular";
+        return locked();
+      }
+      // IS-IS on the clarification too. Referent scope is the Setter's own
+      // choice, not an external fact — Phase One does not guess. It stops
+      // here: not complete, nothing further to ask, and the caller must not
+      // call the provider. See PhaseOneState.unresolved.
+      return {
+        sandbox,
+        specificity: null,
+        mixedSpineQuestions,
+        complete: false,
+        nextQuestionText: null,
+        unresolved: true,
+      };
     }
 
-    // Unreachable in practice: the two branches above already return the
-    // instant Phase One completes, so no further loop iteration is ever
-    // reached with a locked, specificity-resolved sandbox. Kept as a
-    // structural safeguard, not a live path.
+    // Unreachable in practice: every branch above already returns the
+    // instant Phase One completes or becomes unresolved, so no further loop
+    // iteration is ever reached with a locked, specificity-resolved sandbox.
+    // Kept as a structural safeguard, not a live path.
     return NOT_APPLICABLE;
   }
 
@@ -211,8 +349,10 @@ export function derivePhaseOneState(qaLog: readonly QuestionLogEntry[], language
     : sandbox === null
       ? spine[spineIndex]!
       : hasSpecificity(sandbox)
-        ? specificityText[sandbox]!
+        ? scopeStage === "primary"
+          ? specificityText[sandbox]!
+          : clarificationText
         : null;
 
-  return { sandbox, specificity, mixedSpineQuestions, complete, nextQuestionText };
+  return { sandbox, specificity, mixedSpineQuestions, complete, nextQuestionText, unresolved: false };
 }

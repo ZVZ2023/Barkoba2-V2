@@ -62,7 +62,10 @@ test("auto-resolve does not fire while a guess is pending reveal", () => {
 });
 
 test("the checkpoint's own confirm button is the only thing that reveals the guess", () => {
-  const block = GC.slice(GC.indexOf("{guessRevealPending && ("), GC.indexOf("{pending && pending.question_text"));
+  const block = GC.slice(
+    GC.indexOf("!clueWanted && guessRevealPending && ("),
+    GC.indexOf("!clueWanted && !guessRevealPending && pending && pending.question_text")
+  );
   assert.match(block, /onClick=\{\(\) => setGuessConfirmed\(true\)\}/);
   // It shows the player their own last answer, never the AI's guess text —
   // there is no reference to guess_text anywhere in this block.
@@ -70,7 +73,10 @@ test("the checkpoint's own confirm button is the only thing that reveals the gue
 });
 
 test("the confirm button is disabled while a correction is open, so a stray click cannot race an edit", () => {
-  const block = GC.slice(GC.indexOf("{guessRevealPending && ("), GC.indexOf("{pending && pending.question_text"));
+  const block = GC.slice(
+    GC.indexOf("!clueWanted && guessRevealPending && ("),
+    GC.indexOf("!clueWanted && !guessRevealPending && pending && pending.question_text")
+  );
   assert.match(block, /disabled=\{busy \|\| correcting !== null\}/);
 });
 
