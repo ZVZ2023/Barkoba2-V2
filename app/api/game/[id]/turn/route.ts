@@ -7,6 +7,7 @@ import {
   saveGameIfRevisionMatches,
 } from "@/lib/gameStore";
 import { toRacerPublicState } from "@/lib/racerState";
+import { derivePhaseOneState } from "@/lib/phaseOne";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent, racerModelFor } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
@@ -683,7 +684,57 @@ export async function POST(
     // Step 2/3/4 setup — the Racer's turn, on narrowed public state only.
     // -------------------------------------------------------------------------
     const forceFinal = game.question_count >= game.max_questions;
+
+    // -------------------------------------------------------------------------
+    // V2.8.4 — Runtime Phase One v6.1. Deterministic sandbox classification,
+    // zero provider calls. lib/phaseOne.ts replays game.qa_log fresh on every
+    // call — nothing here needs to invalidate or track a separate position:
+    // a correction's rewind already truncates qa_log before the next /turn
+    // call reaches this point, so the next derivation is automatically
+    // correct. `forceFinal` bypasses Phase One deliberately — Phase One never
+    // guesses, so a forced final turn must always reach the model Racer,
+    // carrying whatever partial classification exists so far.
+    // -------------------------------------------------------------------------
+    const phaseOneState = derivePhaseOneState(game.qa_log, game.game_language);
+    if (!phaseOneState.complete && !forceFinal) {
+      const entry = newLogEntry(game.qa_log.length + 1);
+      entry.turn_type = "question";
+      entry.question_text = phaseOneState.nextQuestionText;
+      entry.racer_output_raw = JSON.stringify({
+        action: "question",
+        question_text: phaseOneState.nextQuestionText,
+        guess_text: null,
+        rationale: "phase_one_deterministic",
+      });
+      // model_id / model_provider / prompt_version / latency_ms stay at
+      // newLogEntry's own defaults (null) — the schema's existing, honest
+      // "no model authored this turn" representation. No sentinel invented.
+      game.qa_log.push(entry);
+
+      const saved = await saveGameIfRevisionMatches(game, revisionAtLockTime);
+      if (!saved.ok) {
+        // Same defensive check as Step 5 below — structurally shouldn't
+        // happen while holding the turn lock.
+        // eslint-disable-next-line no-console
+        console.error(
+          `[barkoba] unexpected revision mismatch while holding the turn lock (game ${gameId}) ` +
+            `during Phase One; expected ${revisionAtLockTime}, actual ${saved.revision}`
+        );
+        const canonical = await getGame(gameId);
+        return staleTurn(canonical ?? game);
+      }
+      game.revision = saved.revision;
+      return respond(game);
+    }
+
     const racerState = toRacerPublicState(game);
+    if (phaseOneState.complete && phaseOneState.sandbox !== null) {
+      racerState.phase_one = {
+        sandbox: phaseOneState.sandbox,
+        specificity: phaseOneState.specificity,
+        mixed_spine_questions: phaseOneState.mixedSpineQuestions,
+      };
+    }
 
     // V2.5-B3 — WHO is playing this seat, read from the game and not from the
     // request. Fixed at creation; every turn of a game reaches the same provider.

@@ -134,6 +134,32 @@ function stubRacerControlled(): {
  * for the actual state we need (rather than assuming a fixed number of
  * ticks) is what makes this deterministic instead of timing-fragile.
  */
+/**
+ * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with up to
+ * six deterministic, zero-provider classification turns before the model
+ * Racer is ever reached. This file exists to exercise the My Car Key
+ * integrity/concurrency machinery against MODEL-DRIVEN turns, so its
+ * fixtures answer all five spine questions NO (-> Unclassified, the
+ * shortest path to Phase Two, no specificity question) first. Answering the
+ * fifth question is itself what completes Phase One and triggers the first
+ * real Racer call in that same request — stubbed here with `openingQuestion`
+ * — so callers get back exactly the `{ status, data }` shape their old
+ * "fresh game -> first racer turn" opener already expected, just reached
+ * after Phase One instead of at turn 1.
+ */
+async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
+  for (let i = 0; i < 4; i += 1) {
+    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
+    rev = result.data.game.revision;
+  }
+  const opener = stubRacerQuestions([openingQuestion]);
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  opener.restore();
+  return opening;
+}
+
 async function waitUntil(check: () => boolean, maxTicks = 1000): Promise<void> {
   for (let i = 0; i < maxTicks; i += 1) {
     if (check()) return;
@@ -148,14 +174,17 @@ async function waitUntil(check: () => boolean, maxTicks = 1000): Promise<void> {
 
 test("GOLDEN: a stale retry can never answer a question it never saw", async () => {
   const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?", "Q2?", "SHOULD-NEVER-BE-CALLED"]);
-  try {
-    // Opening move: Q1 becomes pending.
-    const opening = await callTurn(gameId);
-    assert.equal(opening.status, 200);
-    assert.equal(opening.data.game.qa_log.at(-1).question_text, "Q1?");
-    const revisionAtQ1 = opening.data.game.revision;
+  // Fast-forward through Phase One's five deterministic turns first (its own
+  // real transition call stubbed as "Q1?", matching this test's own naming),
+  // then the model-driven duplicate/concurrency scenario below is unchanged.
+  const opening = await fastForwardPastPhaseOne(gameId, "Q1?");
+  assert.equal(opening.status, 200);
+  assert.equal((opening.data.game as { qa_log: { question_text: string }[] }).qa_log.at(-1)!.question_text, "Q1?");
+  const revisionAtQ1 = opening.data.game.revision;
+  const priorLength = (opening.data.game as { qa_log: unknown[] }).qa_log.length;
 
+  const stub = stubRacerQuestions(["Q2?", "SHOULD-NEVER-BE-CALLED"]);
+  try {
     // REQUEST A — a real client answers Q1. Server accepts, advances, and
     // generates Q10 (here: Q2). This is the request whose response "never
     // reaches the client" in the incident narrative — but it DID complete
@@ -163,7 +192,7 @@ test("GOLDEN: a stale retry can never answer a question it never saw", async () 
     const requestA = await callTurn(gameId, { answer: "YES", expected_revision: revisionAtQ1 });
     assert.equal(requestA.status, 200);
     assert.equal(requestA.data.game.qa_log.at(-1).question_text, "Q2?");
-    assert.equal(stub.callCount(), 2, "one real Racer call for the opening move, one for Q2");
+    assert.equal(stub.callCount(), 1, "one real Racer call for Q2");
     const revisionAfterA = requestA.data.game.revision;
     assert.notEqual(revisionAfterA, revisionAtQ1, "the revision must have advanced");
 
@@ -174,13 +203,13 @@ test("GOLDEN: a stale retry can never answer a question it never saw", async () 
     // EXPECTED FIXED BEHAVIOR:
     assert.equal(requestB.status, 409, "a stale answer must be refused, not accepted");
     assert.equal(requestB.data.error, "stale_turn");
-    assert.equal(stub.callCount(), 2, "the stale request must never trigger a Racer call");
+    assert.equal(stub.callCount(), 1, "the stale request must never trigger a Racer call");
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 2, "no phantom third entry");
-    assert.equal(canonical!.qa_log[1]!.question_text, "Q2?");
-    assert.equal(canonical!.qa_log[1]!.composer_response, null, "Q2 must remain unanswered");
-    assert.equal(canonical!.qa_log[0]!.composer_response, "YES", "Q1's real answer is untouched");
+    assert.equal(canonical!.qa_log.length, priorLength + 1, "no phantom extra entry");
+    assert.equal(canonical!.qa_log.at(-1)!.question_text, "Q2?");
+    assert.equal(canonical!.qa_log.at(-1)!.composer_response, null, "Q2 must remain unanswered");
+    assert.equal(canonical!.qa_log[priorLength - 1]!.composer_response, "YES", "Q1's real answer is untouched");
     assert.equal(requestB.data.game.qa_log.at(-1).question_text, "Q2?", "client reconciles to Q2, the true current question");
 
     // The player can then answer Q2 normally, using the revision the stale
@@ -190,7 +219,7 @@ test("GOLDEN: a stale retry can never answer a question it never saw", async () 
       expected_revision: requestB.data.game.revision,
     });
     assert.equal(afterReconcile.status, 200);
-    assert.equal(stub.callCount(), 3);
+    assert.equal(stub.callCount(), 2);
   } finally {
     stub.restore();
   }
@@ -228,10 +257,9 @@ test("a stale retry with a DIFFERENT (wrong) answer still cannot corrupt state",
 
 test("CONCURRENCY: two near-simultaneous answers to the same question — exactly one wins", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const openTurn = await callTurn(gameId);
-  opener.restore();
+  const openTurn = await fastForwardPastPhaseOne(gameId, "Q1?");
   const revisionAtQ1 = openTurn.data.game.revision;
+  const priorLength = (openTurn.data.game as { qa_log: unknown[] }).qa_log.length;
 
   const controlled = stubRacerControlled();
   try {
@@ -258,8 +286,8 @@ test("CONCURRENCY: two near-simultaneous answers to the same question — exactl
     assert.equal(resultA.status, 200, "A, which legitimately held the lock, succeeds");
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 2, "the game advanced exactly once");
-    assert.equal(canonical!.qa_log[0]!.composer_response, "YES", "only the winner's answer landed");
+    assert.equal(canonical!.qa_log.length, priorLength + 1, "the game advanced exactly once");
+    assert.equal(canonical!.qa_log[priorLength - 1]!.composer_response, "YES", "only the winner's answer landed");
     assert.equal(resultA.data.game.qa_log.at(-1).question_text, "Q2?");
   } finally {
     controlled.restore();
@@ -287,14 +315,9 @@ test("an answer without expected_revision is refused, not silently accepted", as
 
 test("a bare poll for the opening move needs no expected_revision", async () => {
   const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?"]);
-  try {
-    const result = await callTurn(gameId); // no body at all
-    assert.equal(result.status, 200);
-    assert.equal(result.data.game.qa_log[0].question_text, "Q1?");
-  } finally {
-    stub.restore();
-  }
+  const result = await callTurn(gameId); // no body at all -- Phase One's Q1, deterministic
+  assert.equal(result.status, 200);
+  assert.equal(result.data.game.qa_log[0].question_text, "Is it alive?");
 });
 
 // ---------------------------------------------------------------------------
@@ -342,23 +365,24 @@ test("YES, NO, and AMBIGUOUS (with explanation) all still work through the bound
 
 test("correction still rewinds, still records provenance, still resumes normally afterward", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?", "Q2?"]);
-  let r = await callTurn(gameId);
-  let rev = r.data.game.revision;
-  r = await callTurn(gameId, { answer: "YES", expected_revision: rev }); // -> Q2 pending
-  opener.restore();
+  const opening = await fastForwardPastPhaseOne(gameId, "Q1?");
+  const priorLength = (opening.data.game as { qa_log: unknown[] }).qa_log.length;
+  const stub = stubRacerQuestions(["Q2?"]);
+  await callTurn(gameId, { answer: "YES", expected_revision: opening.data.game.revision }); // -> Q2 pending
+  stub.restore();
 
   const beforeCorrection = await getGame(gameId);
-  assert.equal(beforeCorrection!.qa_log.length, 2);
+  assert.equal(beforeCorrection!.qa_log.length, priorLength + 1);
+  const correctedTurnIndex = beforeCorrection!.qa_log[priorLength - 1]!.turn_index;
 
   const correction = await callCorrect(gameId, {
-    turn_index: 1,
+    turn_index: correctedTurnIndex,
     answer: "NO",
     expected_log_length: beforeCorrection!.qa_log.length,
   });
   assert.equal(correction.status, 200);
-  assert.equal(correction.data.game.qa_log.length, 1, "Q2 was abandoned, not left dangling");
-  assert.equal(correction.data.game.qa_log[0].composer_response, "NO");
+  assert.equal(correction.data.game.qa_log.length, priorLength, "Q2 was abandoned, not left dangling");
+  assert.equal(correction.data.game.qa_log.at(-1).composer_response, "NO");
   assert.equal(correction.data.game.corrections.length, 1);
   assert.equal(correction.data.game.corrections[0].from, "YES");
   assert.equal(correction.data.game.corrections[0].to, "NO");
@@ -407,9 +431,7 @@ test("a correction and a concurrent /turn cannot both mutate the same game", asy
   // per-game turn lock /turn does, so the two routes cannot race each other
   // at the storage layer either, not just /turn against itself.
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const openTurn = await callTurn(gameId);
-  opener.restore();
+  const openTurn = await fastForwardPastPhaseOne(gameId, "Q1?");
   const rev = openTurn.data.game.revision;
 
   const controlled = stubRacerControlled();

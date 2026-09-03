@@ -102,13 +102,23 @@ test("no creation site hardcodes a game language any more", () => {
   assert.match(CREATE_ROUTE, /gameLanguage: aiGameLanguage/);
 });
 
-test("the human path finally reads the Validator's detection", () => {
-  // It was computed on every single game and thrown away.
-  assert.match(CREATE_ROUTE, /resolveGameLanguage\(body\.game_language, validation\.game_language\)/);
-});
-
-test("the AI path passes no detection, because there is none", () => {
-  assert.match(CREATE_ROUTE, /resolveGameLanguage\(body\.game_language, null\)/);
+// V2.8.4 — REVERSED. The human path briefly read the Validator's own
+// language detection here, which fixed one bug (an English target forced
+// into Hungarian) by reintroducing another: this shell's answer controls
+// (GameClient.tsx's IGEN/NEM/IS-IS) are hardcoded Hungarian with no language
+// switch, so AUTO silently detecting "en" from the target text produced
+// English questions beside permanently-Hungarian buttons. Both creation
+// sites now pass null for `detected`, so AUTO collapses to the shell's own
+// language ("hu") on both paths — only an EXPLICIT "hu"/"en" choice still
+// changes anything. See test/phaseOneLanguageGate.test.ts for the real-flow
+// proof this closes.
+test("neither creation path feeds target-text detection into AUTO any more", () => {
+  const detectionCalls = CREATE_ROUTE.match(/resolveGameLanguage\([^)]*\)/g) ?? [];
+  assert.equal(detectionCalls.length, 2, "both creation call sites must still exist");
+  for (const call of detectionCalls) {
+    assert.match(call, /resolveGameLanguage\(body\.game_language, null\)/);
+  }
+  assert.doesNotMatch(CREATE_ROUTE, /resolveGameLanguage\([^)]*validation\.game_language/);
 });
 
 // --- 9. the shell stays Hungarian ------------------------------------------

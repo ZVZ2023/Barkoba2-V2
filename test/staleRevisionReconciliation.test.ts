@@ -101,37 +101,65 @@ async function makeGame() {
   return { gameId, game };
 }
 
-test("CONFIRMED FIX: after reconciliation applies the real revision, the player's answer is accepted on the first submit — no stale_turn, no second Q1-generation call", async () => {
-  const { gameId, game: clientBefore } = await makeGame();
-  assert.equal(clientBefore.revision, 0);
+/**
+ * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with up to
+ * six deterministic, zero-provider classification turns before the model
+ * Racer is ever reached. Answers all five spine questions NO (-> the
+ * shortest path to Phase Two: Unclassified), then stubs and issues the one
+ * real call that both completes Phase One and produces the first
+ * model-driven question. Returns the resulting `{status, data}`, matching
+ * this file's own "fresh game -> first racer turn" opener shape.
+ */
+async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
+  for (let i = 0; i < 4; i += 1) {
+    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
+    rev = result.data.game.revision;
+  }
+  const opener = stubRacerQuestions([openingQuestion]);
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  opener.restore();
+  return opening;
+}
 
-  // Step 1 — server saves Q1, revision 0 -> 1. A second, distinct question is
-  // queued for whenever the answer below is accepted and /turn generates the
-  // next turn in the same request — that is the ordinary Q2 generation this
-  // test must distinguish from a DUPLICATE Q1 attempt.
-  const racer = stubRacerQuestions([
-    "Is the target real or has it ever existed in reality?",
-    "Is it a physical object?",
-  ]);
-  const turn1 = await callTurn(gameId);
-  assert.equal(turn1.status, 200);
-  assert.equal(turn1.data.game.revision, 1, "server-side revision genuinely advanced");
+test("CONFIRMED FIX: after reconciliation applies the real revision, the player's answer is accepted on the first submit — no stale_turn, no second Q1-generation call", async () => {
+  const { gameId } = await makeGame();
+
+  // Phase One's own five deterministic turns happen first (V2.8.4) -- this
+  // test's actual subject, stale-revision reconciliation, is orthogonal to
+  // whether the pending question is deterministic or model-driven, so it is
+  // relocated to Phase One's real handoff turn rather than turn 1.
+  const opening = await fastForwardPastPhaseOne(gameId, "Is the target real or has it ever existed in reality?");
+  assert.equal(opening.status, 200);
+  const revisionAtOpening = opening.data.game.revision;
+  // The client's snapshot immediately BEFORE this turn's own question was
+  // answered -- i.e. Phase One's final state, with the model-driven question
+  // not yet appended. Reconstructed the same way a real client would have
+  // held it: everything up to but not including the turn under test.
+  const clientBefore: GameRecord = { ...opening.data.game, revision: opening.data.game.revision - 1, qa_log: opening.data.game.qa_log.slice(0, -1) };
+
+  // Step 1 — server saves the opening question, revision N-1 -> N. A second,
+  // distinct question is queued for whenever the answer below is accepted
+  // and /turn generates the next turn in the same request — that is the
+  // ordinary Q2 generation this test must distinguish from a DUPLICATE
+  // opening-question attempt.
+  const racer = stubRacerQuestions(["Is it a physical object?"]);
 
   // Step 2/3 — the client's own /turn response was lost (not modeled here —
   // that is a pure client-side transport event, already covered behaviorally
   // by test/turnRequestGuard.test.ts's Tests B/B2). What matters for THIS
   // test is what the client is left holding: the PRE-turn snapshot
-  // (clientBefore, revision 0, empty qa_log) reconciled against a REAL
-  // GET /view read.
+  // (clientBefore) reconciled against a REAL GET /view read.
   const viewResult = await callView(gameId);
   assert.equal(viewResult.status, 200);
   const view = viewResult.data.view as GameView;
-  assert.equal(view.record_revision, 1, "the view must expose the true server-side revision");
+  assert.equal(view.record_revision, revisionAtOpening, "the view must expose the true server-side revision");
 
   const reconciled: GameRecord = mergeViewIntoGame(clientBefore, view);
-  assert.equal(reconciled.revision, 1, "reconciliation must adopt the true revision, not the stale client one");
-  assert.equal(reconciled.qa_log.length, 1);
-  assert.equal(reconciled.qa_log[0]?.composer_response, null, "Q1 is pending, unanswered");
+  assert.equal(reconciled.revision, revisionAtOpening, "reconciliation must adopt the true revision, not the stale client one");
+  assert.equal(reconciled.qa_log.length, clientBefore.qa_log.length + 1);
+  assert.equal(reconciled.qa_log.at(-1)?.composer_response, null, "the opening question is pending, unanswered");
 
   // Step 4/5/6 — the player answers. sendTurn() would submit
   // expected_revision: reconciled.revision. This is now correct.
@@ -140,23 +168,24 @@ test("CONFIRMED FIX: after reconciliation applies the real revision, the player'
   assert.equal(answer.status, 200, "the FIRST submit must be accepted — no stale_turn round trip");
   assert.notEqual(answer.data.error, "stale_turn");
   assert.equal(
-    answer.data.game.qa_log[0]?.composer_response,
+    answer.data.game.qa_log.at(-2)?.composer_response,
     "YES",
     "the answer must actually be recorded on the first try"
   );
   assert.equal(
-    answer.data.game.qa_log[0]?.question_text,
+    answer.data.game.qa_log.at(-2)?.question_text,
     "Is the target real or has it ever existed in reality?",
-    "Q1's own text must be unchanged -- not regenerated"
+    "the opening question's own text must be unchanged -- not regenerated"
   );
   // Accepting the answer makes /turn generate the NEXT turn (Q2) in the same
   // request -- that is the route's ordinary one-call-per-turn behavior, not
-  // a duplicate attempt at Q1. Exactly 2 total Racer calls across this whole
-  // test: one for Q1, one for Q2. A THIRD call would mean Q1 was generated
-  // twice (a duplicate-generation defect); a stale_turn rejection followed by
-  // a retry would also have shown up here as an extra call, and did not.
-  assert.equal(racer.callCount(), 2, "exactly Q1 once and Q2 once -- no re-attempt at Q1, no stale_turn retry cycle");
-  assert.equal(answer.data.game.qa_log[1]?.question_text, "Is it a physical object?");
+  // a duplicate attempt at the opening question. Exactly 1 Racer call across
+  // this whole test body: Q2. A second call would mean the opening question
+  // was generated twice (a duplicate-generation defect); a stale_turn
+  // rejection followed by a retry would also have shown up here as an extra
+  // call, and did not.
+  assert.equal(racer.callCount(), 1, "exactly one call for Q2 -- no re-attempt at the opening question, no stale_turn retry cycle");
+  assert.equal(answer.data.game.qa_log.at(-1)?.question_text, "Is it a physical object?");
   racer.restore();
 });
 

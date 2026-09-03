@@ -563,11 +563,27 @@ export interface RacerPublicState {
   clues: RacerClueTurn[];
   /** Clue requests still available. Zero means the action is not offered at all. */
   clue_credits_available: number;
+  /** V2.8.4 — set once the deterministic Phase One engine has locked a sandbox. Null otherwise. */
+  phase_one: RacerPhaseOneSummary | null;
 }
 
 export interface RacerClueTurn {
   turn_index: number;
   clue: string;
+}
+
+/**
+ * V2.8.4 — the deterministic Phase One engine's finished classification
+ * (lib/phaseOne.ts), surfaced to the Racer as plain context. Carries no
+ * target information — it is derived only from the Setter's own public
+ * yes/no/IS-IS answers to the fixed spine questions.
+ */
+export interface RacerPhaseOneSummary {
+  sandbox: "living" | "physical" | "place" | "event" | "abstract" | "unclassified";
+  /** Null for sandboxes with no specificity question (abstract/unclassified). */
+  specificity: "particular" | "kind" | "mixed" | null;
+  /** 1-based spine question numbers answered IS-IS during classification. */
+  mixed_spine_questions: number[];
 }
 
 export interface RacerTurnOutput {

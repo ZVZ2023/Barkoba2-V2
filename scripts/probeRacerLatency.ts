@@ -78,6 +78,7 @@ const FROZEN_STATE: RacerPublicState = {
   game_language: "hu",
   clues: [],
   clue_credits_available: 0,
+  phase_one: null,
   transcript: [
     {
       turn_index: 1,

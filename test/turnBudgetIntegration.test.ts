@@ -93,6 +93,33 @@ function stubRacerControlled() {
   };
 }
 
+/**
+ * V2.8.4 — Runtime Phase One v6.1. Every AI-Racer game now opens with up to
+ * six deterministic, zero-provider classification turns (lib/phaseOne.ts)
+ * before the model Racer is ever reached. This suite exists to exercise the
+ * MODEL-DRIVEN path (duplicate guard, shared budget, telemetry), so its
+ * fixtures answer all five spine questions NO (-> Unclassified, no
+ * specificity question, the shortest path to Phase Two) before any of the
+ * existing racer-mocking below begins. Answering the fifth (and last) spine
+ * question is itself what completes Phase One and triggers the FIRST real
+ * Racer call in the same request — this stubs exactly that one call with
+ * `openingQuestion` and returns the same `{ opening, rev }` shape every test
+ * below already expected from its old "fresh game -> first racer turn"
+ * opener, just now reached after Phase One instead of at turn 1.
+ */
+async function fastForwardPastPhaseOne(gameId: string, openingQuestion: string) {
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
+  for (let i = 0; i < 4; i += 1) {
+    const result = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+    assert.equal(result.status, 200, `phase one step ${i + 1} must succeed`);
+    rev = result.data.game.revision;
+  }
+  const opener = stubRacerQuestions([openingQuestion]);
+  const opening = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+  opener.restore();
+  return { opening, rev: opening.data.game.revision };
+}
+
 async function waitUntil(check: () => boolean, maxTicks = 1000): Promise<void> {
   for (let i = 0; i < maxTicks; i += 1) {
     if (check()) return;
@@ -108,10 +135,7 @@ async function waitUntil(check: () => boolean, maxTicks = 1000): Promise<void> {
 
 test("REQUIRED 1: a fast duplicate attempt followed by a valid replacement still succeeds within one invocation", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
 
   const stub = stubRacerQuestions(["Q1?", "Q2?"]); // Q1? duplicates the existing question
   try {
@@ -126,10 +150,7 @@ test("REQUIRED 1: a fast duplicate attempt followed by a valid replacement still
 
 test("REQUIRED 2: three attempts remain possible when earlier attempts are fast (two duplicates, then acceptance)", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
 
   const stub = stubRacerQuestions(["Q1?", "Q1?", "Q3?"]);
   try {
@@ -150,10 +171,8 @@ test("REQUIRED 2: three attempts remain possible when earlier attempts are fast 
 
 test("REQUIRED 5: insufficient shared provider time returns the existing recoverable 502, preserves the submitted answer once, appends no question", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+  const beforeLength = (await getGame(gameId))!.qa_log.length;
 
   const originalSharedDeadlineMs = TURN_BUDGET_CONFIG.sharedDeadlineMs;
   TURN_BUDGET_CONFIG.sharedDeadlineMs = -1; // guarantees remainingMs < the 45s floor on attempt 1
@@ -165,8 +184,8 @@ test("REQUIRED 5: insufficient shared provider time returns the existing recover
     assert.equal(stub.callCount(), 0, "the model must never be called when shared budget is already exhausted");
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 1, "no new question was appended");
-    assert.equal(canonical!.qa_log[0]!.composer_response, "YES", "the submitted answer was preserved exactly once");
+    assert.equal(canonical!.qa_log.length, beforeLength, "no new question was appended");
+    assert.equal(canonical!.qa_log.at(-1)!.composer_response, "YES", "the submitted answer was preserved exactly once");
   } finally {
     TURN_BUDGET_CONFIG.sharedDeadlineMs = originalSharedDeadlineMs;
     stub.restore();
@@ -179,16 +198,11 @@ test("REQUIRED 5: insufficient shared provider time returns the existing recover
 
 test("REQUIRED 13: an accepted question's latency_ms is populated with the provider attempt's own measured duration", async () => {
   const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?"]);
-  try {
-    const result = await callTurn(gameId);
-    assert.equal(result.status, 200);
-    const entry = result.data.game.qa_log[0];
-    assert.equal(typeof entry.latency_ms, "number");
-    assert.ok(entry.latency_ms >= 0, "latency_ms must be a non-negative measured duration");
-  } finally {
-    stub.restore();
-  }
+  const { opening } = await fastForwardPastPhaseOne(gameId, "Q1?");
+  assert.equal(opening.status, 200);
+  const entry = opening.data.game.qa_log.at(-1);
+  assert.equal(typeof entry.latency_ms, "number");
+  assert.ok(entry.latency_ms >= 0, "latency_ms must be a non-negative measured duration");
 });
 
 // ---------------------------------------------------------------------------
@@ -208,13 +222,11 @@ test("REQUIRED 12 (route level): a telemetry backend that always throws does not
   __setSqlClientForTests(throwingSql as unknown as Parameters<typeof __setSqlClientForTests>[0]);
 
   const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?"]);
   try {
-    const result = await callTurn(gameId);
-    assert.equal(result.status, 200, "a fully-failing telemetry backend must not surface as a player-facing error");
-    assert.equal(result.data.game.qa_log[0].question_text, "Q1?");
+    const { opening } = await fastForwardPastPhaseOne(gameId, "Q1?");
+    assert.equal(opening.status, 200, "a fully-failing telemetry backend must not surface as a player-facing error");
+    assert.equal(opening.data.game.qa_log.at(-1).question_text, "Q1?");
   } finally {
-    stub.restore();
     delete process.env.DATABASE_URL;
     delete process.env.CORPUS_ENABLED;
     __setSqlClientForTests(null);
@@ -274,12 +286,23 @@ test("REQUIRED 14: corpus-write telemetry does not change the CAS/save outcome",
 
 test("REQUIRED 16: two concurrent generation attempts for the same turn — only one lands, via the existing lock, not a new mechanism", async () => {
   const { gameId } = await makeGame();
+  // Reach Q5 pending, unanswered -- four real answers, zero provider calls.
+  // Answering Q5 is what completes Phase One and triggers the FIRST real
+  // generation, so that is where this test relocates its concurrency check
+  // (originally "game creation" -> first turn, before Phase One existed).
+  let rev: number = (await callTurn(gameId)).data.game.revision; // Q1
+  for (let i = 0; i < 4; i += 1) {
+    const step = await callTurn(gameId, { answer: "NO", expected_revision: rev });
+    assert.equal(step.status, 200);
+    rev = step.data.game.revision;
+  }
+
   const controlled = stubRacerControlled();
   try {
-    const pA = callTurn(gameId);
+    const pA = callTurn(gameId, { answer: "NO", expected_revision: rev });
     await waitUntil(() => controlled.callCount() === 1);
 
-    const resultB = await callTurn(gameId);
+    const resultB = await callTurn(gameId, { answer: "NO", expected_revision: rev });
     assert.equal(resultB.status, 409, "B must be rejected while A holds the lock");
     assert.equal(resultB.data.error, "turn_in_progress");
     assert.equal(controlled.callCount(), 1, "the losing request must never have reached the Racer");
@@ -289,7 +312,7 @@ test("REQUIRED 16: two concurrent generation attempts for the same turn — only
     assert.equal(resultA.status, 200);
 
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log.length, 1, "exactly one generation landed");
+    assert.equal(canonical!.qa_log.length, 6, "exactly one generation landed (5 deterministic + 1 model-driven)");
   } finally {
     controlled.restore();
   }
@@ -458,10 +481,7 @@ function withFakeCorpus<T>(sql: ReturnType<typeof fakeSqlWithHooks>, fn: () => P
 
 test("FINDING 1a: the final gate recomputes the budget and can abandon an attempt the early gate had allowed", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
 
   const originalNow = Date.now;
   const startedAt = originalNow();
@@ -499,10 +519,7 @@ test("FINDING 1a: the final gate recomputes the budget and can abandon an attemp
 
 test("FINDING 1b: a shrunk-but-sufficient remaining budget still proceeds, with the RECOMPUTED (smaller) allowance enforced", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
 
   const originalNow = Date.now;
   let now = originalNow();
@@ -548,10 +565,7 @@ test("FINDING 1b: a shrunk-but-sufficient remaining budget still proceeds, with 
 
 test("FINDING 1c: insufficient shared budget can strike AFTER at least one duplicate, not only before attempt 1", async () => {
   const { gameId } = await makeGame();
-  const opener = stubRacerQuestions(["Q1?"]);
-  const opening = await callTurn(gameId);
-  opener.restore();
-  const rev = opening.data.game.revision;
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
 
   const originalNow = Date.now;
   let now = originalNow();
@@ -582,12 +596,11 @@ test("FINDING 1c: insufficient shared budget can strike AFTER at least one dupli
 // --- Finding 2: latency_ms must reach corpus.game_turns, not only turn_operations
 
 test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INSERT payload", async () => {
-  // A game with only an UNANSWERED Q1 does not qualify for corpus
-  // preservation (hasPreservableEvidence requires at least one completed
-  // question/answer interaction) -- syncGame() is never called and there is
-  // no game_turns row to check yet. Answer Q1 first so preservation actually
-  // runs, then inspect Q1's OWN latency_ms in that payload.
-  let q1LatencyInPayload: unknown = "not-found";
+  // Phase One's own answered turns already qualify as preservable evidence
+  // by the time Phase Two starts, so this only needs one real (mocked)
+  // model-driven turn to exist and be answered -- inspect ITS OWN
+  // latency_ms, not Phase One's (which is honestly null by design).
+  let phaseTwoLatencyInPayload: unknown = "not-found";
   const sql = Object.assign(
     async (strings: TemplateStringsArray, ...values: SqlValue[]) => {
       const text = strings.join("?");
@@ -595,8 +608,8 @@ test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INS
         // values[0] is game.game_id (used in the subquery ahead of the
         // jsonb_to_recordset() call); the turns payload is values[1].
         const turns = JSON.parse(String(values[1])) as Array<{ latency_ms: unknown; turn_index: number }>;
-        const q1 = turns.find((t) => t.turn_index === 1);
-        if (q1) q1LatencyInPayload = q1.latency_ms;
+        const phaseTwoTurn = turns.find((t) => t.turn_index === 6);
+        if (phaseTwoTurn) phaseTwoLatencyInPayload = phaseTwoTurn.latency_ms;
         return [];
       }
       if (text.trim().startsWith("INSERT INTO corpus.turn_operations")) return [{ operation_id: randomUUID() }];
@@ -606,20 +619,19 @@ test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INS
   );
 
   const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?", "Q2?"]);
+  const { rev: revAfterOpening } = await fastForwardPastPhaseOne(gameId, "Q1?");
+  const stub = stubRacerQuestions(["Q2?"]);
   try {
-    const opening = await callTurn(gameId);
-    const rev = opening.data.game.revision;
     const result = await withFakeCorpus(sql as unknown as ReturnType<typeof fakeSqlWithHooks>, () =>
-      callTurn(gameId, { answer: "YES", expected_revision: rev })
+      callTurn(gameId, { answer: "YES", expected_revision: revAfterOpening })
     );
     assert.equal(result.status, 200);
     assert.equal(
-      typeof q1LatencyInPayload,
+      typeof phaseTwoLatencyInPayload,
       "number",
-      `latency_ms must reach the game_turns row for Q1, not only turn_operations/HTTP/Redis (got ${JSON.stringify(q1LatencyInPayload)})`
+      `latency_ms must reach the game_turns row for the model-driven turn, not only turn_operations/HTTP/Redis (got ${JSON.stringify(phaseTwoLatencyInPayload)})`
     );
-    assert.ok((q1LatencyInPayload as number) >= 0);
+    assert.ok((phaseTwoLatencyInPayload as number) >= 0);
   } finally {
     stub.restore();
   }
@@ -628,6 +640,9 @@ test("FINDING 2: an accepted turn's latency_ms reaches the corpus.game_turns INS
 // --- Finding 3: requested vs resolved model_id -------------------------------
 
 test("FINDING 3a: a successful attempt's telemetry is updated with the RESOLVED model", async () => {
+  const { gameId } = await makeGame();
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+
   const updates: Array<{ kind: string; status: unknown; modelId: unknown }> = [];
   const sql = fakeSqlWithHooks({
     onTerminal: ({ kind, values }) => {
@@ -636,14 +651,13 @@ test("FINDING 3a: a successful attempt's telemetry is updated with the RESOLVED 
     },
   });
 
-  const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?"]);
+  const stub = stubRacerQuestions(["Q2?"]);
   try {
-    const result = await withFakeCorpus(sql, () => callTurn(gameId));
+    const result = await withFakeCorpus(sql, () => callTurn(gameId, { answer: "YES", expected_revision: rev }));
     assert.equal(result.status, 200);
     const accepted = updates.find((u) => u.kind === "provider_attempt" && u.status === "accepted");
     assert.ok(accepted, `an 'accepted' provider_attempt telemetry update must have been issued; got ${JSON.stringify(updates)}`);
-    assert.equal(accepted!.modelId, result.data.game.qa_log[0].model_id, "telemetry's resolved model must match the turn's own recorded model_id");
+    assert.equal(accepted!.modelId, result.data.game.qa_log.at(-1).model_id, "telemetry's resolved model must match the turn's own recorded model_id");
     assert.notEqual(accepted!.modelId, null);
   } finally {
     stub.restore();
@@ -651,6 +665,9 @@ test("FINDING 3a: a successful attempt's telemetry is updated with the RESOLVED 
 });
 
 test("FINDING 3b: a failed/timed-out attempt's terminal row keeps the REQUESTED model (never becomes null)", async () => {
+  const { gameId } = await makeGame();
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+
   const starts: Array<{ kind: string; modelId: unknown }> = [];
   const updates: Array<{ kind: string; status: unknown; modelId: unknown }> = [];
   const sql = fakeSqlWithHooks({
@@ -663,9 +680,8 @@ test("FINDING 3b: a failed/timed-out attempt's terminal row keeps the REQUESTED 
     throw new Error("simulated provider failure");
   }) as typeof anthropicAdapter.callTool;
 
-  const { gameId } = await makeGame();
   try {
-    const result = await withFakeCorpus(sql, () => callTurn(gameId));
+    const result = await withFakeCorpus(sql, () => callTurn(gameId, { answer: "YES", expected_revision: rev }));
     assert.equal(result.status, 502);
     const providerStarts = starts.filter((i) => i.kind === "provider_attempt");
     assert.equal(providerStarts.length, 1);
@@ -685,6 +701,9 @@ test("FINDING 3b: a failed/timed-out attempt's terminal row keeps the REQUESTED 
 // --- Finding 4: a hung telemetry operation must not block gameplay ---------
 
 test("FINDING 4: a telemetry INSERT that never settles does not prevent the provider call or the authoritative game save", async () => {
+  const { gameId } = await makeGame();
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+
   const originalTimeoutMs = TELEMETRY_TIMEOUT_CONFIG.timeoutMs;
   TELEMETRY_TIMEOUT_CONFIG.timeoutMs = 20; // a controlled, tiny ceiling -- not a real 45-300s wait
 
@@ -701,14 +720,15 @@ test("FINDING 4: a telemetry INSERT that never settles does not prevent the prov
     { transaction: (qs: Promise<Record<string, unknown>[]>[]) => Promise.all(qs) }
   );
 
-  const { gameId } = await makeGame();
-  const stub = stubRacerQuestions(["Q1?"]);
+  const stub = stubRacerQuestions(["Q2?"]);
   try {
-    const result = await withFakeCorpus(sql as unknown as ReturnType<typeof fakeSqlWithHooks>, () => callTurn(gameId));
+    const result = await withFakeCorpus(sql as unknown as ReturnType<typeof fakeSqlWithHooks>, () =>
+      callTurn(gameId, { answer: "YES", expected_revision: rev })
+    );
     assert.equal(result.status, 200, "the provider call and authoritative save must proceed despite a hung telemetry insert");
-    assert.equal(result.data.game.qa_log[0].question_text, "Q1?");
+    assert.equal(result.data.game.qa_log.at(-1).question_text, "Q2?");
     const canonical = await getGame(gameId);
-    assert.equal(canonical!.qa_log[0]!.question_text, "Q1?", "the authoritative Redis record is unaffected");
+    assert.equal(canonical!.qa_log.at(-1)!.question_text, "Q2?", "the authoritative Redis record is unaffected");
   } finally {
     stub.restore();
     TELEMETRY_TIMEOUT_CONFIG.timeoutMs = originalTimeoutMs;
@@ -768,6 +788,9 @@ test("FINDING 5: a 'deferred' corpus outcome is durably distinguished from a 'wr
 // --- Finding 6: additional route-level coverage -----------------------------
 
 test("FINDING 6: the telemetry INSERT is issued before the real provider invocation", async () => {
+  const { gameId } = await makeGame();
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+
   const order: string[] = [];
   const sql = fakeSqlWithHooks({ onStart: () => order.push("telemetry_insert") });
 
@@ -775,14 +798,13 @@ test("FINDING 6: the telemetry INSERT is issued before the real provider invocat
   anthropicAdapter.callTool = (async () => {
     order.push("provider_call");
     return {
-      output: { action: "question", question_text: "Q1?", guess_text: null, rationale: "test" },
+      output: { action: "question", question_text: "Q2?", guess_text: null, rationale: "test" },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
   }) as typeof anthropicAdapter.callTool;
 
-  const { gameId } = await makeGame();
   try {
-    await withFakeCorpus(sql, () => callTurn(gameId));
+    await withFakeCorpus(sql, () => callTurn(gameId, { answer: "YES", expected_revision: rev }));
     // The FIRST provider_attempt telemetry insert must precede the ONE
     // provider call this test makes. (A second, LATER telemetry insert for
     // the unrelated corpus_write of the accepted turn is expected and
@@ -795,6 +817,13 @@ test("FINDING 6: the telemetry INSERT is issued before the real provider invocat
 });
 
 test("FINDING 6: a real local timeout is classified as self_timeout in telemetry, with the requested model retained", async () => {
+  const { gameId } = await makeGame();
+  // Fast-forward through Phase One (and its own real transition turn) with
+  // the ordinary TURN_BUDGET_CONFIG, before shrinking it for the abort test
+  // below -- otherwise Phase One's own transition call would itself be
+  // subject to the shrunk budget it has nothing to do with.
+  const { rev } = await fastForwardPastPhaseOne(gameId, "Q1?");
+
   const originalPerAttempt = TURN_BUDGET_CONFIG.perAttemptMaxMs;
   const originalShared = TURN_BUDGET_CONFIG.sharedDeadlineMs;
   const originalMinRemaining = TURN_BUDGET_CONFIG.minRemainingToStartMs;
@@ -818,9 +847,8 @@ test("FINDING 6: a real local timeout is classified as self_timeout in telemetry
     });
   }) as typeof anthropicAdapter.callTool;
 
-  const { gameId } = await makeGame();
   try {
-    const result = await withFakeCorpus(sql, () => callTurn(gameId));
+    const result = await withFakeCorpus(sql, () => callTurn(gameId, { answer: "YES", expected_revision: rev }));
     assert.equal(result.status, 502);
     assert.ok(
       updates.some((u) => u.kind === "provider_attempt" && u.status === "self_timeout"),
