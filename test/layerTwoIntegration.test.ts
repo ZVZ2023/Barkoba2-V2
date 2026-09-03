@@ -7,7 +7,7 @@ import { createGame, getGame } from "../lib/gameStore";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { POST as correctPOST } from "../app/api/game/[id]/correct/route";
 import { anthropicAdapter } from "../lib/providers/anthropic";
-import { RACER_PROMPT_VERSION, CORE_RACER_RULES, runRacerTurn } from "../lib/prompts/racer";
+import { RACER_PROMPT_VERSION, CORE_RACER_RULES, runRacerTurn, buildRacerTurnMessage } from "../lib/prompts/racer";
 import { detectGuess } from "../lib/guessDetector";
 import { deriveLayerTwoState } from "../lib/layerTwo";
 import { questionNumbers } from "../lib/questionNumbers";
@@ -372,6 +372,28 @@ test("+1 Mixed resolution: BOTH essential senses reach the Racer's actual prompt
   } finally {
     stub.restore();
   }
+});
+
+// --- V2.8.5.1 — premise_audit's parent requirement reaches the Racer -------
+
+test("V2.8.5.1: the Racer's own prompt explicitly requires premise_audit to name its parent, and never to omit it", () => {
+  const content = buildRacerTurnMessage(MINIMAL_LAYER_TWO_STATE_RACER_STATE, {
+    forceFinal: false,
+    clueAvailable: false,
+  });
+  assert.match(
+    content,
+    /parent_proposition is REQUIRED \(never null\)/,
+    "the guidance the Racer actually receives must state the requirement explicitly, not just the validator"
+  );
+  assert.match(
+    content,
+    /MUST be the exact proposition_id of the typically-supported proposition you are auditing/
+  );
+  assert.match(
+    content,
+    /declare an ordinary discriminator\/branch_gate instead, never a premise_audit with no parent/
+  );
 });
 
 // --- FINAL ENGINE-CONTRACT CORRECTION finding 4: raw sandbox_repair check --

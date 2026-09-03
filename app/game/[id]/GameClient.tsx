@@ -7,12 +7,14 @@ import { derivePhaseOneState, isReferentScopeQuestion } from "@/lib/phaseOne";
 import { questionNumbers } from "@/lib/questionNumbers";
 import { isSandboxClarificationEntry } from "@/lib/sandboxClarification";
 import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
-import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "@/lib/turnRecovery";
+import { shouldAutoRequestTurn, shouldOfferTurnRetry, shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import {
+  CLIENT_TURN_TIMEOUT_MS,
   createRequestOwnership,
   mergeViewIntoGame,
   reconciliationShowsProgress,
   runOwnedTurnRequest,
+  type ActiveRequestHandle,
   type RequestOwnership,
   type TurnResponseBody,
 } from "@/lib/turnRequestGuard";
@@ -191,6 +193,13 @@ export default function GameClient({
   useEffect(() => {
     gameRef.current = game;
   }, [game]);
+  // V2.8.5.1 — the CURRENT /turn request's abort handle, if one is in
+  // flight; null otherwise. Lets the visibilitychange handler below abort a
+  // request it judges stale directly, through the SAME path
+  // CLIENT_TURN_TIMEOUT_MS's own internal timer uses — see
+  // lib/turnRequestGuard.ts's own doc on why this is one mechanism with two
+  // triggers, not two competing ones.
+  const activeRequestRef = useRef<ActiveRequestHandle | null>(null);
 
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
@@ -238,7 +247,7 @@ export default function GameClient({
       await runOwnedTurnRequest(
         requestOwnershipRef.current as RequestOwnership,
         {
-          requestTurn: async () => {
+          requestTurn: async (signal) => {
             const res = await fetch(`/api/game/${game.game_id}/turn`, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -255,6 +264,11 @@ export default function GameClient({
                     }
                   : {}
               ),
+              // V2.8.5.1 — lets lib/turnRequestGuard.ts's CLIENT_TURN_TIMEOUT_MS
+              // (or a stale-request abort from the visibilitychange handler
+              // below) actually cancel THIS network request, not merely stop
+              // waiting on it client-side.
+              signal,
             });
             const data = (await res.json()) as TurnResponseBody;
             return { ok: res.ok, data };
@@ -283,6 +297,12 @@ export default function GameClient({
             autoTurnFor.current = null;
           },
           setTurnInProgress: setAwaitingTurnLock,
+          registerActiveRequest: (handle) => {
+            activeRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeRequestRef.current = null;
+          },
         }
       );
     },
@@ -421,12 +441,36 @@ export default function GameClient({
   // server may already have completed. Reuses the SAME canonical-truth
   // helpers lib/turnRequestGuard.ts's own failure path already trusts — no
   // new reconciliation logic, just a second trigger for the existing one.
+  //
+  // V2.8.5.1 — the plain `if (busy) return` here is what let the "silent
+  // stall" forensic's game freeze permanently: it assumed an in-flight
+  // request always eventually settles, which is false for a fetch a
+  // backgrounded mobile browser silently discards. Now: a busy request is
+  // left alone ONLY while shouldReconcileStaleRequestOnForeground says it is
+  // still within its legitimate window; a STALE busy request is aborted
+  // directly via activeRequestRef, which drives it down runOwnedTurnRequest's
+  // own existing abort→reconcile path (one mechanism, two triggers — see
+  // lib/turnRequestGuard.ts). This never issues a second /turn call itself,
+  // and aborting an already-settled or already-aborted handle is a no-op, so
+  // repeated visibility events cannot stack recovery attempts.
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;
-      // An in-flight request will itself resolve or reconcile on failure —
-      // a concurrent proactive read here would only race it.
-      if (busy) return;
+      if (busy) {
+        const active = activeRequestRef.current;
+        if (
+          !shouldReconcileStaleRequestOnForeground({
+            busy,
+            activeRequestStartedAt: active?.startedAt ?? null,
+            now: Date.now(),
+            timeoutMs: CLIENT_TURN_TIMEOUT_MS,
+          })
+        ) {
+          return; // still within its legitimate active window — leave it alone
+        }
+        active?.abort();
+        return;
+      }
       void (async () => {
         try {
           const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);

@@ -1,8 +1,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
-import { shouldAutoRequestTurn, shouldOfferTurnRetry } from "../lib/turnRecovery";
-import type { AutoTurnState } from "../lib/turnRecovery";
+import { shouldAutoRequestTurn, shouldOfferTurnRetry, shouldReconcileStaleRequestOnForeground } from "../lib/turnRecovery";
+import type { AutoTurnState, StaleRequestCheck } from "../lib/turnRecovery";
 
 // ---------------------------------------------------------------------------
 // V2.5-B4 — recovery from a failed Racer turn.
@@ -161,12 +161,19 @@ const CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
 // has not silently moved somewhere ungoverned.
 const TURN_REQUEST_GUARD = readFileSync("lib/turnRequestGuard.ts", "utf8");
 
-test("the client clears the guard on BOTH failure paths", () => {
-  // Response-level failure (502 racer_unavailable, 429, 409) and transport
-  // failure (network drop, backgrounded tab, unusable body) are different
-  // code paths and the original bug was that neither reset anything.
+test("the client clears the guard on every failure path", () => {
+  // Response-level failure (502 racer_unavailable, 429, 409), transport
+  // failure (network drop, backgrounded tab, unusable body), and the "+1"
+  // corridor's own terminal sandbox_clarification_failed state (V2.8.5
+  // ENGINE-CONTRACT CORRECTION defect 5, added after this test was first
+  // written — count corrected here to match) are three distinct code paths,
+  // and the original GROK-02/03 bug was that none of them reset anything.
   const guardCalls = TURN_REQUEST_GUARD.match(/state\.clearAutoTurnGuard\(\)/g) ?? [];
-  assert.equal(guardCalls.length, 2, "the guard must be cleared on the response failure AND the reconciliation-exhausted path");
+  assert.equal(
+    guardCalls.length,
+    3,
+    "the guard must be cleared on the response failure, the sandbox_clarification_failed terminal state, AND the reconciliation-exhausted path"
+  );
   assert.equal(
     (TURN_REQUEST_GUARD.match(/state\.setTurnFailed\(true\)/g) ?? []).length,
     2,
@@ -221,5 +228,88 @@ test("the effect delegates the decision rather than re-implementing it", () => {
     CLIENT,
     /if \(autoTurnFor\.current === game\.qa_log\.length\) return;/,
     "the untestable inline guard must be gone"
+  );
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.5.1 — foreground reconciliation of a STALE busy request. See
+// lib/turnRequestGuard.ts's CLIENT_TURN_TIMEOUT_MS doc for the "silent
+// stall" forensic this repairs (game 6c55682c-b60d-414b-8c0c-1b6a1c8248d8,
+// V2.8.5 production): a backgrounded mobile fetch that never settles left
+// `busy` stuck true forever, and the old `if (busy) return` guard trusted
+// that could never happen.
+// ---------------------------------------------------------------------------
+
+function staleCheck(overrides: Partial<StaleRequestCheck> = {}): StaleRequestCheck {
+  return {
+    busy: true,
+    activeRequestStartedAt: 0,
+    now: 0,
+    timeoutMs: 300_000,
+    ...overrides,
+  };
+}
+
+test("REGRESSION TEST 4 — foregrounding during a FRESH request does not interfere: well within the timeout window, do nothing", () => {
+  const now = 1_000_000;
+  assert.equal(
+    shouldReconcileStaleRequestOnForeground(
+      staleCheck({ busy: true, activeRequestStartedAt: now - 1_000, now, timeoutMs: 300_000 })
+    ),
+    false
+  );
+});
+
+test("REGRESSION TEST 5 — foregrounding during a STALE busy request reconciles: at or past the timeout, force reconciliation", () => {
+  const now = 1_000_000;
+  assert.equal(
+    shouldReconcileStaleRequestOnForeground(
+      staleCheck({ busy: true, activeRequestStartedAt: now - 300_000, now, timeoutMs: 300_000 })
+    ),
+    true,
+    "exactly at the timeout boundary must already count as stale"
+  );
+  assert.equal(
+    shouldReconcileStaleRequestOnForeground(
+      staleCheck({ busy: true, activeRequestStartedAt: now - 600_000, now, timeoutMs: 300_000 })
+    ),
+    true
+  );
+});
+
+test("not busy at all: never reconcile through this path, regardless of a leftover startedAt", () => {
+  const now = 1_000_000;
+  assert.equal(
+    shouldReconcileStaleRequestOnForeground(
+      staleCheck({ busy: false, activeRequestStartedAt: now - 600_000, now, timeoutMs: 300_000 })
+    ),
+    false
+  );
+});
+
+test("busy but no active-request handle yet (registration race at the very start of a request): leave it alone rather than guess", () => {
+  assert.equal(
+    shouldReconcileStaleRequestOnForeground(
+      staleCheck({ busy: true, activeRequestStartedAt: null, now: 1_000_000, timeoutMs: 300_000 })
+    ),
+    false
+  );
+});
+
+test("REGRESSION TEST 6 — repeated visibility events cannot stack recovery: the decision is a pure function of (busy, startedAt, now), so querying it many times for the SAME stale request yields the same answer and no additional side effect is possible from the query itself", () => {
+  const check = staleCheck({ busy: true, activeRequestStartedAt: 0, now: 300_000, timeoutMs: 300_000 });
+  const results = Array.from({ length: 5 }, () => shouldReconcileStaleRequestOnForeground(check));
+  assert.deepEqual(results, [true, true, true, true, true]);
+});
+
+test("REGRESSION TEST 6b — GameClient.tsx's stale-foreground path only aborts the existing request; it must never itself call sendTurn or runOwnedTurnRequest a second time", () => {
+  const src = CLIENT;
+  const visibilityBlock = src.slice(src.indexOf("function handleVisibility"), src.indexOf("document.addEventListener(\"visibilitychange\""));
+  assert.match(visibilityBlock, /shouldReconcileStaleRequestOnForeground/);
+  assert.match(visibilityBlock, /active\?\.abort\(\)/);
+  assert.doesNotMatch(
+    visibilityBlock,
+    /sendTurn\(/,
+    "the stale-foreground branch must only abort the existing request, never fire a fresh one itself"
   );
 });

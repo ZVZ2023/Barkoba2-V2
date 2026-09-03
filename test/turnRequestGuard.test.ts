@@ -160,6 +160,8 @@ function recordingState(initial: GameRecord) {
     setExplanation: (e) => calls.push({ fn: "setExplanation", arg: e }),
     clearAutoTurnGuard: () => calls.push({ fn: "clearAutoTurnGuard" }),
     setTurnInProgress: (p) => calls.push({ fn: "setTurnInProgress", arg: p }),
+    registerActiveRequest: (h) => calls.push({ fn: "registerActiveRequest", arg: h }),
+    clearActiveRequest: () => calls.push({ fn: "clearActiveRequest" }),
   };
   return { state, calls, getCurrentGame: () => currentGame };
 }
@@ -738,4 +740,147 @@ test("V2.8.4.1: a genuine gameplay failure also clears turnInProgress, so the ex
 
   assert.equal(lastValueOf(calls, "setTurnFailed"), true);
   assert.equal(lastValueOf(calls, "setTurnInProgress"), false);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.5.1 — bounded client request lifecycle. See lib/turnRequestGuard.ts's
+// CLIENT_TURN_TIMEOUT_MS doc for the full "silent stall" forensic this
+// repairs (game 6c55682c-b60d-414b-8c0c-1b6a1c8248d8, V2.8.5 production): a
+// backgrounded mobile fetch that neither resolves nor rejects left `busy`
+// stuck true forever. `timeoutMs` is passed as a tiny value in these tests
+// so the real timeout mechanism can be exercised without a 300-real-second
+// test — see runOwnedTurnRequest's own doc on why a parameter (not a
+// mutable shared config, unlike lib/turnBudget.ts's TURN_BUDGET_CONFIG) is
+// enough here: nothing here is shared across concurrent requests.
+// ---------------------------------------------------------------------------
+
+/** A requestTurn mock that never settles on its own, but rejects (like a real aborted fetch) the moment its signal aborts. */
+function hungRequestTurn(): TurnRequestIO["requestTurn"] {
+  return (signal: AbortSignal) =>
+    new Promise((_resolve, reject) => {
+      signal.addEventListener("abort", () => {
+        reject(new DOMException("The operation was aborted.", "AbortError"));
+      });
+    });
+}
+
+test("V2.8.5.1 REQUIRED TEST 2: a hung /turn request times out and exposes Retry when canonical state has NOT advanced", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ qa_log: [entry({ id: "q1", turn_index: 1, question_text: "Q1?", composer_response: null })] });
+  const { state, calls } = recordingState(g0);
+
+  let requestTurnCalls = 0;
+  let viewCalls = 0;
+  const io: TurnRequestIO = {
+    requestTurn: (signal) => {
+      requestTurnCalls += 1;
+      return hungRequestTurn()(signal);
+    },
+    requestView: async () => {
+      viewCalls += 1;
+      // Unchanged from `before` -- the same still-pending Q1, nothing advanced.
+      return { ok: true, view: view({ turns: [viewTurn({ turn_index: 1, question_text: "Q1?", composer_response: null })] }) };
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state, 10);
+
+  assert.equal(requestTurnCalls, 1, "exactly one /turn attempt — the timeout must never retry it itself");
+  assert.equal(viewCalls, 1, "exactly one canonical reconciliation read after the timeout fires");
+  assert.equal(lastValueOf(calls, "setError"), NETWORK_ERROR_MESSAGE);
+  assert.equal(lastValueOf(calls, "setTurnFailed"), true, "Retry must become available");
+  assert.equal(lastValueOf(calls, "setBusy"), false, "busy must not stay stuck true — the exact 'silent stall' symptom");
+});
+
+test("V2.8.5.1 REQUIRED TEST 3: a hung /turn request that times out reconciles successfully when canonical state HAS advanced", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ qa_log: [] });
+  const { state, calls, getCurrentGame } = recordingState(g0);
+
+  const io: TurnRequestIO = {
+    requestTurn: hungRequestTurn(),
+    requestView: async () => ({
+      ok: true,
+      view: view({ turns: [viewTurn({ turn_index: 1, question_text: "The server already saved this Q1 before the client gave up." })] }),
+    }),
+  };
+
+  await runOwnedTurnRequest(ownership, io, state, 10);
+
+  assert.equal(getCurrentGame().qa_log.length, 1);
+  assert.equal(getCurrentGame().qa_log[0]?.question_text, "The server already saved this Q1 before the client gave up.");
+  assert.equal(lastValueOf(calls, "setError"), null);
+  assert.equal(lastValueOf(calls, "setTurnFailed"), false);
+  assert.equal(lastValueOf(calls, "setBusy"), false);
+});
+
+test("V2.8.5.1 REQUIRED TEST 7: a late-settling (superseded) request cannot overwrite newer reconciled state, nor clobber the newer request's active-handle registration", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, calls, getCurrentGame } = recordingState(g0);
+
+  const olderTurn = deferred<{ ok: boolean; data: TurnResponseBody }>();
+  const olderIo: TurnRequestIO = {
+    requestTurn: () => olderTurn.promise as unknown as Promise<{ ok: boolean; data: TurnResponseBody | null }>,
+    requestView: async () => {
+      throw new Error("must not be called — the older request settles directly (success), never reaching transport failure");
+    },
+  };
+  const olderRun = runOwnedTurnRequest(ownership, olderIo, state, 100_000);
+
+  // Let the older request's synchronous setup (registerActiveRequest) run.
+  await Promise.resolve();
+  assert.equal(countCalls(calls, "registerActiveRequest"), 1);
+
+  const newerGame = game({ qa_log: [entry({ id: "newer", question_text: "Newer Q1?" })] });
+  const newerIo: TurnRequestIO = {
+    requestTurn: async () => ({ ok: true, data: { game: newerGame } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedTurnRequest(ownership, newerIo, state, 100_000);
+  assert.equal(countCalls(calls, "registerActiveRequest"), 2, "the newer request must also register its own handle");
+  assert.equal(getCurrentGame(), newerGame);
+
+  // NOW the older request finally settles, late, with its own stale success.
+  const staleGame = game({ qa_log: [entry({ id: "stale", question_text: "Stale question?" })] });
+  olderTurn.resolve({ ok: true, data: { game: staleGame } });
+  await olderRun;
+
+  assert.equal(getCurrentGame(), newerGame, "the stale late success must not overwrite the newer reconciled game");
+  // The specific regression this test exists for: the OLDER (superseded)
+  // request's own cleanup must not clear the ACTIVE-REQUEST HANDLE the
+  // newer, still-current request holds — which would silently disable
+  // stale-foreground-abort recovery for a request that is genuinely still
+  // running.
+  assert.equal(
+    countCalls(calls, "clearActiveRequest"),
+    1,
+    "only the still-current (newer) request's own settlement may clear the active-request handle"
+  );
+});
+
+test("V2.8.5.1 REQUIRED TEST 8: recovery through a timeout never issues a second POST /turn, and the server's model-call budget is therefore never double-spent by the client's own recovery path", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state } = recordingState(g0);
+
+  let requestTurnCalls = 0;
+  let requestViewCalls = 0;
+  const io: TurnRequestIO = {
+    requestTurn: (signal) => {
+      requestTurnCalls += 1;
+      return hungRequestTurn()(signal);
+    },
+    requestView: async () => {
+      requestViewCalls += 1;
+      return { ok: true, view: view() }; // no progress
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state, 10);
+
+  assert.equal(requestTurnCalls, 1, "the client's own timeout-driven recovery must never call POST /turn a second time");
+  assert.equal(requestViewCalls, 1, "reconciliation is a single GET /view, never a retried POST");
 });
