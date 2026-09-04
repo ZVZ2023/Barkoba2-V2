@@ -10,6 +10,10 @@ import type { ToolCallRequest, ToolCallResult } from "../lib/providers/types";
 import { runRacerTurn } from "../lib/prompts/racer";
 import { toRacerPublicState } from "../lib/racerState";
 import type { ComposerAnswer, GameRecord, QuestionLogEntry } from "../lib/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // V2.8.4.3 — the no-concession final-action contract.
@@ -162,6 +166,7 @@ async function makeSmallGame() {
     racer_kind: "ai",
     max_questions: 1,
     game_language: "en",
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return gameId;
 }
@@ -173,6 +178,7 @@ function turnRequest(gameId: string, body?: Record<string, unknown>) {
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });

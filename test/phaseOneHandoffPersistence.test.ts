@@ -8,6 +8,10 @@ import { derivePhaseOneState } from "../lib/phaseOne";
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import type { ToolCallResult } from "../lib/providers/types";
 import type { ComposerAnswer, QuestionLogEntry } from "../lib/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 let idCounter = 0;
 
@@ -81,6 +85,7 @@ async function makeGame(language: "en" | "hu" = "en") {
     racer_kind: "ai",
     max_questions: 20,
     game_language: language,
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return { gameId, game };
 }
@@ -92,6 +97,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -353,7 +359,7 @@ test("HANDOFF 7: correcting Q1 after the mandatory Layer Two gate rewinds all th
   const { POST: correctPOST } = await import("../app/api/game/[id]/correct/route");
   const correctReq = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-bk-player": TEST_COMPOSER_ID },
     body: JSON.stringify({ turn_index: 1, answer: "NO", expected_log_length: afterGate.qa_log.length }),
   });
   const correctRes = await correctPOST(correctReq, { params: { id: gameId } });

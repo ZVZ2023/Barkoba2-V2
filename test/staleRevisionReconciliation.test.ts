@@ -10,6 +10,10 @@ import type { ToolCallResult } from "../lib/providers/types";
 import { mergeViewIntoGame } from "../lib/turnRequestGuard";
 import type { GameRecord } from "../lib/types";
 import type { GameView } from "../lib/gameView";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // S1 REVIEW FOLLOW-UP — the stale-revision defect this file proves fixed.
@@ -48,13 +52,17 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
 }
 
 function viewRequest(gameId: string) {
-  return new NextRequest(`http://localhost/api/game/${gameId}/view`, { method: "GET" });
+  return new NextRequest(`http://localhost/api/game/${gameId}/view`, {
+    method: "GET",
+    headers: { "x-bk-player": TEST_COMPOSER_ID },
+  });
 }
 
 async function callTurn(gameId: string, body?: Record<string, unknown>) {
@@ -112,6 +120,7 @@ async function makeGame() {
     racer_kind: "ai",
     max_questions: 20,
     game_language: "en",
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return { gameId, game };
 }

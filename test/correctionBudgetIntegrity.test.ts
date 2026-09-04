@@ -8,6 +8,10 @@ import { POST as correctPOST } from "../app/api/game/[id]/correct/route";
 import { effectiveConsumed } from "../lib/rewind";
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import type { ToolCallResult } from "../lib/providers/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // V2.8.4.2 — CORRECTION-BUDGET INTEGRITY, route-level. Same harness pattern
@@ -63,6 +67,7 @@ async function makeNineteenConsumedGame() {
     racer_kind: "ai",
     max_questions: 20,
     game_language: "en",
+    composer_player_id: TEST_COMPOSER_ID,
   });
   const qaLog = [];
   for (let i = 1; i <= 19; i += 1) {
@@ -89,6 +94,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -103,7 +109,7 @@ async function callTurn(gameId: string, body?: Record<string, unknown>) {
 async function callCorrect(gameId: string, body: Record<string, unknown>) {
   const req = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-bk-player": TEST_COMPOSER_ID },
     body: JSON.stringify(body),
   });
   const res = await correctPOST(req, { params: { id: gameId } });

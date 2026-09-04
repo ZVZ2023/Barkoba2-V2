@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
@@ -10,6 +10,16 @@ import type { ToolCallResult } from "../lib/providers/types";
 import { RACER_PROMPT_VERSION } from "../lib/prompts/racer";
 import { derivePhaseOneState } from "../lib/phaseOne";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+// V2.8.6 R1 — same reasoning as test/turnBudgetIntegration.test.ts: one test
+// below manages DATABASE_URL/CORPUS_ENABLED/the sql client itself for its
+// own telemetry-mocking purposes, so beforeEach re-applies the identity
+// baseline before every test rather than once at module scope.
+beforeEach(() => {
+  enableTestIdentityLookups();
+});
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // V2.8.4 — Runtime Phase One v6.1, route-level integration. Same harness
@@ -26,6 +36,7 @@ async function makeGame(language: "en" | "hu" = "en") {
     racer_kind: "ai",
     max_questions: 20,
     game_language: language,
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return { gameId, game };
 }
@@ -37,6 +48,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -51,7 +63,7 @@ async function callTurn(gameId: string, body?: Record<string, unknown>) {
 async function callCorrect(gameId: string, body: Record<string, unknown>) {
   const req = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-bk-player": TEST_COMPOSER_ID },
     body: JSON.stringify(body),
   });
   const res = await correctPOST(req, { params: { id: gameId } });

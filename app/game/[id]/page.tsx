@@ -2,9 +2,9 @@ import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getGame } from "@/lib/gameStore";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
-import { resolveAccountHeaderState, resolveActingPlayerId } from "@/lib/actingPlayer";
-import { isHumanVsHuman, resolveSeat } from "@/lib/seats";
-import { buildGameView } from "@/lib/gameView";
+import { resolveAccountHeaderState, resolveActingPlayerIdentity } from "@/lib/actingPlayer";
+import { decideGamePageAccess } from "@/lib/seats";
+import { buildGameView, stripRacerOutputRaw } from "@/lib/gameView";
 import GameClient from "./GameClient";
 import RacerClient from "./RacerClient";
 import HumanClient from "./HumanClient";
@@ -22,33 +22,81 @@ import HumanClient from "./HumanClient";
 //
 // PERMITTED SECRET CALL SITE. getSecretForComposer refuses unless the viewer is
 // the recorded Composer; the check lives in the getter, not here.
+//
+// V2.8.6 R1 Commit 4 — treated as ONE security boundary with
+// app/api/game/[id]/view/route.ts. Until this commit, the single-human
+// branches below (RacerClient, GameClient) rendered the WHOLE GameRecord for
+// anyone who loaded the URL, with no identity or seat check at all — the
+// same gap the R1 security commit closed on the mutating routes, just never
+// closed here. decideGamePageAccess (lib/seats.ts) is the shared, pure,
+// unit-tested decision; this page is a thin adapter over it. There is no
+// intentionally public game view: no identity or wrong seat -> notFound(),
+// exactly like the pre-existing Human↔Human branch already did.
 
 export const dynamic = "force-dynamic";
 
-export default async function GamePage({ params }: { params: { id: string } }) {
-  const game = await getGame(params.id);
+function ServiceUnavailablePanel() {
+  return (
+    <main className="mx-auto flex w-full min-h-screen max-w-md flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+      <h1 className="text-lg font-semibold text-[var(--ink)]">Most nem elérhető</h1>
+      <p className="text-sm text-[var(--ink-soft)]">
+        Nem sikerült azonosítani a munkameneted. Próbáld újra hamarosan.
+      </p>
+      <a href="/" className="mt-2 text-sm text-[var(--ink-soft)] underline underline-offset-2">
+        Vissza a Barkóba főoldalra
+      </a>
+    </main>
+  );
+}
 
-  if (!game) {
+function RestartRequiredPanel() {
+  return (
+    <main className="mx-auto flex w-full min-h-screen max-w-md flex-col items-center justify-center gap-3 px-4 py-8 text-center">
+      <h1 className="text-lg font-semibold text-[var(--ink)]">Új játék szükséges</h1>
+      <p className="text-sm text-[var(--ink-soft)]">
+        Ez a játék egy régebbi verzióból származik, és a hozzáférés-ellenőrzés miatt nem folytatható.
+      </p>
+      <a
+        href="/"
+        className="mt-2 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
+      >
+        Új játék
+      </a>
+    </main>
+  );
+}
+
+export default async function GamePage({ params }: { params: { id: string } }) {
+  const identity = await resolveActingPlayerIdentity(headers());
+  // A game lookup is pointless — and decideGamePageAccess discards it either
+  // way — whenever identity resolution itself already settles the outcome
+  // (an outage, or nobody presented a usable identity at all).
+  const game = identity.kind === "identified" ? await getGame(params.id) : null;
+  const decision = decideGamePageAccess(identity, game);
+
+  if (decision.kind === "service_unavailable") {
+    return <ServiceUnavailablePanel />;
+  }
+  if (decision.kind === "not_found") {
     notFound();
   }
+  // game is non-null for every remaining decision kind (service_unavailable
+  // and not_found — the only outcomes reachable with a null game — are both
+  // handled above).
+  const liveGame = game!;
 
   const versionLabel = formatVersionLabel(getAppVersion());
 
-  // -------------------------------------------------------------------------
-  // V2.3 — Human↔Human. Role is a property of the REQUEST here, not of the
-  // game: both seats are "human", so racer_kind can no longer decide which
-  // client to render. resolveSeat answers "who is asking" instead.
-  // -------------------------------------------------------------------------
-  if (isHumanVsHuman(game)) {
-    const playerId = await resolveActingPlayerId(headers());
-    const seat = resolveSeat(game, playerId);
+  if (decision.kind === "restart_required") {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[barkoba] game ${liveGame.game_id}: no ${decision.requiredSeat} seat was ever recorded for this game — ` +
+        "refusing rather than assigning the caller retroactively."
+    );
+    return <RestartRequiredPanel />;
+  }
 
-    // A stranger holding the URL is not shown the game. Not even the transcript:
-    // questions asked so far are themselves information about the target.
-    if (!seat) {
-      notFound();
-    }
-
+  if (decision.kind === "human_vs_human") {
     // Both seats are handed the SHARED, target-free projection. The Composer's
     // own secret arrives from GET /api/game/[id]/view, which the client fetches
     // immediately on mount.
@@ -59,13 +107,22 @@ export default async function GamePage({ params }: { params: { id: string } }) {
     // widened seam is auditable where two that each look reasonable are how an
     // invariant erodes. scripts/check-isolation.mjs caught the earlier version
     // of this file doing exactly that — the guard working as intended.
-    return <HumanClient initialView={buildGameView(game, seat)} versionLabel={versionLabel} />;
+    return (
+      <HumanClient
+        initialView={buildGameView(liveGame, decision.seat)}
+        versionLabel={versionLabel}
+      />
+    );
   }
 
-  // One route, two turn shapes. Which client renders is decided by who occupies
-  // the Racer seat — the field the record has carried since 0.3.0.1.
-  if (game.racer_kind === "human") {
-    return <RacerClient initialGame={game} versionLabel={versionLabel} />;
+  // Single-human modes. Which client renders is decided by who occupies the
+  // Racer seat — the field the record has carried since 0.3.0.1. Stripped of
+  // racer_output_raw before it ever becomes an RSC prop: nothing downstream
+  // renders it, and an unrendered prop is still serialized into the page.
+  const safeGame = stripRacerOutputRaw(liveGame);
+
+  if (decision.requiredSeat === "racer") {
+    return <RacerClient initialGame={safeGame} versionLabel={versionLabel} />;
   }
 
   // V2.8.4.3 — the human-Composer/AI-Racer mode's own header gains the same
@@ -75,7 +132,7 @@ export default async function GamePage({ params }: { params: { id: string } }) {
   const accountHeaderState = await resolveAccountHeaderState(headers());
   return (
     <GameClient
-      initialGame={game}
+      initialGame={safeGame}
       versionLabel={versionLabel}
       accountAuthenticated={accountHeaderState.authenticated}
       accountPhotoUrl={accountHeaderState.photoUrl}

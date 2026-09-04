@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import { getGame, newLogEntry, saveGame } from "@/lib/gameStore";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
+import { requireSeatStrict } from "@/lib/seats";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { requestClueFromComposer } from "@/lib/prompts/composerAnswer";
 import { consumeModelCall } from "@/lib/callBudget";
@@ -61,12 +63,68 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   // -------------------------------------------------------------------------
+  // V2.8.6 R1 — this route serves BOTH directions of a clue exchange, so
+  // identity is resolved once and checked against whichever seat the branch
+  // below requires. Previously neither direction checked who was asking, so
+  // any caller who knew or guessed game_id could request a clue as the
+  // Racer, or write clue text as the Composer, on someone else's game.
+  // -------------------------------------------------------------------------
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
+    return NextResponse.json(
+      { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
+      { status: 401 }
+    );
+  }
+  const playerId = identity.playerId;
+
+  function seatFailureResponse(
+    error: "not_a_participant" | "wrong_seat" | "legacy_seat_unassigned",
+    unassignedFor: "composer" | "racer"
+  ) {
+    if (error === "legacy_seat_unassigned") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] game ${game!.game_id}: no ${unassignedFor} seat was ever recorded for this game — ` +
+          "refusing rather than assigning the caller retroactively."
+      );
+      return NextResponse.json(
+        {
+          error: "restart_required",
+          message:
+            "Ez a játék egy régebbi verzióból származik, és a hozzáférés-ellenőrzés miatt nem folytatható. Kezdj új játékot.",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error,
+        message: error === "not_a_participant" ? "Ehhez a játékhoz nincs hozzáférésed." : "Ez nem a te lépésed.",
+      },
+      { status: 403 }
+    );
+  }
+
+  // -------------------------------------------------------------------------
   // Direction B — the human Composer is filling in a clue the AI Racer asked
   // for. The credit was already spent when the Racer chose the clue action, so
   // this path must not spend a second one.
   // -------------------------------------------------------------------------
   const outstanding = pendingClueRequest(game);
   if (outstanding) {
+    const composerSeat = requireSeatStrict(game, playerId, "composer");
+    if (!composerSeat.ok) return seatFailureResponse(composerSeat.error!, "composer");
+
     let body: { clue_text?: string } = {};
     try {
       body = (await req.json()) as { clue_text?: string };
@@ -104,6 +162,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       { status: 409 }
     );
   }
+
+  const racerSeat = requireSeatStrict(game, playerId, "racer");
+  if (!racerSeat.ok) return seatFailureResponse(racerSeat.error!, "racer");
 
   if (clueCreditsAvailable(game) < 1) {
     return NextResponse.json(

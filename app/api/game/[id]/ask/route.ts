@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "crypto";
 import { getGame, saveGame } from "@/lib/gameStore";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
+import { requireSeatStrict } from "@/lib/seats";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { answerAsComposer } from "@/lib/prompts/composerAnswer";
 import { judgeQuestionEdit } from "@/lib/prompts/questionEdit";
@@ -111,6 +113,60 @@ export async function POST(
         game,
       },
       { status: 409 }
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // V2.8.6 R1 — this route submits questions/guesses as the human Racer
+  // against an AI Composer. It never checked who was asking; any caller who
+  // knew or guessed game_id could ask questions or commit a guess/concession
+  // on someone else's game. racer_player_id is recorded for THIS mode at
+  // creation as of this change (see app/api/game/create/route.ts) — a game
+  // created before that change has no seat to check, and requireSeatStrict
+  // fails it closed rather than matching whoever asks.
+  // -------------------------------------------------------------------------
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
+    return NextResponse.json(
+      { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
+      { status: 401 }
+    );
+  }
+  const seatCheck = requireSeatStrict(game, identity.playerId, "racer");
+  if (!seatCheck.ok) {
+    if (seatCheck.error === "legacy_seat_unassigned") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] game ${game.game_id}: no racer seat was ever recorded for this ` +
+          "AI-Composer game — refusing rather than assigning the caller retroactively."
+      );
+      return NextResponse.json(
+        {
+          error: "restart_required",
+          message:
+            "Ez a játék egy régebbi verzióból származik, és a hozzáférés-ellenőrzés miatt nem folytatható. Kezdj új játékot.",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error: seatCheck.error,
+        message:
+          seatCheck.error === "not_a_participant"
+            ? "Ehhez a játékhoz nincs hozzáférésed."
+            : "Ez nem a te lépésed.",
+      },
+      { status: 403 }
     );
   }
 

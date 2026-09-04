@@ -7,6 +7,9 @@ import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { POST as correctPOST } from "../app/api/game/[id]/correct/route";
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import type { ToolCallResult } from "../lib/providers/types";
+import { enableTestIdentityLookups } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
 
 // ---------------------------------------------------------------------------
 // V2.8.1 — the My Car Key integrity hotfix.
@@ -26,6 +29,12 @@ import type { ToolCallResult } from "../lib/providers/types";
 // racer_provider unset) — everything else in the request path is real.
 // ---------------------------------------------------------------------------
 
+// V2.8.6 R1 — every mutating request below now needs an identity that owns
+// the Composer seat (see lib/seats.ts's requireSeatStrict). Fixed rather than
+// per-test, since every fixture in this file plays the same single-human
+// Composer role and there is nothing test-specific about who that is.
+const TEST_COMPOSER_ID = "a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0a0";
+
 async function makeGame(overrides: Partial<Parameters<typeof createGame>[1]> = {}) {
   const gameId = randomUUID();
   const game = await createGame(gameId, {
@@ -34,6 +43,7 @@ async function makeGame(overrides: Partial<Parameters<typeof createGame>[1]> = {
     racer_kind: "ai",
     max_questions: 20,
     game_language: "en",
+    composer_player_id: TEST_COMPOSER_ID,
     ...overrides,
   });
   return { gameId, game };
@@ -46,6 +56,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -55,7 +66,11 @@ function correctRequest(gameId: string, body: Record<string, unknown>) {
   const json = JSON.stringify(body);
   return new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
-    headers: { "content-type": "application/json", "content-length": String(Buffer.byteLength(json)) },
+    headers: {
+      "content-type": "application/json",
+      "content-length": String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
+    },
     body: json,
   });
 }

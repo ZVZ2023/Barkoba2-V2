@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acquireTurnLock, getGame, releaseTurnLock, saveGameIfRevisionMatches } from "@/lib/gameStore";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
+import { requireSeatStrict } from "@/lib/seats";
 import {
   advanceHighWaterMark,
   CORRECTION_WINDOW_SIZE,
@@ -113,6 +115,58 @@ export async function POST(
         message: `A válasznak ezek egyikének kell lennie: ${VALID_ANSWERS.join(", ")}.`,
       },
       { status: 400 }
+    );
+  }
+
+  // -------------------------------------------------------------------------
+  // V2.8.6 R1 — this route rewinds a previously given Composer answer. It
+  // never checked who was asking, so any caller who knew game_id could
+  // rewrite (and discard downstream turns of) someone else's game. Same
+  // seat and same recorded field as /turn — see that route's identical
+  // comment.
+  // -------------------------------------------------------------------------
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
+    return NextResponse.json(
+      { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
+      { status: 401 }
+    );
+  }
+  const seatCheck = requireSeatStrict(game, identity.playerId, "composer");
+  if (!seatCheck.ok) {
+    if (seatCheck.error === "legacy_seat_unassigned") {
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] game ${game.game_id}: no composer seat was ever recorded for this ` +
+          "human-Composer game — refusing rather than assigning the caller retroactively."
+      );
+      return NextResponse.json(
+        {
+          error: "restart_required",
+          message:
+            "Ez a játék egy régebbi verzióból származik, és a hozzáférés-ellenőrzés miatt nem folytatható. Kezdj új játékot.",
+        },
+        { status: 409 }
+      );
+    }
+    return NextResponse.json(
+      {
+        error: seatCheck.error,
+        message:
+          seatCheck.error === "not_a_participant"
+            ? "Ehhez a játékhoz nincs hozzáférésed."
+            : "Ez nem a te lépésed.",
+      },
+      { status: 403 }
     );
   }
 
