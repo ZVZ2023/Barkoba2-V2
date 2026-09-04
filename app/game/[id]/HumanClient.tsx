@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComposerGameView, GameView } from "@/lib/gameView";
 import { resultCopy } from "@/lib/resultCopy";
-import { isAuthApplicationError } from "@/lib/turnRequestGuard";
+import {
+  HH_TURN_CLIENT_TIMEOUT_MS,
+  createRequestOwnership,
+  isAuthApplicationError,
+  runOwnedHhTurnRequest,
+  type ActiveRequestHandle,
+  type HhTurnResponseBody,
+  type RequestOwnership,
+} from "@/lib/turnRequestGuard";
+import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import type { ComposerAnswer } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -48,6 +57,30 @@ export default function HumanClient({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const resolving = useRef(false);
+
+  // V2.8.6 R2 — request ownership + canonical-truth reconciliation for
+  // POST /hh/turn, reused from lib/turnRequestGuard.ts's runOwnedHhTurnRequest
+  // (the same pattern GameClient.sendTurn and RacerClient.send already use,
+  // adapted to /hh/turn's own {ok, revision}-only response shape — see that
+  // function's own module doc).
+  const requestOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!requestOwnershipRef.current) {
+    requestOwnershipRef.current = createRequestOwnership();
+  }
+  const viewRef = useRef(view);
+  useEffect(() => {
+    viewRef.current = view;
+  }, [view]);
+  const activeRequestRef = useRef<ActiveRequestHandle | null>(null);
+  // (D) synchronous submission guard, claimed before any await — see
+  // GameClient.tsx's answerInFlightRef for the production forensic this
+  // closes: two submissions landing before React's `disabled={busy}`
+  // re-render could commit.
+  const sendInFlightRef = useRef(false);
+  // Not surfaced in the UI (no dedicated "waiting on lock" panel exists for
+  // this screen); tracked only so runOwnedHhTurnRequest's own contract is
+  // honestly satisfied.
+  const turnInProgressRef = useRef(false);
 
   const refresh = useCallback(async () => {
     try {
@@ -104,27 +137,100 @@ export default function HumanClient({
     })();
   }, [view.phase, view.game_id, refresh]);
 
+  // V2.8.6 R2 — rebuilt on runOwnedHhTurnRequest. Previously a plain
+  // fetch/setState wrapper with no ownership, no timeout, no revision-CAS
+  // (expected_revision compared only against lib/gameView.ts's DERIVED
+  // revisionOf() poll marker, and only when the server route happened to
+  // check it — /hh/turn's own field was optional before this), and no
+  // recovery on a lost response: a thrown fetch here never called refresh()
+  // at all, so a genuinely-saved-but-unseen action left the screen frozen
+  // until the player noticed and reloaded.
   const send = useCallback(
     async (payload: Record<string, unknown>) => {
-      setBusy(true);
-      setError(null);
+      // (D) synchronous guard — see sendInFlightRef's own doc above.
+      if (sendInFlightRef.current) return;
+      sendInFlightRef.current = true;
       try {
-        const res = await fetch(`/api/game/${view.game_id}/hh/turn`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...payload, expected_revision: view.revision }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (!res.ok) setError(data?.message || "Nem sikerült elküldeni. Próbáld újra.");
-        await refresh();
-      } catch {
-        setError("Hálózati hiba — próbáld újra.");
+        await runOwnedHhTurnRequest(
+          requestOwnershipRef.current as RequestOwnership,
+          {
+            requestTurn: async (signal) => {
+              const res = await fetch(`/api/game/${viewRef.current.game_id}/hh/turn`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...payload,
+                  // V2.8.6 R2 — the real GameRecord.revision CAS counter,
+                  // never lib/gameView.ts's own derived revisionOf() poll
+                  // marker (view.revision) this used to send.
+                  expected_revision: viewRef.current.record_revision,
+                }),
+                signal,
+              });
+              const data = (await res.json().catch(() => ({}))) as HhTurnResponseBody;
+              return { ok: res.ok, data };
+            },
+            requestView: async () => {
+              const res = await fetch(`/api/game/${viewRef.current.game_id}/view`, { cache: "no-store" });
+              const body = await res.json().catch(() => null);
+              return { ok: res.ok, view: (body?.view as GameView | undefined) ?? null };
+            },
+          },
+          {
+            getView: () => viewRef.current,
+            setView: (next) => setView(next as AnyView),
+            setError,
+            setBusy,
+            setTurnInProgress: (inProgress) => {
+              turnInProgressRef.current = inProgress;
+            },
+            registerActiveRequest: (handle) => {
+              activeRequestRef.current = handle;
+            },
+            clearActiveRequest: () => {
+              activeRequestRef.current = null;
+            },
+          },
+          HH_TURN_CLIENT_TIMEOUT_MS
+        );
       } finally {
-        setBusy(false);
+        sendInFlightRef.current = false;
       }
     },
-    [view.game_id, view.revision, refresh]
+    []
   );
+
+  // V2.8.6 R2 — foreground reconciliation. HumanClient had none at all
+  // before this: the existing poll only runs while `!view.your_turn ||
+  // view.awaiting_racer`, which is exactly NOT the state a player is in
+  // while submitting their own action — so a lost/stuck send() had no
+  // independent recovery path until the player noticed and reloaded. Mirrors
+  // GameClient's own visibilitychange handler (see lib/turnRequestGuard.ts's
+  // CLIENT_TURN_TIMEOUT_MS doc for the "silent stall" forensic this pattern
+  // repairs generally).
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState !== "visible") return;
+      if (busy) {
+        const active = activeRequestRef.current;
+        if (
+          !shouldReconcileStaleRequestOnForeground({
+            busy,
+            activeRequestStartedAt: active?.startedAt ?? null,
+            now: Date.now(),
+            timeoutMs: HH_TURN_CLIENT_TIMEOUT_MS,
+          })
+        ) {
+          return;
+        }
+        active?.abort();
+        return;
+      }
+      void refresh();
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [busy, refresh]);
 
   const answer = (a: ComposerAnswer) => {
     void send({ action: "answer", answer: a, ambiguous_explanation: explanation });

@@ -738,3 +738,246 @@ async function reconcileResolveAfterFailure(
   state.setResolveError(RESOLVE_NETWORK_ERROR_MESSAGE);
   state.clearResolveGuard();
 }
+
+// ---------------------------------------------------------------------------
+// V2.8.6 R2 — the Human↔Human /hh/turn analogue.
+//
+// Structurally different from runOwnedTurnRequest's own /turn-shaped
+// contract in one deliberate way: app/api/game/[id]/hh/turn/route.ts
+// returns `{ok, revision}` on success and never `game` or `view` at all
+// (see that route's own module doc — the response only needs to say
+// whether the write landed and at what real CAS revision). HumanClient.tsx
+// already tracks a GameView, not a GameRecord, obtained through a SEPARATE
+// GET /view call — there is no client-only overlay state (provenance,
+// edit history) to merge onto it the way mergeViewIntoGame merges onto a
+// GameRecord, so every path below that needs canonical state (success,
+// stale_turn, an uncertain transport failure) converges on the same single
+// action: fetch /view once, and apply whatever it returns outright.
+// ---------------------------------------------------------------------------
+
+/**
+ * V2.8.6 R2 — /hh/turn's own client-side wait bound, matching its own 15s
+ * turn-lock TTL (app/api/game/[id]/hh/turn/route.ts) — this route makes no
+ * model call at all, so its legitimate duration is a KV read plus a CAS
+ * write, nothing like /turn's/ask's/clue's much longer numbers.
+ */
+export const HH_TURN_CLIENT_TIMEOUT_MS = 15_000;
+
+/** The shape every real POST /api/game/[id]/hh/turn response carries. */
+export interface HhTurnResponseBody {
+  ok?: boolean;
+  error?: string;
+  message?: string;
+  /** The real GameRecord.revision CAS counter — present on success and on stale_turn only. */
+  revision?: number;
+}
+
+export interface HhTurnRequestResult {
+  ok: boolean;
+  data: HhTurnResponseBody | null | undefined;
+}
+
+export interface HhTurnRequestIO {
+  /** See TurnRequestIO.requestTurn's doc — the same signal-forwarding requirement applies here. */
+  requestTurn(signal: AbortSignal): Promise<HhTurnRequestResult>;
+  requestView(): Promise<ViewRequestResult>;
+}
+
+export interface HhTurnRequestState {
+  getView(): GameView;
+  setView(view: GameView): void;
+  setError(message: string | null): void;
+  setBusy(busy: boolean): void;
+  /**
+   * V2.8.6 R2 — /hh/turn's own turn_in_progress: another in-flight request
+   * already holds this game's turn lock. Transient, not a failure — the
+   * caller should poll/wait (e.g. let the existing /view poll continue, or
+   * schedule one bounded quiet retry), never immediately replay the same
+   * mutation. Mirrors runOwnedTurnRequest's own setTurnInProgress for /turn.
+   */
+  setTurnInProgress(inProgress: boolean): void;
+  registerActiveRequest?(handle: ActiveRequestHandle): void;
+  clearActiveRequest?(): void;
+}
+
+/** The last turn if it is an unresolved clue request — the GameView/ViewTurn analogue of pendingClueRequest. */
+function pendingClueTurn(view: GameView): ViewTurn | null {
+  const last = view.turns[view.turns.length - 1];
+  if (last && last.turn_type === "clue" && last.clue_text === null) return last;
+  return null;
+}
+
+/**
+ * GameView analogue of reconciliationShowsProgress — same four signals
+ * (revision, log length, phase, an advanced pending question/clue), applied
+ * to GameView's own fields (record_revision is the real CAS counter here;
+ * `revision` — the derived qa_log-length/answered-count poll marker — is
+ * deliberately not used, for the same reason mergeViewIntoGame prefers
+ * record_revision).
+ */
+export function gameViewShowsProgress(before: GameView, after: GameView): boolean {
+  if (after.record_revision > before.record_revision) return true;
+  if (after.turns.length > before.turns.length) return true;
+  if (after.phase !== before.phase) return true;
+  if (after.question_count > before.question_count) return true;
+  const afterPending = after.pending_question_index;
+  if (afterPending !== null && afterPending !== before.pending_question_index) return true;
+  const afterClue = pendingClueTurn(after);
+  if (afterClue && afterClue.turn_index !== pendingClueTurn(before)?.turn_index) return true;
+  return false;
+}
+
+/**
+ * ONE canonical read, applied outright — no merge, no progress check. Used
+ * by the two paths whose OWN contract already guarantees genuine change
+ * (a real success; a real, documented stale_turn) — see
+ * reconcileHhTurnAfterFailure below for the uncertain-transport-failure
+ * path, where a progress check still matters for what it decides about the
+ * error banner.
+ */
+async function applyCanonicalView(
+  ownership: RequestOwnership,
+  token: number,
+  io: HhTurnRequestIO,
+  state: HhTurnRequestState
+): Promise<void> {
+  try {
+    const viewResult = await io.requestView();
+    if (!ownership.isCurrent(token)) return; // superseded while reading
+    if (viewResult.ok && viewResult.view) {
+      state.setView(viewResult.view);
+    }
+  } catch {
+    // Best-effort. The existing /view poll (or a manual retry) picks this
+    // back up; this path does not itself introduce a retry loop.
+  }
+}
+
+/**
+ * The full owned /hh/turn workflow. Every state mutation is gated on the
+ * token that began this call still being the most recent one — see
+ * RequestOwnership. A superseded call's success, failure, or reconciled
+ * outcome therefore CANNOT overwrite what a newer call already established.
+ */
+export async function runOwnedHhTurnRequest(
+  ownership: RequestOwnership,
+  io: HhTurnRequestIO,
+  state: HhTurnRequestState,
+  timeoutMs: number = HH_TURN_CLIENT_TIMEOUT_MS
+): Promise<void> {
+  const token = ownership.begin();
+
+  state.setBusy(true);
+  state.setError(null);
+  state.setTurnInProgress(false);
+
+  let transportFailed = false;
+  let result: HhTurnRequestResult | null = null;
+
+  const controller = new AbortController();
+  const startedAt = Date.now();
+  state.registerActiveRequest?.({ abort: () => controller.abort(), startedAt });
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    result = await io.requestTurn(controller.signal);
+    // V2.8.6 R2 — /hh/turn's contract is minimal by design (see the module
+    // doc): a genuine documented response ALWAYS carries a string `error`
+    // on failure, or a numeric `revision` on success — every one of its
+    // failure codes, not merely the auth-taxonomy ones /turn's own
+    // AUTH_APPLICATION_ERRORS check exists for (that set matters for
+    // MESSAGE handling below, not for this shape check). Anything short of
+    // that is exactly the "unusable response body" case reconciliation
+    // exists for.
+    const hasDocumentedShape = result.ok
+      ? typeof result.data?.revision === "number"
+      : typeof result.data?.error === "string";
+    if (!hasDocumentedShape) transportFailed = true;
+  } catch {
+    transportFailed = true;
+  } finally {
+    clearTimeout(timeoutId);
+    if (ownership.isCurrent(token)) {
+      state.clearActiveRequest?.();
+    }
+  }
+
+  if (!ownership.isCurrent(token)) return; // superseded — nothing below may run
+
+  if (transportFailed) {
+    await reconcileHhTurnAfterFailure(ownership, token, io, state);
+  } else if (result) {
+    const data = result.data as HhTurnResponseBody;
+    if (!result.ok) {
+      if (data.error === "turn_in_progress") {
+        // Transient, not a failure — see HhTurnRequestState.setTurnInProgress's
+        // own doc. Still worth ONE canonical read (a poll, not a replay of
+        // the mutation): whatever request currently holds the lock may have
+        // already landed by the time this one arrived.
+        state.setError(null);
+        state.setTurnInProgress(true);
+        await applyCanonicalView(ownership, token, io, state);
+      } else if (data.error === "stale_turn") {
+        // A synchronization event, not a gameplay failure. The response
+        // itself carries only the bare revision, never a view — fetch the
+        // canonical narrowed state in ONE read and stop; no automatic replay.
+        await applyCanonicalView(ownership, token, io, state);
+      } else {
+        // Every other documented failure (wrong_phase, awaiting_answer,
+        // out_of_questions, a seat/auth code, ...): show the server's own
+        // message. Never reconciled — a documented application error is
+        // not evidence of a lost write.
+        state.setError(data.message || "Nem sikerült elküldeni. Próbáld újra.");
+      }
+    } else {
+      // Success — fetch canonical narrowed state once, per the contract.
+      await applyCanonicalView(ownership, token, io, state);
+    }
+  }
+
+  if (ownership.isCurrent(token)) {
+    state.setBusy(false);
+  }
+}
+
+/**
+ * Reconciliation for an UNCERTAIN transport failure (a rejected fetch, a
+ * non-JSON body, or a body missing the shape every real response carries —
+ * see runOwnedHhTurnRequest's own hasDocumentedShape check). ONE canonical
+ * read, never a second /hh/turn call. Unlike runOwnedTurnRequest's own
+ * reconcileAfterFailure, the fresh view is applied EITHER way (there is no
+ * stale local overlay to protect by withholding it) — only whether the
+ * error banner stays visible depends on gameViewShowsProgress, so a
+ * genuinely lost action is never silently hidden behind a falsely-cleared
+ * error.
+ */
+async function reconcileHhTurnAfterFailure(
+  ownership: RequestOwnership,
+  token: number,
+  io: HhTurnRequestIO,
+  state: HhTurnRequestState
+): Promise<void> {
+  const before = state.getView();
+  let view: GameView | null = null;
+  let viewOk = false;
+
+  try {
+    const viewResult = await io.requestView();
+    viewOk = viewResult.ok;
+    view = viewResult.view;
+  } catch {
+    viewOk = false;
+  }
+
+  if (!ownership.isCurrent(token)) return; // superseded while reconciling
+
+  if (viewOk && view) {
+    state.setView(view);
+    if (gameViewShowsProgress(before, view)) {
+      state.setError(null);
+      return;
+    }
+  }
+
+  state.setError(NETWORK_ERROR_MESSAGE);
+}

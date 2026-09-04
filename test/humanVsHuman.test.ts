@@ -355,9 +355,18 @@ test("a hint is a clue turn — no new turn type, no migration", () => {
 });
 
 test("only the Composer may hint", () => {
+  // V2.8.6 R2 — the seat check for "hint" moved out of this block: it now
+  // runs pre-lock, alongside every other action's own seat requirement (see
+  // requiredSeat), not repeated inline per action. Proven here as: hint and
+  // answer are the only two actions routed to the composer seat, and that
+  // determination runs before acquireTurnLock — i.e., authorization is
+  // decided before any lock is spent on it.
   const src = readFileSync("app/api/game/[id]/hh/turn/route.ts", "utf8");
-  const hintBlock = src.slice(src.indexOf('body.action === "hint"'), src.indexOf("Composer: answer the one"));
-  assert.match(hintBlock, /requireSeat\(game, playerId, "composer"\)/);
+  const requiredSeatAt = src.indexOf('body.action === "hint" || body.action === "answer" ? "composer" : "racer"');
+  const seatCheckAt = src.indexOf('requireSeat(game, playerId, requiredSeat)');
+  const lockAt = src.indexOf("acquireTurnLock(gameId, HH_TURN_LOCK_TTL_SECONDS)");
+  assert.ok(requiredSeatAt >= 0, "hint must route to the composer seat, not the racer's");
+  assert.ok(seatCheckAt > requiredSeatAt && seatCheckAt < lockAt, "the seat check must run before the lock is acquired");
 });
 
 test("a hint reaches the Racer and survives in the transcript", () => {

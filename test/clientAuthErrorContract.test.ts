@@ -84,9 +84,34 @@ test("HumanClient's /view poll (refresh) recognizes documented auth errors and s
     HUMAN_CLIENT.indexOf("const refresh = useCallback("),
     HUMAN_CLIENT.indexOf("// One fetch on mount")
   );
-  assert.match(HUMAN_CLIENT, /import \{ isAuthApplicationError \} from "@\/lib\/turnRequestGuard"/);
+  // V2.8.6 R2 — HumanClient now imports several names from turnRequestGuard.ts
+  // (runOwnedHhTurnRequest and friends, for send()'s own reliability rebuild),
+  // so this only requires isAuthApplicationError to be AMONG them, not the
+  // sole import on its own line.
+  assert.match(
+    HUMAN_CLIENT,
+    /import \{[^}]*\bisAuthApplicationError\b[^}]*\} from "@\/lib\/turnRequestGuard"/s
+  );
   assert.match(refreshFn, /isAuthApplicationError\(data\.error\)/, "a documented auth error must be recognized explicitly");
   assert.match(refreshFn, /setError\(data\.message/, "the safe server message must be surfaced for a documented error");
+});
+
+test("HumanClient's /hh/turn handler (send) is built on runOwnedHhTurnRequest and submits record_revision, never the derived revision", () => {
+  const sendFn = HUMAN_CLIENT.slice(
+    HUMAN_CLIENT.indexOf("const send = useCallback("),
+    HUMAN_CLIENT.indexOf("// V2.8.6 R2 — foreground reconciliation")
+  );
+  assert.match(sendFn, /runOwnedHhTurnRequest\(/, "must go through the shared H↔H ownership/reconciliation module");
+  assert.match(
+    sendFn,
+    /expected_revision: viewRef\.current\.record_revision/,
+    "must submit the real CAS revision, not lib/gameView.ts's derived revisionOf() poll marker"
+  );
+  assert.doesNotMatch(
+    sendFn,
+    /expected_revision: view\.revision\b/,
+    "must never submit the derived poll marker as expected_revision"
+  );
 });
 
 test("HumanClient's /view poll still silently discards a genuine transient/malformed failure (unchanged for the unknown case)", () => {

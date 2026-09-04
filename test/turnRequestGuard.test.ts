@@ -7,9 +7,14 @@ import {
   reconciliationShowsProgress,
   runOwnedTurnRequest,
   runOwnedResolveRequest,
+  runOwnedHhTurnRequest,
+  gameViewShowsProgress,
   isAuthApplicationError,
   NETWORK_ERROR_MESSAGE,
   RESOLVE_NETWORK_ERROR_MESSAGE,
+  type HhTurnRequestIO,
+  type HhTurnRequestState,
+  type HhTurnResponseBody,
   type ResolveRequestIO,
   type ResolveRequestState,
   type ResolveResponseBody,
@@ -1279,4 +1284,208 @@ test("COMMIT 2: the legitimate response path (ok, with game) is completely unaff
   assert.equal(viewCalls, 0);
   assert.equal(getCurrentGame(), g1);
   assert.equal(lastValueOf(calls, "setTurnFailed"), false);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.6 R2 — runOwnedHhTurnRequest, the /hh/turn analogue. Same mock-IO,
+// mock-state technique as runOwnedTurnRequest's own tests above, adapted to
+// HhTurnRequestIO/HhTurnRequestState's GameView-shaped contract (see that
+// function's own module doc for why there is no merge step here).
+// ---------------------------------------------------------------------------
+
+/** A recording HhTurnRequestState that also lets a test drive it as a mini-store. */
+function recordingViewState(initial: GameView) {
+  let currentView = initial;
+  const calls: { fn: string; arg?: unknown }[] = [];
+  const state: HhTurnRequestState = {
+    getView: () => currentView,
+    setView: (v) => {
+      currentView = v;
+      calls.push({ fn: "setView", arg: v });
+    },
+    setError: (m) => calls.push({ fn: "setError", arg: m }),
+    setBusy: (b) => calls.push({ fn: "setBusy", arg: b }),
+    setTurnInProgress: (p) => calls.push({ fn: "setTurnInProgress", arg: p }),
+    registerActiveRequest: (h) => calls.push({ fn: "registerActiveRequest", arg: h }),
+    clearActiveRequest: () => calls.push({ fn: "clearActiveRequest" }),
+  };
+  return { state, calls, getCurrentView: () => currentView };
+}
+
+test("gameViewShowsProgress: an advanced record_revision alone counts as progress", () => {
+  const before = view({ record_revision: 1 });
+  const after = view({ record_revision: 2 });
+  assert.equal(gameViewShowsProgress(before, after), true);
+});
+
+test("gameViewShowsProgress: no signal at all is not progress", () => {
+  const before = view({ record_revision: 1 });
+  const after = view({ record_revision: 1 });
+  assert.equal(gameViewShowsProgress(before, after), false);
+});
+
+test("H↔H success: fetches canonical /view exactly once and applies it, per the {ok,revision}-only contract", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+  const after = view({ record_revision: 1, turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] });
+
+  let viewCalls = 0;
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => ({ ok: true, data: { ok: true, revision: 1 } }),
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: after };
+    },
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 1, "success must fetch canonical /view exactly once");
+  assert.equal(lastValueOf(calls, "setView"), after);
+  assert.equal(lastValueOf(calls, "setBusy"), false);
+});
+
+test("H↔H stale_turn: reconciles through exactly one /view call, surfaces canonical state, and never replays the mutation", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+  const canonical = view({ record_revision: 3, turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] });
+
+  let turnCalls = 0;
+  let viewCalls = 0;
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => {
+      turnCalls += 1;
+      return { ok: false, data: { error: "stale_turn", message: "x", revision: 3 } };
+    },
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: canonical };
+    },
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(turnCalls, 1, "no automatic replay of the mutation");
+  assert.equal(viewCalls, 1, "exactly one canonical read");
+  assert.equal(lastValueOf(calls, "setView"), canonical);
+  assert.equal(lastValueOf(calls, "setError"), null);
+});
+
+test("H↔H turn_in_progress: polls canonical /view once, sets turnInProgress, and never replays the mutation", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+  const canonical = view({ record_revision: 0 }); // the lock-holder hasn't landed yet
+
+  let turnCalls = 0;
+  let viewCalls = 0;
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => {
+      turnCalls += 1;
+      return { ok: false, data: { error: "turn_in_progress" } };
+    },
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: canonical };
+    },
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(turnCalls, 1, "turn_in_progress must never trigger an automatic replay");
+  assert.equal(viewCalls, 1, "still polls — a read, not a replay");
+  assert.equal(lastValueOf(calls, "setTurnInProgress"), true);
+  assert.equal(lastValueOf(calls, "setError"), null);
+});
+
+test("H↔H transport failure: reconciles through /view, applying it and clearing the error when it shows progress", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+  const canonical = view({ record_revision: 1, turns: [viewTurn({ turn_index: 1, question_text: "Q1?" })] });
+
+  let viewCalls = 0;
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => {
+      throw new Error("network down");
+    },
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: canonical };
+    },
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 1, "never a second POST /hh/turn — one canonical read");
+  assert.equal(lastValueOf(calls, "setView"), canonical);
+  assert.equal(lastValueOf(calls, "setError"), null);
+});
+
+test("H↔H transport failure: an unchanged canonical /view keeps the error visible (a lost action is not silently hidden)", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 2 });
+  const { state, calls } = recordingViewState(before);
+  const unchanged = view({ record_revision: 2 }); // nothing actually advanced server-side
+
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => {
+      throw new Error("network down");
+    },
+    requestView: async () => ({ ok: true, view: unchanged }),
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(lastValueOf(calls, "setError"), NETWORK_ERROR_MESSAGE);
+});
+
+test("H↔H: a documented business error (e.g. wrong_phase) shows the server message and is never reconciled", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+
+  let viewCalls = 0;
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => ({ ok: false, data: { error: "wrong_phase", message: "A játék más állapotban van." } }),
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: before };
+    },
+  };
+
+  await runOwnedHhTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 0, "a documented application error must never trigger reconciliation");
+  assert.equal(lastValueOf(calls, "setError"), "A játék más állapotban van.");
+});
+
+test("H↔H: a superseded request's late settlement cannot overwrite a newer request's state", async () => {
+  const ownership = createRequestOwnership();
+  const before = view({ record_revision: 0 });
+  const { state, calls } = recordingViewState(before);
+  const newerView = view({ record_revision: 5 });
+
+  const slow = deferred<HhTurnResponseBody>();
+  const io: HhTurnRequestIO = {
+    requestTurn: async () => ({ ok: true, data: await slow.promise }),
+    requestView: async () => ({ ok: true, view: newerView }),
+  };
+
+  const p1 = runOwnedHhTurnRequest(ownership, io, state);
+  // A newer call begins and completes first.
+  const fastIo: HhTurnRequestIO = {
+    requestTurn: async () => ({ ok: true, data: { ok: true, revision: 5 } }),
+    requestView: async () => ({ ok: true, view: newerView }),
+  };
+  await runOwnedHhTurnRequest(ownership, fastIo, state);
+  assert.equal(lastValueOf(calls, "setView"), newerView);
+
+  slow.resolve({ ok: true, revision: 1 } as HhTurnResponseBody);
+  await p1;
+
+  // The OLDER call's own eventual success must not have clobbered the newer state.
+  assert.equal(state.getView(), newerView);
 });
