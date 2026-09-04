@@ -7,6 +7,10 @@ import { createGame } from "../lib/gameStore";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { anthropicAdapter } from "../lib/providers/anthropic";
 import type { ToolCallResult } from "../lib/providers/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // V2.8.4.2 — MOBILE NOTE-TEXT TOLERANCE.
@@ -34,6 +38,7 @@ async function makeGame() {
     racer_kind: "ai",
     max_questions: 20,
     game_language: "hu",
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return gameId;
 }
@@ -45,6 +50,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });

@@ -7,6 +7,14 @@ import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { getGame } from "../lib/gameStore";
 import { xaiAdapter } from "../lib/providers/xai";
 import type { ToolCallResult } from "../lib/providers/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+// This file drives the real human-Composer creation path, so the Composer
+// seat this test plays is whichever identity the create request itself
+// presents — recorded by app/api/game/create/route.ts exactly as an ordinary
+// caller's would be, then required again on every /turn call below.
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // The public creation path pins every ordinary game's Racer seat to "xai"
 // (see PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a real-flow
@@ -72,7 +80,7 @@ function mockValidatorFetch(detectedLanguage: "en" | "hu") {
 async function createGameViaRoute(body: Record<string, unknown>) {
   const req = new NextRequest("http://localhost/api/game/create", {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-bk-player": TEST_COMPOSER_ID },
     body: JSON.stringify(body),
   });
   const res = await createPOST(req);
@@ -87,6 +95,7 @@ async function callTurn(gameId: string, body?: Record<string, unknown>) {
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });

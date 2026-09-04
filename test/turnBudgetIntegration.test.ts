@@ -1,4 +1,4 @@
-import { test } from "node:test";
+import { test, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { NextRequest } from "next/server";
@@ -10,6 +10,20 @@ import type { ToolCallRequest, ToolCallResult } from "../lib/providers/types";
 import { TURN_BUDGET_CONFIG } from "../lib/turnBudget";
 import { TELEMETRY_TIMEOUT_CONFIG } from "../lib/corpus/turnTelemetry";
 import { __setSqlClientForTests, type SqlValue } from "../lib/corpus/db";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+// V2.8.6 R1 — this file toggles DATABASE_URL/CORPUS_ENABLED/the sql client
+// itself, per test, for its own telemetry-mocking purposes (see
+// withFakeCorpus and the tests that manage the seam inline below). A single
+// module-scope enableTestIdentityLookups() call would be undone the moment
+// any one of those tests' own `finally` clears the env vars, breaking every
+// test that runs after it. beforeEach re-applies the baseline before EVERY
+// test instead, so a later test's own setup always wins for its own
+// duration and this file's existing cleanup is untouched.
+beforeEach(() => {
+  enableTestIdentityLookups();
+});
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // S2 / RB-2 — end-to-end route behavior for the bounded turn-execution
@@ -26,6 +40,7 @@ async function makeGame() {
     racer_kind: "ai",
     max_questions: 20,
     game_language: "en",
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return { gameId, game };
 }
@@ -37,6 +52,7 @@ function turnRequest(gameId: string, body: Record<string, unknown> | undefined) 
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -255,8 +271,14 @@ test("REQUIRED 13: an accepted question's latency_ms is populated with the provi
 test("REQUIRED 12 (route level): a telemetry backend that always throws does not prevent an ordinary turn from succeeding", async () => {
   process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
   process.env.CORPUS_ENABLED = "true";
+  // V2.8.6 R1 — lib/actingPlayer.ts's guest-identity resolution now shares
+  // this exact sql client (it checks accounts.players too), so a fixture
+  // simulating "the TELEMETRY backend is down" must not also take identity
+  // resolution down with it — that would be testing a different, broader
+  // outage than this one is named for. Every other query still throws.
   const throwingSql = Object.assign(
-    () => {
+    (strings: TemplateStringsArray) => {
+      if (strings.join("?").includes("accounts.players")) return Promise.resolve([]);
       throw new Error("neon unavailable");
     },
     { transaction: () => Promise.reject(new Error("neon unavailable")) }
@@ -803,6 +825,11 @@ test("FINDING 5: a 'deferred' corpus outcome is durably distinguished from a 'wr
         }
         return [];
       }
+      // V2.8.6 R1 — lib/actingPlayer.ts's guest-identity resolution shares
+      // this sql client too (it checks accounts.players). This fixture
+      // simulates the CORPUS write path failing, not the identity store, so
+      // that one lookup is exempted from the deliberate failure below.
+      if (text.includes("accounts.players")) return [];
       // Every other statement (corpus.games / corpus.game_turns / the
       // pending-replay queue) fails, forcing recordGameState() into its
       // documented 'deferred' branch (a caught exception during syncGame).

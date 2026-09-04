@@ -429,6 +429,13 @@ export async function POST(req: NextRequest) {
 
     const aiGame = await createGame(aiGameId, {
       player_id: playerId,
+      // V2.8.6 R1 — the human Racer seat, recorded the same way
+      // composer_player_id already is for the human-Composer mode below, so
+      // /ask can authorize its caller instead of trusting whoever holds the
+      // game id. Previously left unset here, which is exactly what made
+      // that authorization impossible to add without also failing every
+      // existing (pre-R1) game closed — see requireSeatStrict.
+      racer_player_id: playerId,
       phase: "questioning",
       max_questions: budgetChoice,
       game_language: aiGameLanguage,

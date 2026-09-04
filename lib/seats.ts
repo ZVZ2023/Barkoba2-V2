@@ -73,6 +73,45 @@ export function isParticipant(game: GameRecord, playerId: string | null): boolea
   return resolveSeat(game, playerId) !== null;
 }
 
+export interface StrictSeatCheck {
+  ok: boolean;
+  seat: Seat | null;
+  error: "not_a_participant" | "wrong_seat" | "legacy_seat_unassigned" | null;
+}
+
+/**
+ * V2.8.6 R1 — requireSeat, but for a MUTATING single-human-mode route that
+ * never checked identity before this. resolveSeat's "the one human seat
+ * belongs to whoever is asking" fallback exists for a READ affordance
+ * (/view's Human↔Human poll, /resolve's idempotent trigger) and for
+ * backward compatibility with pre-V2.3 records. It must never become the
+ * authorization for a route that is only now gaining a check at all: a game
+ * whose relevant `*_player_id` was never recorded is not evidence the caller
+ * IS that seat, only that nothing was ever asked. Retrofitting a real check
+ * onto such a route and then letting the old fallback answer it would make
+ * the retrofit a no-op precisely where it matters most.
+ *
+ * So this fails CLOSED instead of falling back, for single-human modes only
+ * (Human↔Human already never falls back — see resolveSeat). No caller,
+ * including the game's own creator, is assigned the seat retroactively;
+ * the game must be treated as unplayable through this route until it is
+ * replaced. See each call site for the "restart required" response this
+ * produces.
+ */
+export function requireSeatStrict(
+  game: GameRecord,
+  playerId: string | null,
+  required: Seat
+): StrictSeatCheck {
+  const recordedId = required === "composer" ? game.composer_player_id : game.racer_player_id;
+  const requiredKind = required === "composer" ? game.composer_kind : game.racer_kind;
+  if (!isHumanVsHuman(game) && requiredKind === "human" && !recordedId) {
+    return { ok: false, seat: null, error: "legacy_seat_unassigned" };
+  }
+  const check = requireSeat(game, playerId, required);
+  return { ok: check.ok, seat: check.seat, error: check.error };
+}
+
 /** Is the Human↔Human game still waiting for its second player? */
 export function awaitingRacer(game: GameRecord): boolean {
   return isHumanVsHuman(game) && !game.racer_player_id;

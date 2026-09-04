@@ -14,6 +14,10 @@ import { questionNumbers } from "../lib/questionNumbers";
 import { isSandboxClarificationEntry, sandboxClarificationRawOutput } from "../lib/sandboxClarification";
 import type { ToolCallResult } from "../lib/providers/types";
 import type { QuestionLogEntry, RacerPublicState } from "../lib/types";
+import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
+
+enableTestIdentityLookups();
+const TEST_COMPOSER_ID = testPlayerId("a");
 
 // ---------------------------------------------------------------------------
 // V2.8.5 — Layer Two Reasoning Engine, route-level integration. Same harness
@@ -30,6 +34,7 @@ async function makeGame(maxQuestions: number, language: "en" | "hu" = "hu") {
     racer_kind: "ai",
     max_questions: maxQuestions,
     game_language: language,
+    composer_player_id: TEST_COMPOSER_ID,
   });
   return gameId;
 }
@@ -41,6 +46,7 @@ function turnRequest(gameId: string, body?: Record<string, unknown>) {
     headers: {
       "content-type": "application/json",
       "content-length": body === undefined ? "0" : String(Buffer.byteLength(json)),
+      "x-bk-player": TEST_COMPOSER_ID,
     },
     body: body === undefined ? undefined : json,
   });
@@ -63,7 +69,7 @@ function stubOnce(output: unknown) {
 async function callCorrect(gameId: string, body: Record<string, unknown>) {
   const req = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: { "content-type": "application/json", "x-bk-player": TEST_COMPOSER_ID },
     body: JSON.stringify(body),
   });
   const res = await correctPOST(req, { params: { id: gameId } });
