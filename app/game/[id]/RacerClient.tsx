@@ -9,6 +9,7 @@ import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 import EvaluationState from "@/app/components/EvaluationState";
 import {
   ASK_CLIENT_TIMEOUT_MS,
+  CLUE_CLIENT_TIMEOUT_MS,
   createRequestOwnership,
   mergeViewIntoGame,
   reconciliationShowsProgress,
@@ -109,20 +110,61 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const clueOn = cluesEnabled(game);
   const cluesLeft = clueCreditsAvailable(game);
 
+  // V2.8.6 R2 — reuses the SAME shared requestOwnershipRef/actionInFlightRef/
+  // activeRequestRef as send(), not a second independent set: /clue and /ask
+  // acquire the SAME server-side per-game lock (see /clue's own comment on
+  // why), and both buttons are visible and tappable in the same instant on
+  // this screen — see the mutex's own doc above send().
   const askForClue = useCallback(async () => {
-    setBusy(true);
-    setError(null);
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/game/${game.game_id}/clue`, { method: "POST" });
-      const data = await res.json();
-      if (data.game) setGame(data.game as GameRecord);
-      if (!res.ok) setError(data.message || "Valami hiba történt.");
-    } catch {
-      setError("Nem sikerült súgót kérni.");
+      await runOwnedTurnRequest(
+        requestOwnershipRef.current as RequestOwnership,
+        {
+          requestTurn: async (signal) => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/clue`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expected_revision: gameRef.current.revision }),
+              signal,
+            });
+            const data = (await res.json()) as TurnResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const viewBody = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: viewBody.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame,
+          setError,
+          setTurnFailed: (failed) => {
+            turnFailedRef.current = failed;
+          },
+          setBusy,
+          setAmbiguousMode: () => {},
+          setExplanation: () => {},
+          clearAutoTurnGuard: () => {},
+          setTurnInProgress: (inProgress) => {
+            turnInProgressRef.current = inProgress;
+          },
+          registerActiveRequest: (handle) => {
+            activeRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeRequestRef.current = null;
+          },
+        },
+        CLUE_CLIENT_TIMEOUT_MS
+      );
     } finally {
-      setBusy(false);
+      actionInFlightRef.current = false;
     }
-  }, [game.game_id]);
+  }, []);
 
   // V2.8.6 R2 — this function used to be a plain fetch/setState wrapper,
   // exactly the shape lib/turnRequestGuard.ts's own module doc describes as
@@ -236,6 +278,14 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   // runOwnedTurnRequest's own existing abort→reconcile path. When nothing is
   // busy, an opportunistic canonical read applies only if it shows genuine
   // progress.
+  //
+  // ASK_CLIENT_TIMEOUT_MS (120s), not CLUE_CLIENT_TIMEOUT_MS (90s), even
+  // though activeRequestRef is shared by both send() and askForClue(): the
+  // handle itself does not say which route it belongs to, and using the
+  // LARGER of the two here is conservative in the safe direction — a
+  // genuinely stale /clue request is still caught, at most ~30s later than
+  // its own internal timeoutMs would have caught it anyway (that internal
+  // timer keeps running regardless of this handler).
   useEffect(() => {
     function handleVisibility() {
       if (document.visibilityState !== "visible") return;

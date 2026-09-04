@@ -38,20 +38,35 @@ test("RacerClient's /ask handler (send) is built on runOwnedTurnRequest and reco
   assert.match(sendFn, /requestView: async \(\) =>/, "must supply a canonical /view read for reconciliation");
 });
 
-test("RacerClient's /clue handler (askForClue) never requires `game` and never reconciles/issues /view", () => {
-  // V2.8.6 R2 Commit 1 scope — askForClue itself is untouched here (its own
-  // reliability wrapping is Commit 2's job, alongside /clue's own server
-  // change); this still records its CURRENT, unchanged shape. Bounded-length
-  // slice (matching the /correct assertion below) rather than "up to the
-  // next declaration", since the new doc comment directly above `send`
-  // mentions /view and would otherwise leak into a between-declarations slice.
+test("RacerClient's /clue handler (askForClue) is built on runOwnedTurnRequest and shares send()'s mutex", () => {
+  // V2.8.6 R2 Commit 2 — askForClue was rebuilt alongside /clue's own server
+  // reliability change, exactly like send() was for /ask in Commit 1 (see
+  // that test's own doc above for why the OLD assertion here is now
+  // describing a defect, not a safe minimal surface).
   const clueFn = RACER_CLIENT.slice(
     RACER_CLIENT.indexOf("const askForClue = useCallback("),
-    RACER_CLIENT.indexOf("const askForClue = useCallback(") + 500
+    RACER_CLIENT.indexOf("const send = useCallback(")
   );
-  assert.match(clueFn, /if \(data\.game\) setGame\(data\.game as GameRecord\)/);
-  assert.match(clueFn, /if \(!res\.ok\) setError\(data\.message/);
-  assert.doesNotMatch(clueFn, /\/view/);
+  assert.match(clueFn, /runOwnedTurnRequest\(/, "must go through the shared ownership/reconciliation module");
+  assert.match(clueFn, /requestOwnershipRef\.current as RequestOwnership/, "must share send()'s mutex, not a second independent one");
+  assert.match(clueFn, /expected_revision: gameRef\.current\.revision/);
+  assert.match(clueFn, /requestView: async \(\) =>/);
+});
+
+test("GameClient's /clue handler (sendClue) is built on runOwnedTurnRequest with its own independent ownership stream", () => {
+  // V2.8.6 R2 Commit 2 — sendClue gets its OWN ownership/in-flight/active-
+  // request trio (clueOwnershipRef), distinct from sendTurn's, mirroring
+  // resolveGame's own precedent (a third independent request stream) —
+  // safe because the clue-request panel and the pending-question panel are
+  // mutually exclusive render branches, so no button can race sendTurn's.
+  const clueFn = GAME_CLIENT.slice(
+    GAME_CLIENT.indexOf("const sendClue = useCallback("),
+    GAME_CLIENT.indexOf("const sendTurn = useCallback(")
+  );
+  assert.match(clueFn, /runOwnedTurnRequest\(/);
+  assert.match(clueFn, /clueOwnershipRef\.current as RequestOwnership/, "must use its own ownership tracker, not sendTurn's");
+  assert.match(clueFn, /expected_revision: gameRef\.current\.revision/);
+  assert.match(clueFn, /requestView: async \(\) =>/);
 });
 
 test("GameClient's /correct handler never requires `game` and never reconciles/issues /view", () => {

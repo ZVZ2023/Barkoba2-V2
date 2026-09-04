@@ -530,6 +530,54 @@ test("reconciliationShowsProgress: an advanced revision alone (no visible qa_log
 });
 
 // ---------------------------------------------------------------------------
+// V2.8.6 R2 — /clue now saves through saveGameIfRevisionMatches on BOTH
+// directions (see app/api/game/[id]/clue/route.ts), so a successful clue of
+// either direction always bumps the real CAS revision — the same signal
+// reconciliationShowsProgress already checks first. These name the two
+// clue-specific shapes explicitly, plus the negative control: a clue
+// direction-B response the player already saw (same text, same revision)
+// must not be reported as new progress.
+// ---------------------------------------------------------------------------
+
+test("reconciliationShowsProgress: clue direction A (a newly-appended, already-filled clue turn) is progress", () => {
+  const before = game({ revision: 1, qa_log: [] });
+  const after = mergeViewIntoGame(
+    before,
+    view({
+      record_revision: 2,
+      turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: "Not in the kitchen." })],
+    })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), true);
+});
+
+test("reconciliationShowsProgress: clue direction B (an outstanding request's text being filled in) is progress", () => {
+  const pendingClue = entry({ turn_index: 1, turn_type: "clue", clue_text: null });
+  const before = game({ revision: 1, qa_log: [pendingClue] });
+  const after = mergeViewIntoGame(
+    before,
+    view({
+      record_revision: 2,
+      turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: "Not in the kitchen." })],
+    })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), true);
+});
+
+test("reconciliationShowsProgress: NEGATIVE CONTROL — the SAME already-filled clue at the SAME revision is not progress", () => {
+  const filledClue = entry({ turn_index: 1, turn_type: "clue", clue_text: "Not in the kitchen." });
+  const before = game({ revision: 2, qa_log: [filledClue] });
+  const after = mergeViewIntoGame(
+    before,
+    view({
+      record_revision: 2,
+      turns: [viewTurn({ turn_index: 1, turn_type: "clue", clue_text: "Not in the kitchen." })],
+    })
+  );
+  assert.equal(reconciliationShowsProgress(before, after), false);
+});
+
+// ---------------------------------------------------------------------------
 // CONFIRMED-DEFECT FIX — pending-question/pending-clue progress must be
 // RELATIVE to `before`, not an absolute fact about `after`. The bug: the
 // same still-unanswered question or clue, present in BOTH `before` and
@@ -1072,13 +1120,17 @@ test("V2.8.5.2 (C) REQUIRED TEST — recovery through a timeout never issues a s
 // fix without touching what the server sends.
 // ---------------------------------------------------------------------------
 
-test("isAuthApplicationError recognizes exactly the five documented codes, nothing else", () => {
+test("isAuthApplicationError recognizes exactly the six documented codes, nothing else", () => {
   for (const code of [
     "unauthenticated",
     "not_a_participant",
     "wrong_seat",
     "restart_required",
     "identity_unavailable",
+    // V2.8.6 R2 — /ask's edit_turn_index local time-budget gate. Not an
+    // auth failure, but the same "documented, non-retryable, never
+    // reconciled" treatment applies.
+    "budget_exhausted",
   ]) {
     assert.equal(isAuthApplicationError(code), true, `${code} must be recognized`);
   }
@@ -1148,6 +1200,40 @@ test(
     "(recognized here even though no server route emits it until R1 Commit 3)",
   authErrorCase("identity_unavailable", 503)
 );
+
+test("V2.8.6 R2: budget_exhausted is a documented application error, applies its own `game`, and is never reconciled or auto-retried", async () => {
+  // Unlike the auth codes above, /ask's budget_exhausted response DOES carry
+  // `game` (the route's own contract — see app/api/game/[id]/ask/route.ts),
+  // so this deliberately does NOT reuse authErrorCase (which asserts
+  // setGame is never called, true only for the no-game auth shape).
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const g1 = game({ revision: g0.revision }); // unchanged revision — no mutation occurred
+  const { state, calls } = recordingState(g0);
+
+  let viewCalls = 0;
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({
+      ok: false,
+      data: { error: "budget_exhausted", message: "A szerkesztés most nem végezhető el. Próbáld újra.", game: g1 },
+    }),
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: view() };
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 0, "budget_exhausted must never trigger a /view reconciliation read");
+  assert.equal(countCalls(calls, "setGame"), 1, "the response's own game must still be applied");
+  assert.equal(
+    lastValueOf(calls, "setError"),
+    "A szerkesztés most nem végezhető el. Próbáld újra.",
+    "the server's own safe message must be shown"
+  );
+  assert.equal(lastValueOf(calls, "setTurnFailed"), true, "no automatic retry — a deliberate player action is required");
+});
 
 test("COMMIT 2 REGRESSION: an UNKNOWN error code with no `game` is still treated as a transport failure", async () => {
   const ownership = createRequestOwnership();
