@@ -1,0 +1,42 @@
+# R0 — the minimum CI gate.
+#
+# Runs the repository's own `npm run verify` (isolation check -> tests ->
+# typecheck -> build), which README.md documents as hermetic: no API key, no
+# database, no provider call. Nothing else is added here on purpose — no
+# Preview automation, no deployment step, no coverage gate.
+#
+# Node 24 matches the verified production runtime of the Vercel project
+# (nodeVersion "24.x"); the repository itself declares no engine.
+
+name: verify
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run verify
