@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getGame } from "@/lib/gameStore";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
-import { resolveSeat } from "@/lib/seats";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
+import { resolveSeatStrict } from "@/lib/seats";
 import { getSecretForComposer } from "@/lib/secretStore";
 import { buildComposerView, buildGameView } from "@/lib/gameView";
 
@@ -23,13 +23,29 @@ import { buildComposerView, buildGameView } from "@/lib/gameView";
 // PERMITTED SECRET CALL SITE. Reads the target through getSecretForComposer,
 // which returns null unless the caller IS the recorded Composer. The identity
 // check lives in the getter, not here, so this route cannot forget it.
+//
+// V2.8.6 R1 Commit 4 — treated as one security boundary with
+// app/game/[id]/page.tsx: the same typed identity resolution and the same
+// FIXED NULL-SEAT POLICY (no fallback to "whoever is asking" for an unset
+// single-human seat) now apply here too. Human↔Human behavior is unchanged —
+// resolveSeatStrict never falls back for it, exactly like resolveSeat
+// already didn't.
 // ---------------------------------------------------------------------------
 
 export const dynamic = "force-dynamic";
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   // The header middleware sets, having stripped any client-supplied copy.
-  const playerId = await resolveActingPlayerId(_req.headers);
+  const identity = await resolveActingPlayerIdentity(_req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
 
   const game = await getGame(params.id);
   if (!game) {
@@ -39,8 +55,30 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     );
   }
 
-  const seat = resolveSeat(game, playerId);
-  if (!seat) {
+  if (identity.kind === "absent") {
+    return NextResponse.json(
+      { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
+      { status: 401 }
+    );
+  }
+
+  const seatResolution = resolveSeatStrict(game, identity.playerId);
+  if (seatResolution.kind === "legacy_seat_unassigned") {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[barkoba] game ${game.game_id}: no seat was ever recorded for this game — ` +
+        "refusing rather than assigning the caller retroactively."
+    );
+    return NextResponse.json(
+      {
+        error: "restart_required",
+        message:
+          "Ez a játék egy régebbi verzióból származik, és a hozzáférés-ellenőrzés miatt nem folytatható. Kezdj új játékot.",
+      },
+      { status: 409 }
+    );
+  }
+  if (seatResolution.kind === "not_a_participant") {
     // A stranger learns only that they are not in this game. No phase, no
     // counts, no transcript — a 403 body is still a response body.
     return NextResponse.json(
@@ -49,11 +87,12 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     );
   }
 
+  const seat = seatResolution.seat!;
   if (seat === "racer") {
     return NextResponse.json({ view: buildGameView(game, "racer") });
   }
 
-  const secret = await getSecretForComposer(game, playerId);
+  const secret = await getSecretForComposer(game, identity.playerId);
   if (!secret) {
     // Seat says composer but the getter refused: the secret has expired, or the
     // seat is unassigned. Serve the shared view rather than failing the poll —

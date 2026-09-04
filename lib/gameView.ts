@@ -199,3 +199,21 @@ export function buildComposerView(
     join_code: game.join_code,
   };
 }
+
+/**
+ * V2.8.6 R1 Commit 4 — app/game/[id]/page.tsx passes the single-human modes'
+ * FULL GameRecord straight to a client component as an RSC prop (unlike
+ * this file's own narrowed GameView, built for Human↔Human). Nothing in
+ * GameClient.tsx or RacerClient.tsx renders `racer_output_raw` — the AI
+ * participant's raw structured output, which can carry its own rationale/
+ * reasoning fields — but an unrendered prop is still serialized into the
+ * page's RSC payload. This is the one declassification-adjacent seam that
+ * needed closing there: strip it before the record ever reaches a client
+ * component, rather than trust that nothing downstream reads it.
+ */
+export function stripRacerOutputRaw(game: GameRecord): GameRecord {
+  return {
+    ...game,
+    qa_log: game.qa_log.map((entry) => ({ ...entry, racer_output_raw: "" })),
+  };
+}
