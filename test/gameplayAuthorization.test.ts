@@ -185,7 +185,9 @@ test("403: a leaked game id cannot be acted on by another session's real identit
 
 test("200: the real Racer's own /ask concession is accepted (correct seat, existing behavior)", async () => {
   const { gameId } = await aiComposerGame();
-  const res = await callAsk(gameId, { concede: true }, RACER);
+  // V2.8.6 R2 — expected_revision is now required on every /ask mutation; a
+  // freshly created game starts at revision 0.
+  const res = await callAsk(gameId, { concede: true, expected_revision: 0 }, RACER);
   assert.equal(res.status, 200);
   assert.equal(res.data.game.phase, "resolving");
   assert.equal(res.data.game.final_action, "concede");
@@ -218,7 +220,8 @@ test("409 no_clue_credit: the real Racer passes the /clue auth gate and reaches 
   // request cleared authorization and was stopped by the pre-existing
   // business rule, not by the new check.
   const { gameId } = await aiComposerGame({ difficulty: "hard", clue_mode: "minimal" });
-  const res = await callClue(gameId, {}, RACER);
+  // V2.8.6 R2 — expected_revision is now required on every /clue mutation.
+  const res = await callClue(gameId, { expected_revision: 0 }, RACER);
   assert.equal(res.status, 409);
   assert.equal(res.data.error, "no_clue_credit");
 });
@@ -231,7 +234,7 @@ test("200: the real Composer writes clue text for the AI Racer's own pending req
   game.qa_log = [pending];
   await saveGame(game);
 
-  const res = await callClue(gameId, { clue_text: "Not in the kitchen." }, COMPOSER);
+  const res = await callClue(gameId, { clue_text: "Not in the kitchen.", expected_revision: 0 }, COMPOSER);
   assert.equal(res.status, 200);
   assert.equal(res.data.game.qa_log[0].clue_text, "Not in the kitchen.");
 });

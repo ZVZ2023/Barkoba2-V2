@@ -204,6 +204,12 @@ export const AUTH_APPLICATION_ERRORS = new Set([
   "wrong_seat",
   "restart_required",
   "identity_unavailable",
+  // V2.8.6 R2 — /ask's edit_turn_index local time-budget gate (see
+  // app/api/game/[id]/ask/route.ts). Not an auth failure, but the same
+  // "documented, non-retryable application outcome, never a transport
+  // failure" treatment applies: the response always carries `game`, must
+  // never be reconciled through /view, and must never be auto-retried.
+  "budget_exhausted",
 ]);
 
 export function isAuthApplicationError(error: unknown): boolean {
@@ -235,6 +241,25 @@ export function isAuthApplicationError(error: unknown): boolean {
  * indicator, no progress: a game frozen with no way back.
  */
 export const CLIENT_TURN_TIMEOUT_MS = 300_000;
+
+/**
+ * V2.8.6 R2 — /ask's own client-side wait bound, mirroring
+ * CLIENT_TURN_TIMEOUT_MS's derivation but scaled to /ask's own numbers:
+ * app/api/game/[id]/ask/route.ts sets maxDuration=90s and its own turn-lock
+ * TTL to 120s. 120_000ms matches the lock TTL for the same reason
+ * CLIENT_TURN_TIMEOUT_MS matches /turn's: by the time this client gives up,
+ * the server's own lock would already have expired too, so a retry after
+ * this timeout cannot race a still-legitimately-running attempt on the lock
+ * alone.
+ */
+export const ASK_CLIENT_TIMEOUT_MS = 120_000;
+
+/**
+ * V2.8.6 R2 — /clue's own client-side wait bound. app/api/game/[id]/clue/
+ * route.ts keeps maxDuration=60s (unchanged) and sets its turn-lock TTL to
+ * 90s; both clue directions share it. Same derivation as ASK_CLIENT_TIMEOUT_MS.
+ */
+export const CLUE_CLIENT_TIMEOUT_MS = 90_000;
 
 /**
  * Reconstruct a GameRecord-shaped QuestionLogEntry from a role-narrowed

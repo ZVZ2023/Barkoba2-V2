@@ -12,36 +12,42 @@ import { readFileSync } from "node:fs";
 // test/composerAuthority.test.ts already use for these exact files — a
 // weaker claim than an executed test, said plainly rather than implied.
 //
-// runOwnedTurnRequest's own behavioral fix is proven directly (real
-// execution, mocked transport) in test/turnRequestGuard.test.ts. This file
-// covers the two files that do NOT go through that machinery:
-// RacerClient.tsx's /ask and /clue handlers and GameClient.tsx's /correct
-// handler already satisfied every Commit 2 requirement before this change
-// (never required `game`, never reconciled, never called /view) — asserted
-// here as regression coverage, not implied by their being unmodified.
-// HumanClient.tsx's /view poll DID need a real fix (it silently discarded
-// every non-ok response, including a documented auth failure) and is
-// asserted for the actual code change.
+// V2.8.6 R2 — RacerClient.tsx's /ask handler (send) was rebuilt on
+// runOwnedTurnRequest (see lib/turnRequestGuard.ts and
+// test/turnRequestGuard.test.ts, which prove that module's own behavior
+// directly). It now DOES require `game` on the primary response and DOES
+// reconcile through /view on an uncertain transport failure — the opposite
+// of this file's original R1-era assertion, which recorded what was true
+// only because /ask itself had no reliability contract yet. Updated here,
+// not merely left broken, because the OLD assertion is now describing a
+// defect (an unbounded, unrecoverable request) rather than a safe minimal
+// surface.
 // ---------------------------------------------------------------------------
 
 const GAME_CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
 const RACER_CLIENT = readFileSync("app/game/[id]/RacerClient.tsx", "utf8");
 const HUMAN_CLIENT = readFileSync("app/game/[id]/HumanClient.tsx", "utf8");
 
-test("RacerClient's /ask handler never requires `game` and never reconciles/issues /view", () => {
+test("RacerClient's /ask handler (send) is built on runOwnedTurnRequest and reconciles through /view", () => {
   const sendFn = RACER_CLIENT.slice(
     RACER_CLIENT.indexOf("const send = useCallback("),
-    RACER_CLIENT.indexOf("const resolveGame = useCallback(")
+    RACER_CLIENT.indexOf("// V2.8.6 R2 — foreground reconciliation")
   );
-  assert.match(sendFn, /if \(data\.game\) setGame\(data\.game as GameRecord\)/, "game must be optional, never destructured unconditionally");
-  assert.match(sendFn, /if \(!res\.ok\) setError\(data\.message/, "the server's own message must be shown on failure");
-  assert.doesNotMatch(sendFn, /\/view/, "must never issue a reconciliation read");
+  assert.match(sendFn, /runOwnedTurnRequest\(/, "must go through the shared ownership/reconciliation module");
+  assert.match(sendFn, /expected_revision: gameRef\.current\.revision/, "the My Car Key revision must ride along on every /ask call");
+  assert.match(sendFn, /requestView: async \(\) =>/, "must supply a canonical /view read for reconciliation");
 });
 
 test("RacerClient's /clue handler (askForClue) never requires `game` and never reconciles/issues /view", () => {
+  // V2.8.6 R2 Commit 1 scope — askForClue itself is untouched here (its own
+  // reliability wrapping is Commit 2's job, alongside /clue's own server
+  // change); this still records its CURRENT, unchanged shape. Bounded-length
+  // slice (matching the /correct assertion below) rather than "up to the
+  // next declaration", since the new doc comment directly above `send`
+  // mentions /view and would otherwise leak into a between-declarations slice.
   const clueFn = RACER_CLIENT.slice(
     RACER_CLIENT.indexOf("const askForClue = useCallback("),
-    RACER_CLIENT.indexOf("const send = useCallback(")
+    RACER_CLIENT.indexOf("const askForClue = useCallback(") + 500
   );
   assert.match(clueFn, /if \(data\.game\) setGame\(data\.game as GameRecord\)/);
   assert.match(clueFn, /if \(!res\.ok\) setError\(data\.message/);
