@@ -7,6 +7,7 @@ import {
   reconciliationShowsProgress,
   runOwnedTurnRequest,
   runOwnedResolveRequest,
+  isAuthApplicationError,
   NETWORK_ERROR_MESSAGE,
   RESOLVE_NETWORK_ERROR_MESSAGE,
   type ResolveRequestIO,
@@ -1053,4 +1054,143 @@ test("V2.8.5.2 (C) REQUIRED TEST — recovery through a timeout never issues a s
 
   assert.equal(requestResolveCalls, 1, "the client's own timeout-driven recovery must never call POST /resolve a second time");
   assert.equal(requestViewCalls, 1, "reconciliation is a single GET /view, never a retried POST");
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.6 R1 COMMIT 2 — the client application-error contract.
+//
+// /turn's new identity/seat responses (401 unauthenticated, 403
+// not_a_participant/wrong_seat, 409 restart_required, and 503
+// identity_unavailable once R1 Commit 3 introduces it server-side) all
+// omit `game` by design — the FIXED NULL-SEAT POLICY requires an
+// unauthorized caller learn nothing about the game. Before this fix, the
+// ORIGINAL `!result.data.game` check could not tell that apart from a
+// truly unusable response body, and routed every one of them into
+// reconcileAfterFailure() — issuing an unnecessary GET /view and, finding
+// no progress (nothing was ever mutated), replacing the server's specific
+// message with the generic NETWORK_ERROR_MESSAGE. These tests prove the
+// fix without touching what the server sends.
+// ---------------------------------------------------------------------------
+
+test("isAuthApplicationError recognizes exactly the five documented codes, nothing else", () => {
+  for (const code of [
+    "unauthenticated",
+    "not_a_participant",
+    "wrong_seat",
+    "restart_required",
+    "identity_unavailable",
+  ]) {
+    assert.equal(isAuthApplicationError(code), true, `${code} must be recognized`);
+  }
+  assert.equal(isAuthApplicationError("wrong_phase"), false);
+  assert.equal(isAuthApplicationError("stale_turn"), false);
+  assert.equal(isAuthApplicationError(undefined), false);
+  assert.equal(isAuthApplicationError(null), false);
+  assert.equal(isAuthApplicationError(42), false);
+});
+
+function authErrorCase(errorCode: string, status: number) {
+  return async () => {
+    const ownership = createRequestOwnership();
+    const g0 = game();
+    const { state, calls } = recordingState(g0);
+
+    let viewCalls = 0;
+    const io: TurnRequestIO = {
+      requestTurn: async () => ({
+        ok: false,
+        data: { error: errorCode, message: `safe message for ${errorCode}` },
+      }),
+      requestView: async () => {
+        viewCalls += 1;
+        return { ok: true, view: view() };
+      },
+    };
+
+    await runOwnedTurnRequest(ownership, io, state);
+
+    assert.equal(viewCalls, 0, `${errorCode} (status ${status}) must never trigger GET /view`);
+    assert.equal(
+      lastValueOf(calls, "setError"),
+      `safe message for ${errorCode}`,
+      "the server's own safe message must be shown, not the generic network banner"
+    );
+    assert.notEqual(
+      lastValueOf(calls, "setError"),
+      NETWORK_ERROR_MESSAGE,
+      `${errorCode} must never surface as "Hálózati hiba"`
+    );
+    assert.equal(lastValueOf(calls, "setTurnFailed"), true);
+    // game was never present in the response and must never be required —
+    // setGame must simply never have been called.
+    assert.equal(countCalls(calls, "setGame"), 0, "game must never be required for an unauthorized response");
+  };
+}
+
+test(
+  "COMMIT 2: 401 unauthenticated is an application error, not a transport failure",
+  authErrorCase("unauthenticated", 401)
+);
+test(
+  "COMMIT 2: 403 not_a_participant is an application error, not a transport failure",
+  authErrorCase("not_a_participant", 403)
+);
+test(
+  "COMMIT 2: 403 wrong_seat is an application error, not a transport failure",
+  authErrorCase("wrong_seat", 403)
+);
+test(
+  "COMMIT 2: 409 restart_required is an application error, not a transport failure",
+  authErrorCase("restart_required", 409)
+);
+test(
+  "COMMIT 2: 503 identity_unavailable is an application error, not a transport failure " +
+    "(recognized here even though no server route emits it until R1 Commit 3)",
+  authErrorCase("identity_unavailable", 503)
+);
+
+test("COMMIT 2 REGRESSION: an UNKNOWN error code with no `game` is still treated as a transport failure", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, getCurrentGame } = recordingState(g0);
+
+  let viewCalls = 0;
+  const savedQ1 = viewTurn({ turn_index: 1, question_text: "Q1?" });
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({
+      ok: false,
+      data: { error: "some_future_error_code_nobody_added_yet", message: "x" },
+    }),
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: view({ turns: [savedQ1] }) };
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 1, "an unrecognized code with no game must still reconcile, exactly as before this commit");
+  assert.equal(getCurrentGame().qa_log.length, 1, "reconciliation still applies genuine progress for the unknown case");
+});
+
+test("COMMIT 2: the legitimate response path (ok, with game) is completely unaffected", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game();
+  const { state, calls, getCurrentGame } = recordingState(g0);
+  const g1 = game({ qa_log: [entry({ question_text: "Q1?" })] });
+
+  let viewCalls = 0;
+  const io: TurnRequestIO = {
+    requestTurn: async () => ({ ok: true, data: { game: g1 } }),
+    requestView: async () => {
+      viewCalls += 1;
+      return { ok: true, view: view() };
+    },
+  };
+
+  await runOwnedTurnRequest(ownership, io, state);
+
+  assert.equal(viewCalls, 0);
+  assert.equal(getCurrentGame(), g1);
+  assert.equal(lastValueOf(calls, "setTurnFailed"), false);
 });

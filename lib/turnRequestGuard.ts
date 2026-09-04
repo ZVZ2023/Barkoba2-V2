@@ -184,6 +184,33 @@ export interface TurnRequestState {
 export const NETWORK_ERROR_MESSAGE = "Hálózati hiba — próbáld újra.";
 
 /**
+ * V2.8.6 R1 Commit 2 — the documented identity/seat application errors
+ * /turn, /correct, /ask and /clue can now return. Every one of them omits
+ * `game` from its response body by design (see the R1 security commit and
+ * its FIXED NULL-SEAT POLICY: an unauthorized caller learns nothing about
+ * the game, not even its shape) — which is exactly what the ORIGINAL
+ * `!result.data.game` check below could not tell apart from a genuine
+ * transport failure. This is the seam that closes that gap: a response
+ * carrying one of these codes is a real, documented server answer and must
+ * never be treated as "the request didn't really happen."
+ *
+ * `identity_unavailable` is included even though no server route emits it
+ * yet (that lands in R1 Commit 3) — recognizing it here now means the
+ * client is never a release behind the server's own error taxonomy.
+ */
+export const AUTH_APPLICATION_ERRORS = new Set([
+  "unauthenticated",
+  "not_a_participant",
+  "wrong_seat",
+  "restart_required",
+  "identity_unavailable",
+]);
+
+export function isAuthApplicationError(error: unknown): boolean {
+  return typeof error === "string" && AUTH_APPLICATION_ERRORS.has(error);
+}
+
+/**
  * V2.8.5.1 — the client's own bound on how long a single /turn request may
  * run before this module gives up waiting and reconciles through canonical
  * truth instead. Chosen from EXISTING server-side timing, not invented:
@@ -402,7 +429,13 @@ export async function runOwnedTurnRequest(
 
   try {
     result = await io.requestTurn(controller.signal);
-    if (!result.data || !result.data.game) transportFailed = true;
+    // V2.8.6 R1 Commit 2 — a documented auth/identity application error is
+    // never a transport failure, even though (by design) it carries no
+    // `game`. Checked BEFORE the missing-`game` fallback below, which stays
+    // exactly as it was for every other case: a truly malformed or unusable
+    // body.
+    const isDocumentedAuthError = !result.ok && isAuthApplicationError(result.data?.error);
+    if (!isDocumentedAuthError && (!result.data || !result.data.game)) transportFailed = true;
   } catch {
     transportFailed = true;
   } finally {
@@ -424,7 +457,12 @@ export async function runOwnedTurnRequest(
     await reconcileAfterFailure(ownership, token, io, state);
   } else if (result) {
     const data = result.data as TurnResponseBody;
-    state.setGame(data.game as GameRecord);
+    // V2.8.6 R1 Commit 2 — a documented auth/identity error carries no
+    // `game` at all (by design — see AUTH_APPLICATION_ERRORS' own doc), so
+    // this must never be unconditional. Every OTHER response this route
+    // has ever returned always included `game`, so guarding it costs
+    // nothing for any of them.
+    if (data.game) state.setGame(data.game as GameRecord);
     if (!result.ok) {
       if (data.error === "stale_turn") {
         // V2.8.1 — a synchronization event, not a gameplay failure. Unchanged

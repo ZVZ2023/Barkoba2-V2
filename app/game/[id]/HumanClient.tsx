@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComposerGameView, GameView } from "@/lib/gameView";
 import { resultCopy } from "@/lib/resultCopy";
+import { isAuthApplicationError } from "@/lib/turnRequestGuard";
 import type { ComposerAnswer } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -51,8 +52,20 @@ export default function HumanClient({
   const refresh = useCallback(async () => {
     try {
       const res = await fetch(`/api/game/${view.game_id}/view`, { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        // V2.8.6 R1 Commit 2 — a documented identity/seat application error
+        // (401/403/409/503) is a real, informative answer, not a dropped
+        // poll — show it rather than silently discarding it like a genuine
+        // transient network blip. Every OTHER non-ok /view response (or one
+        // whose body isn't even JSON) keeps the prior, silent behavior:
+        // this is a 2.5s poll, and a transient hiccup should not flash an
+        // error the next tick usually clears on its own.
+        if (data && isAuthApplicationError(data.error)) {
+          setError(data.message || "Ehhez a játékhoz nincs hozzáférésed.");
+        }
+        return;
+      }
       if (data?.view) setView(data.view as AnyView);
     } catch {
       // A dropped poll is not an error the player needs to see; the next one
