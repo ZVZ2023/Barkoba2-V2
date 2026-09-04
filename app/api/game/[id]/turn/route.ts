@@ -6,7 +6,7 @@ import {
   releaseTurnLock,
   saveGameIfRevisionMatches,
 } from "@/lib/gameStore";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
 import { requireSeatStrict } from "@/lib/seats";
 import { toRacerPublicState } from "@/lib/racerState";
 import { derivePhaseOneState } from "@/lib/phaseOne";
@@ -537,14 +537,23 @@ export async function POST(
   // already records composer_player_id for this mode at creation, so the
   // check costs no data-model change here — see app/api/game/create/route.ts.
   // -------------------------------------------------------------------------
-  const playerId = await resolveActingPlayerId(req.headers);
-  if (playerId === null) {
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
     return NextResponse.json(
       { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
       { status: 401 }
     );
   }
-  const seatCheck = requireSeatStrict(game, playerId, "composer");
+  const seatCheck = requireSeatStrict(game, identity.playerId, "composer");
   if (!seatCheck.ok) {
     if (seatCheck.error === "legacy_seat_unassigned") {
       // eslint-disable-next-line no-console

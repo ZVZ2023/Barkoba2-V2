@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { acquireTurnLock, getGame, releaseTurnLock, saveGameIfRevisionMatches } from "@/lib/gameStore";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
 import { requireSeatStrict } from "@/lib/seats";
 import {
   advanceHighWaterMark,
@@ -125,14 +125,23 @@ export async function POST(
   // seat and same recorded field as /turn — see that route's identical
   // comment.
   // -------------------------------------------------------------------------
-  const playerId = await resolveActingPlayerId(req.headers);
-  if (playerId === null) {
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
     return NextResponse.json(
       { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
       { status: 401 }
     );
   }
-  const seatCheck = requireSeatStrict(game, playerId, "composer");
+  const seatCheck = requireSeatStrict(game, identity.playerId, "composer");
   if (!seatCheck.ok) {
     if (seatCheck.error === "legacy_seat_unassigned") {
       // eslint-disable-next-line no-console

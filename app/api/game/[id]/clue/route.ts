@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getGame, newLogEntry, saveGame } from "@/lib/gameStore";
-import { resolveActingPlayerId } from "@/lib/actingPlayer";
+import { resolveActingPlayerIdentity } from "@/lib/actingPlayer";
 import { requireSeatStrict } from "@/lib/seats";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { requestClueFromComposer } from "@/lib/prompts/composerAnswer";
@@ -69,13 +69,23 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   // any caller who knew or guessed game_id could request a clue as the
   // Racer, or write clue text as the Composer, on someone else's game.
   // -------------------------------------------------------------------------
-  const playerId = await resolveActingPlayerId(req.headers);
-  if (playerId === null) {
+  const identity = await resolveActingPlayerIdentity(req.headers);
+  if (identity.kind === "backend_unavailable") {
+    return NextResponse.json(
+      {
+        error: "identity_unavailable",
+        message: "Most nem tudjuk azonosítani a munkameneted. Próbáld újra hamarosan.",
+      },
+      { status: 503 }
+    );
+  }
+  if (identity.kind === "absent") {
     return NextResponse.json(
       { error: "unauthenticated", message: "A játékhoz be kell azonosítanod magad." },
       { status: 401 }
     );
   }
+  const playerId = identity.playerId;
 
   function seatFailureResponse(
     error: "not_a_participant" | "wrong_seat" | "legacy_seat_unassigned",

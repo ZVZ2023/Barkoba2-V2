@@ -8,6 +8,7 @@ import { POST as askPOST } from "../app/api/game/[id]/ask/route";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { POST as cluePOST } from "../app/api/game/[id]/clue/route";
 import { POST as correctPOST } from "../app/api/game/[id]/correct/route";
+import { __setSqlClientForTests, type SqlClient } from "../lib/corpus/db";
 import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
 
 enableTestIdentityLookups();
@@ -336,4 +337,78 @@ test("SOURCE: the ai_composer creation branch records racer_player_id from the r
     /racer_player_id:\s*playerId,/,
     "a new AI-Composer game must record the human Racer's resolved identity, not leave the seat unset"
   );
+});
+
+// ---------------------------------------------------------------------------
+// 7. V2.8.6 R1 COMMIT 3 — the identity backend itself failing (distinct from
+// nobody presenting an identity at all) must surface as 503
+// identity_unavailable, never as 401, and never reach the seat check or
+// touch game content.
+// ---------------------------------------------------------------------------
+
+function installThrowingIdentityBackend(): { restore: () => void } {
+  process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
+  process.env.CORPUS_ENABLED = "true";
+  const throwingSql: SqlClient = Object.assign(
+    async () => {
+      throw new Error("simulated identity-store outage");
+    },
+    { transaction: async () => Promise.reject(new Error("simulated identity-store outage")) }
+  );
+  __setSqlClientForTests(throwingSql);
+  return {
+    restore: () => {
+      __setSqlClientForTests(null);
+      delete process.env.DATABASE_URL;
+      delete process.env.CORPUS_ENABLED;
+    },
+  };
+}
+
+test("503 identity_unavailable: /ask distinguishes a backend outage from an absent identity", async () => {
+  const { gameId } = await aiComposerGame();
+  const backend = installThrowingIdentityBackend();
+  try {
+    const res = await callAsk(gameId, { question: "Is it alive?" }, RACER);
+    assert.equal(res.status, 503);
+    assert.equal(res.data.error, "identity_unavailable");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("503 identity_unavailable: /turn distinguishes a backend outage from an absent identity", async () => {
+  const { gameId } = await humanComposerGame();
+  const backend = installThrowingIdentityBackend();
+  try {
+    const res = await callTurn(gameId, undefined, COMPOSER);
+    assert.equal(res.status, 503);
+    assert.equal(res.data.error, "identity_unavailable");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("503 identity_unavailable: /correct distinguishes a backend outage from an absent identity", async () => {
+  const { gameId } = await humanComposerGame();
+  const backend = installThrowingIdentityBackend();
+  try {
+    const res = await callCorrect(gameId, { turn_index: 1, answer: "NO", expected_log_length: 1 }, COMPOSER);
+    assert.equal(res.status, 503);
+    assert.equal(res.data.error, "identity_unavailable");
+  } finally {
+    backend.restore();
+  }
+});
+
+test("503 identity_unavailable: /clue distinguishes a backend outage from an absent identity", async () => {
+  const { gameId } = await aiComposerGame({ difficulty: "hard", clue_mode: "minimal" });
+  const backend = installThrowingIdentityBackend();
+  try {
+    const res = await callClue(gameId, {}, RACER);
+    assert.equal(res.status, 503);
+    assert.equal(res.data.error, "identity_unavailable");
+  } finally {
+    backend.restore();
+  }
 });
