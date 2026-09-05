@@ -3,8 +3,15 @@ import { getGame, saveGame } from "@/lib/gameStore";
 import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { isParticipant } from "@/lib/seats";
 import { getSecretForAdjudication } from "@/lib/secretStore";
-import { runAdjudicator } from "@/lib/prompts/adjudicator";
-import { IntegrityReviewIncompleteError, runIntegrityReview } from "@/lib/prompts/integrityReview";
+import { AdjudicationInvalidOutputError, runAdjudicator } from "@/lib/prompts/adjudicator";
+import {
+  IntegrityReviewIncompleteError,
+  IntegrityReviewInvalidOutputError,
+  runIntegrityReview,
+} from "@/lib/prompts/integrityReview";
+import { AnthropicRefusalError, type AnthropicCallObservation } from "@/lib/anthropic";
+import { recordAiCall, type OperationStatus } from "@/lib/corpus/turnTelemetry";
+import { env } from "@/lib/env";
 import {
   deriveResult,
   needsAdjudication,
@@ -16,6 +23,49 @@ import type {
   GameRecord,
   IntegrityVerdict,
 } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// V2.8.7 — adjudication-seat telemetry helpers.
+//
+// A refusal is its own terminal status; a malformed payload and a transport
+// failure are both provider_error, told apart by error_class. Only the
+// classification is stored — never the error text, which could carry the
+// model's own words about the target.
+// ---------------------------------------------------------------------------
+function classifyAdjudicationFailure(err: unknown): { status: OperationStatus; errorClass: string } {
+  if (err instanceof AnthropicRefusalError) return { status: "refusal", errorClass: "refusal" };
+  if (err instanceof AdjudicationInvalidOutputError || err instanceof IntegrityReviewInvalidOutputError) {
+    return { status: "provider_error", errorClass: "invalid_output" };
+  }
+  if (err instanceof IntegrityReviewIncompleteError) {
+    return { status: "provider_error", errorClass: "incomplete_reasoning" };
+  }
+  return { status: "provider_error", errorClass: "provider_error" };
+}
+
+async function recordAdjudicationCall(
+  game: GameRecord,
+  kind: "adjudicator" | "integrity_review",
+  attemptNumber: number | null,
+  observed: AnthropicCallObservation | null,
+  outcome: { status: OperationStatus; errorClass: string | null; latencyMs: number }
+): Promise<void> {
+  await recordAiCall({
+    gameId: game.game_id,
+    turnIndex: game.qa_log.length,
+    operationKind: kind,
+    attemptNumber,
+    provider: "anthropic",
+    requestedModelId: env.modelAdjudication(),
+    resolvedModelId: observed?.resolvedModel ?? null,
+    status: outcome.status,
+    latencyMs: outcome.latencyMs,
+    errorClass: outcome.errorClass,
+    usage: observed?.usage ?? null,
+    effortSent: observed?.effort ?? env.effortAdjudication(),
+    requestMode: observed?.requestMode ?? null,
+  });
+}
 
 // ---------------------------------------------------------------------------
 // PERMITTED SECRET CALL SITE. This route reads the secret via
@@ -121,12 +171,22 @@ export async function POST(
       );
     }
 
+    // V2.8.7 — every adjudication call is recorded with its usage, whether
+    // it succeeded, was refused, or came back malformed (fail-open telemetry;
+    // see lib/corpus/turnTelemetry.ts). `observed` is filled by the client
+    // before any validation can throw, so a billed refusal is recorded as
+    // billed.
+    const adjudicationObserved: { value: AnthropicCallObservation | null } = { value: null };
+    const adjudicationStartedAt = Date.now();
     try {
       const adjudication = await runAdjudicator({
         target: secret.target,
         privateClarification: secret.private_clarification,
         guess: game.final_guess_text ?? "",
         gameLanguage: game.game_language,
+        onCallObserved: (o) => {
+          adjudicationObserved.value = o;
+        },
       });
       adjudicatorVerdict = adjudication.verdict;
       adjudicationNotes = adjudication.reasoning;
@@ -135,9 +195,22 @@ export async function POST(
       // verdict here and must not be interpreted anywhere else.
       adjudicationConfidence =
         typeof adjudication.confidence === "number" ? adjudication.confidence : null;
+      await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
+        status: "accepted",
+        errorClass: null,
+        latencyMs: Date.now() - adjudicationStartedAt,
+      });
     } catch (err) {
+      await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
+        ...classifyAdjudicationFailure(err),
+        latencyMs: Date.now() - adjudicationStartedAt,
+      });
       // eslint-disable-next-line no-console
       console.error("[barkoba] Adjudicator call failed:", err);
+      // V2.8.7 — a refusal (Claude Fable 5.1 stop_reason "refusal") lands
+      // here too: no substitute model, no automatic retry, no inferred
+      // verdict. The game stays "resolving" and the player sees the same
+      // recoverable message; the refusal is recorded above.
       // Phase stays "resolving". A game must never be decided by an error path.
       return NextResponse.json(
         {
@@ -197,6 +270,8 @@ export async function POST(
         );
       }
 
+      const reviewObserved: { value: AnthropicCallObservation | null } = { value: null };
+      const reviewStartedAt = Date.now();
       try {
         review = await runIntegrityReview({
           target: secret.target,
@@ -204,9 +279,23 @@ export async function POST(
           qaLog: game.qa_log,
           gameLanguage: game.game_language,
           maxTokens: maxTokensForAttempt,
+          onCallObserved: (o) => {
+            reviewObserved.value = o;
+          },
+        });
+        await recordAdjudicationCall(game, "integrity_review", attempt, reviewObserved.value, {
+          status: "accepted",
+          errorClass: null,
+          latencyMs: Date.now() - reviewStartedAt,
         });
       } catch (err) {
         const incomplete = err instanceof IntegrityReviewIncompleteError;
+        // V2.8.7 — each bounded attempt is recorded (and priced) on its own,
+        // including the incomplete first attempt that triggers the one retry.
+        await recordAdjudicationCall(game, "integrity_review", attempt, reviewObserved.value, {
+          ...classifyAdjudicationFailure(err),
+          latencyMs: Date.now() - reviewStartedAt,
+        });
         // V2.8.5.2 — attempt number and cap identify WHICH budget truncated,
         // without logging target/qaLog/reasoning content (the game object
         // itself is never passed to console.error anywhere in this route).

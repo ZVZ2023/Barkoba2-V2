@@ -11,6 +11,8 @@ import { requireSeatStrict } from "@/lib/seats";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { requestClueFromComposer } from "@/lib/prompts/composerAnswer";
 import { consumeModelCall } from "@/lib/callBudget";
+import { recordAnthropicSeatCall, type SeatCallObservation } from "@/lib/corpus/turnTelemetry";
+import { env } from "@/lib/env";
 import {
   clueCreditsAvailable,
   cluesEnabled,
@@ -346,6 +348,20 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
     let clueText: string | null = null;
     let clueProvenance: import("@/lib/types").ModelProvenance | null = null;
+    // V2.8.7 — recorded with its usage (fail-open; lib/corpus/turnTelemetry.ts).
+    const clueObserved: { value: SeatCallObservation | null } = { value: null };
+    const clueStartedAt = Date.now();
+    const recordClueCall = (status: "accepted" | "provider_error") =>
+      recordAnthropicSeatCall({
+        gameId,
+        turnIndex: game.qa_log.length + 1,
+        operationKind: "composer_clue",
+        requestedModelId: env.modelRacer(),
+        observed: clueObserved.value,
+        status,
+        errorClass: status === "accepted" ? null : "provider_error",
+        latencyMs: Date.now() - clueStartedAt,
+      });
     try {
       const clue = await requestClueFromComposer({
         target: secret.target,
@@ -357,10 +373,16 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         maxQuestions: game.max_questions,
         clueMode: game.clue_mode ?? "none",
         gameLanguage: game.game_language,
+        onCallObserved: (o) => {
+          clueObserved.value = o;
+        },
       });
       clueText = clue.clue_text;
       clueProvenance = clue.provenance;
+      // clueMode "none" returns without a model call; nothing billable to record.
+      if (clue.provenance) await recordClueCall("accepted");
     } catch (err) {
+      await recordClueCall("provider_error");
       // eslint-disable-next-line no-console
       console.error("[barkoba] Clue request failed:", err);
       return NextResponse.json(

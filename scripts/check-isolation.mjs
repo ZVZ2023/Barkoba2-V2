@@ -101,7 +101,14 @@ const QUARANTINED = [
   "lib/providers/types.ts",
   "lib/providers/anthropic.ts",
   "lib/providers/xai.ts",
+  // V2.8.7 — the OpenAI transport (GPT-6 Astra). Same blast radius as the
+  // two above: it carries the Racer's view of the game to a third vendor.
+  "lib/providers/openai.ts",
   "lib/anthropic.ts",
+  // V2.8.7 — cost accounting reads only what turn_operations recorded and
+  // prices it; it has no business anywhere near the target.
+  "lib/aiCost.ts",
+  "scripts/reportAiCost.ts",
   // The latency probe drives the real Racer path against a live endpoint. It
   // carries whatever the Racer is given to an external vendor, so it sits in
   // the same blast radius as the adapters it exercises.

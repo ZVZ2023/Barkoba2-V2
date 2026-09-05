@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { POST as createPOST } from "../app/api/game/create/route";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { getGame } from "../lib/gameStore";
-import { xaiAdapter } from "../lib/providers/xai";
+import { openaiAdapter } from "../lib/providers/openai";
 import type { ToolCallResult } from "../lib/providers/types";
 import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
 
@@ -16,14 +16,15 @@ enableTestIdentityLookups();
 // caller's would be, then required again on every /turn call below.
 const TEST_COMPOSER_ID = testPlayerId("a");
 
-// The public creation path pins every ordinary game's Racer seat to "xai"
-// (see PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a real-flow
-// test that goes through the actual create route needs xai "available" and
-// must mock xaiAdapter, not anthropicAdapter, to observe the Racer's turn.
+// The public creation path pins every ordinary game's Racer seat to "openai"
+// (V2.8.7 — see PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a
+// real-flow test that goes through the actual create route needs openai
+// "available" and must mock openaiAdapter, not anthropicAdapter, to observe
+// the Racer's turn.
 // ANTHROPIC_API_KEY is required too: lib/prompts/validator.ts always calls
 // the real Anthropic transport (mocked below via global.fetch), and the
 // transport reads the key before the mocked fetch is ever reached.
-process.env.XAI_API_KEY = "test-key";
+process.env.OPENAI_API_KEY = "test-key";
 process.env.ANTHROPIC_API_KEY = "test-key";
 // This file creates several games from the same synthetic guest identity —
 // the per-hour creation rate limit is an anonymous-abuse safeguard unrelated
@@ -64,7 +65,11 @@ function mockValidatorFetch(detectedLanguage: "en" | "hu") {
       };
       return {
         ok: true,
-        json: async () => ({ model: "claude-mock", content: [{ type: "tool_use", input }] }),
+        json: async () => ({
+          model: "claude-mock",
+          // V2.8.7 — the client validates the returned tool's NAME.
+          content: [{ type: "tool_use", name: "submit_validation", input }],
+        }),
         text: async () => "",
       } as unknown as Response;
     }
@@ -111,10 +116,10 @@ async function answer(gameId: string, ans: "YES" | "NO" | "AMBIGUOUS", revision:
 }
 
 function mockRacerOnce(questionText: string) {
-  const original = xaiAdapter.callTool;
+  const original = openaiAdapter.callTool;
   let calls = 0;
   let capturedMessages: unknown[] = [];
-  xaiAdapter.callTool = (async (request: { messages: unknown[] }) => {
+  openaiAdapter.callTool = (async (request: { messages: unknown[] }) => {
     calls += 1;
     capturedMessages = request.messages;
     return {
@@ -136,12 +141,12 @@ function mockRacerOnce(questionText: string) {
       },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
-  }) as typeof xaiAdapter.callTool;
+  }) as typeof openaiAdapter.callTool;
   return {
     callCount: () => calls,
     lastMessages: () => capturedMessages,
     restore: () => {
-      xaiAdapter.callTool = original;
+      openaiAdapter.callTool = original;
     },
   };
 }
@@ -315,10 +320,10 @@ test("REAL FLOW: Phase One still makes zero Racer-provider calls after the langu
     mock.restore();
   }
 
-  const original = xaiAdapter.callTool;
-  xaiAdapter.callTool = (async () => {
+  const original = openaiAdapter.callTool;
+  openaiAdapter.callTool = (async () => {
     throw new Error("PROVIDER MUST NOT BE CALLED DURING PHASE ONE");
-  }) as typeof xaiAdapter.callTool;
+  }) as typeof openaiAdapter.callTool;
   try {
     const opening = await callTurn(gameId!);
     let rev = opening.data.game.revision;
@@ -329,6 +334,6 @@ test("REAL FLOW: Phase One still makes zero Racer-provider calls after the langu
     // Q5 not yet answered -- the 5th answer is what triggers Phase Two, so
     // stopping short of it keeps this test a pure zero-provider-calls check.
   } finally {
-    xaiAdapter.callTool = original;
+    openaiAdapter.callTool = original;
   }
 });

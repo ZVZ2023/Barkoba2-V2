@@ -38,7 +38,30 @@
  * no implementation does not compile. B2 shipped this as a one-member union for
  * exactly that reason; B3 adds "xai" and lib/providers/xai.ts in one change.
  */
-export type ModelProviderId = "anthropic" | "xai";
+export type ModelProviderId = "anthropic" | "xai" | "openai";
+
+/**
+ * V2.8.7 — provider-neutral token usage for ONE call, as the provider
+ * reported it. Every field is `null` when the provider did not say — unknown
+ * is never recorded as zero. The seat-level cost report (lib/aiCost.ts) prices
+ * these against a dated price list and marks a call with unknown usage as
+ * unpriced rather than free.
+ */
+export interface ModelCallUsage {
+  /** Uncached input tokens billed at the full input rate. */
+  input_tokens: number | null;
+  /** Input tokens served from the provider's prompt cache (discounted). */
+  cached_input_tokens: number | null;
+  /**
+   * Input tokens written to the provider's cache. Anthropic bills these at a
+   * premium; OpenAI has no such line item and reports null (not applicable).
+   */
+  cache_write_input_tokens: number | null;
+  /** Output tokens, INCLUDING the reasoning share where the provider bills reasoning as output. */
+  output_tokens: number | null;
+  /** The reasoning share of output_tokens, where reported. Informational only — never billed twice. */
+  reasoning_tokens: number | null;
+}
 
 /**
  * One forced-tool call, described in vendor-neutral terms.
@@ -119,11 +142,29 @@ export interface ToolCallResult<T> {
    * Populated best-effort — an absent field means the provider did not say,
    * never that the value was zero.
    */
-  diagnostics?: {
-    finishReason?: string;
-    completionTokens?: number;
-    reasoningTokens?: number;
-  };
+  diagnostics?: ToolCallDiagnostics;
+}
+
+export interface ToolCallDiagnostics {
+  finishReason?: string;
+  completionTokens?: number;
+  reasoningTokens?: number;
+  /** V2.8.7 — normalised usage for cost accounting; absent when the provider reported none. */
+  usage?: ModelCallUsage;
+  /** V2.8.7 — the reasoning effort actually sent on this call, where the provider has the concept. */
+  effortSent?: string;
+  /** V2.8.7 — "forced_tool" or "auto_strict_tool"; see lib/providers/anthropic.ts. */
+  requestMode?: string;
+}
+
+/**
+ * V2.8.7 — what a caller that does not own the ToolCallResult (e.g. the
+ * guess-intent sub-call) can still observe about the call, for provenance and
+ * cost accounting. Never carries prompt text or the tool input.
+ */
+export interface ToolCallObservation {
+  resolvedModel: string;
+  diagnostics?: ToolCallDiagnostics;
 }
 
 /**

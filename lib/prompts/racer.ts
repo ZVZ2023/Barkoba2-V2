@@ -1,6 +1,6 @@
 import { DEFAULT_RACER_PROVIDER, getAdapter } from "../providers";
 import { env } from "../env";
-import type { ModelProviderId, ToolCallResult } from "../providers/types";
+import type { ModelProviderId, ToolCallObservation, ToolCallResult } from "../providers/types";
 import { validateCandidateMove, type LayerTwoCandidate, type LayerTwoState } from "../layerTwo";
 import type {
   GuessIntentResolution,
@@ -897,7 +897,9 @@ function assertGuidanceApplied(content: string): void {
 // in turn-operation telemetry before the call, without duplicating this
 // resolution logic a second time. Behavior unchanged; only visibility widened.
 export function racerModelFor(provider: ModelProviderId): string {
-  return provider === "xai" ? env.xaiModelRacer() : env.modelRacer();
+  if (provider === "xai") return env.xaiModelRacer();
+  if (provider === "openai") return env.openaiModelRacer();
+  return env.modelRacer();
 }
 
 export async function runRacerTurn(
@@ -1098,7 +1100,15 @@ export async function runRacerTurn(
 export async function resolveGuessIntent(
   state: RacerPublicState,
   flaggedQuestion: string,
-  provider: ModelProviderId = DEFAULT_RACER_PROVIDER
+  provider: ModelProviderId = DEFAULT_RACER_PROVIDER,
+  options: {
+    /**
+     * V2.8.7 — receives the resolved model and call diagnostics (usage,
+     * effort) so the caller can record this billable sub-call's cost. The
+     * return shape is unchanged; this is a side channel, never the result.
+     */
+    onCallObserved?: (observation: ToolCallObservation) => void;
+  } = {}
 ): Promise<GuessIntentResolution> {
   // Same seat, same provider as the turn it is resolving — the caller passes
   // the game's provider, not a default. A flagged question must not be re-read
@@ -1120,7 +1130,7 @@ export async function resolveGuessIntent(
   const content = buildGuessIntentMessage(state, flaggedQuestion);
   assertGuidanceApplied(content);
 
-  const { output: result } = await getAdapter(provider).callTool<GuessIntentResolution>({
+  const { output: result, resolvedModel, diagnostics } = await getAdapter(provider).callTool<GuessIntentResolution>({
     model: racerModelFor(provider),
     system: GUESS_INTENT_SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
@@ -1130,6 +1140,8 @@ export async function resolveGuessIntent(
     inputSchema: GUESS_INTENT_SCHEMA,
     maxTokens: 384,
   });
+
+  options.onCallObserved?.({ resolvedModel, diagnostics });
 
   return {
     resolution: result.resolution === "confirm_guess" ? "confirm_guess" : "continue_questioning",

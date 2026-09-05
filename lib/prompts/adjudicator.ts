@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import { renderClarification } from "./clarification";
 import type { AdjudicatorResult, GameLanguage } from "../types";
@@ -137,14 +137,30 @@ export const ADJUDICATOR_INPUT_SCHEMA: Record<string, unknown> = {
 
 const INPUT_SCHEMA = ADJUDICATOR_INPUT_SCHEMA;
 
+/**
+ * V2.8.7 — thrown when the call succeeded but the payload is not a verdict:
+ * a verdict outside {correct, incorrect}, or no reasoning. Never coerced into
+ * a verdict — an unexplained or malformed judgment is an explicit
+ * adjudication failure (the caller's existing adjudicator_unavailable path),
+ * not an accepted result and not an automatic win for anyone.
+ */
+export class AdjudicationInvalidOutputError extends Error {}
+
 export async function runAdjudicator(params: {
   target: string;
   privateClarification: string;
   guess: string;
   gameLanguage: GameLanguage;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<AdjudicatorResult> {
   const result = await callAnthropicTool<AdjudicatorResult>({
-    model: env.modelStrong(),
+    // V2.8.7 — the adjudication seat runs on its own model/effort pair
+    // (Claude Fable 5.1 at low effort by default), separate from the
+    // Validator's and Composer's strong-model setting. See lib/env.ts.
+    model: env.modelAdjudication(),
+    effort: env.effortAdjudication(),
+    onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -171,12 +187,29 @@ export async function runAdjudicator(params: {
     temperature: 0,
   });
 
+  // V2.8.7 — VALIDATE, NEVER COERCE. Before this version an unexpected
+  // verdict value silently became "incorrect". With auto+strict tool mode on
+  // Claude Fable 5.1 the schema is enforced server-side, but the contract is
+  // held here regardless of which model or mode produced the payload.
+  const rawVerdict: unknown = result.verdict;
+  if (rawVerdict !== "correct" && rawVerdict !== "incorrect") {
+    throw new AdjudicationInvalidOutputError(
+      `adjudicator: provider returned verdict ${JSON.stringify(rawVerdict)} outside {correct, incorrect}; refusing to infer a verdict.`
+    );
+  }
+  const reasoning = typeof result.reasoning === "string" ? result.reasoning.trim() : "";
+  if (reasoning.length === 0) {
+    throw new AdjudicationInvalidOutputError(
+      "adjudicator: provider returned a verdict with no reasoning; refusing to accept an unexplained verdict."
+    );
+  }
+
   const rawConfidence = Number(result.confidence);
   return {
-    verdict: result.verdict === "correct" ? "correct" : "incorrect",
+    verdict: rawVerdict,
     confidence: Number.isFinite(rawConfidence)
       ? Math.min(1, Math.max(0, rawConfidence))
       : 0.5,
-    reasoning: result.reasoning ?? "",
+    reasoning,
   };
 }

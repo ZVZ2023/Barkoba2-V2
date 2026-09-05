@@ -26,7 +26,7 @@ import { advanceHighWaterMark, effectiveConsumed } from "@/lib/rewind";
 import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent, racerModelFor } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
-import type { ModelProviderId } from "@/lib/providers/types";
+import type { ModelCallUsage, ModelProviderId, ToolCallObservation } from "@/lib/providers/types";
 import { detectGuess } from "@/lib/guessDetector";
 import {
   priorAskedQuestions,
@@ -43,6 +43,7 @@ import {
 import {
   recordOperationStarted,
   recordOperationCompleted,
+  recordAiCall,
   type OperationHandle,
 } from "@/lib/corpus/turnTelemetry";
 import { env } from "@/lib/env";
@@ -214,6 +215,12 @@ interface RacerAttempt {
   telemetryHandle: OperationHandle;
   /** Wall-clock time of the runRacerTurn() call alone, in ms. */
   attemptLatencyMs: number;
+  /** V2.8.7 — provider-reported usage for THIS attempt's call; null when it reported none (unknown, not zero). */
+  usage: ModelCallUsage | null;
+  /** V2.8.7 — the reasoning effort the adapter actually sent, where the provider has the concept. */
+  effortUsed: string | null;
+  /** V2.8.7 — "forced_tool" | "auto_strict_tool", per the adapter. */
+  requestMode: string | null;
 }
 
 type RacerAttemptOutcome =
@@ -385,6 +392,12 @@ async function runOneRacerAttempt(
   let provenance: ModelProvenance;
   const attemptStartedAt = Date.now();
   let attemptLatencyMs = 0;
+  // V2.8.7 — what the provider reported about the call, for cost accounting.
+  // Stays null (unknown) on every failure path and whenever the adapter had
+  // nothing to report.
+  let attemptUsage: ModelCallUsage | null = null;
+  let effortUsed: string | null = null;
+  let requestMode: string | null = null;
   try {
     const racerResult = await runWithAbortTimeout(finalDecision.allowanceMs, (signal) =>
       runRacerTurn(racerState, {
@@ -397,6 +410,9 @@ async function runOneRacerAttempt(
     turn = racerResult.output;
     provenance = racerResult.provenance;
     attemptLatencyMs = Date.now() - attemptStartedAt;
+    attemptUsage = racerResult.diagnostics?.usage ?? null;
+    effortUsed = racerResult.diagnostics?.effortSent ?? null;
+    requestMode = racerResult.diagnostics?.requestMode ?? null;
     // NOT finalized here: whether this lands as "accepted" or
     // "duplicate_rejected" is the duplicate-guard's verdict, which only the
     // caller (POST's produceCandidate closure) knows. telemetryHandle
@@ -455,12 +471,38 @@ async function runOneRacerAttempt(
         // question as a question rather than silently converting it to a guess.
         intentOutcome = "continue_questioning";
       } else {
+        // V2.8.7 — this sub-call is billable Racer cost and is recorded on
+        // its own row (operation_kind racer_guess_intent), never folded into
+        // the turn attempt's row: one row per billable call, no double count.
+        const intentObserved: { value: ToolCallObservation | null } = { value: null };
+        const intentStartedAt = Date.now();
+        const recordIntentCall = (status: "accepted" | "provider_error") =>
+          recordAiCall({
+            gameId,
+            turnIndex: game.qa_log.length + 1,
+            operationKind: "racer_guess_intent",
+            provider: racerProvider,
+            requestedModelId: requestedModel,
+            resolvedModelId: intentObserved.value?.resolvedModel ?? null,
+            status,
+            latencyMs: Date.now() - intentStartedAt,
+            errorClass: status === "accepted" ? null : "provider_error",
+            usage: intentObserved.value?.diagnostics?.usage ?? null,
+            effortSent: intentObserved.value?.diagnostics?.effortSent ?? null,
+            requestMode: intentObserved.value?.diagnostics?.requestMode ?? null,
+          });
         try {
           const resolution = await resolveGuessIntent(
             racerState,
             turn.question_text,
-            racerProvider
+            racerProvider,
+            {
+              onCallObserved: (o) => {
+                intentObserved.value = o;
+              },
+            }
           );
+          await recordIntentCall("accepted");
           intentOutcome = resolution.resolution;
 
           if (resolution.resolution === "confirm_guess") {
@@ -476,6 +518,7 @@ async function runOneRacerAttempt(
         } catch (err) {
           // eslint-disable-next-line no-console
           console.error("[barkoba] Guess-intent resolution failed:", err);
+          await recordIntentCall("provider_error");
           // Same fail-safe: an unresolved flag stays a question.
           intentOutcome = "continue_questioning";
         }
@@ -493,6 +536,9 @@ async function runOneRacerAttempt(
       preRevisionQuestion,
       telemetryHandle,
       attemptLatencyMs,
+      usage: attemptUsage,
+      effortUsed,
+      requestMode,
     },
   };
 }
@@ -1114,6 +1160,11 @@ export async function POST(
           // requested id whenever a configured alias resolves to a dated
           // snapshot (see racer.ts's own provenance doc).
           modelId: outcome.attempt.provenance.model_id,
+          // V2.8.7 — the call's usage/effort, priced later per game. A
+          // duplicate-rejected attempt is still billed, and is recorded so.
+          usage: outcome.attempt.usage,
+          effortSent: outcome.attempt.effortUsed,
+          requestMode: outcome.attempt.requestMode,
         });
 
         return { ok: true, candidate: outcome.attempt };

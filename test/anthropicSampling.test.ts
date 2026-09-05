@@ -52,10 +52,13 @@ function stubFetch(rejectSampling: boolean) {
     if (rejectSampling && "temperature" in body) {
       return { ok: false, status: 400, text: async () => DEPRECATION_BODY };
     }
+    // V2.8.7 — the client validates the returned tool's NAME; echo the one
+    // the request asked for, as the real API does.
+    const toolName = (body.tools as Array<{ name: string }>)[0]!.name;
     return {
       ok: true,
       status: 200,
-      json: async () => ({ content: [{ type: "tool_use", input: { verdict: "correct" } }] }),
+      json: async () => ({ content: [{ type: "tool_use", name: toolName, input: { verdict: "correct" } }] }),
     };
   }) as unknown as typeof fetch;
   return sent;

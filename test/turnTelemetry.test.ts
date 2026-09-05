@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import {
   recordOperationStarted,
   recordOperationCompleted,
+  recordAiCall,
   findPresumedKilledOperations,
   TELEMETRY_TIMEOUT_CONFIG,
   __setSqlGetterForTests,
@@ -142,7 +143,11 @@ for (const status of ["accepted", "duplicate_rejected", "provider_error", "self_
     assert.match(calls[0]!.sql, /ON CONFLICT \(operation_id\) DO UPDATE/);
     assert.match(calls[0]!.sql, /WHERE corpus\.turn_operations\.status = 'started'/, "a terminal row must never be overwritten by a later write");
     assert.match(calls[0]!.sql, /model_id = COALESCE\(EXCLUDED\.model_id, corpus\.turn_operations\.model_id\)/);
-    // (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class)
+    // (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class,
+    //  requested_model_id, reasoning_effort, request_mode, input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_tokens)
+    // V2.8.7 — the eight usage columns are APPENDED after the 0012 columns,
+    // so every positional reader of the first ten values is unchanged; with
+    // no usage given they are all null (unknown), never zero.
     assert.deepEqual(calls[0]!.values, [
       "op-1",
       "g1",
@@ -154,6 +159,14 @@ for (const status of ["accepted", "duplicate_rejected", "provider_error", "self_
       status,
       4321,
       status === "provider_error" || status === "self_timeout" ? status : null,
+      "grok-requested",
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
     ]);
   });
 }
@@ -177,7 +190,130 @@ test("REQUIRED (model tracking): recordOperationCompleted's row carries the RESO
     "accepted",
     100,
     null,
+    "grok-requested", // V2.8.7 — the REQUESTED id is kept alongside the resolved one
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
+    null,
   ]);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.7 — usage columns (migration 0013) and the one-shot recordAiCall.
+// ---------------------------------------------------------------------------
+
+test("V2.8.7: a completion carrying usage writes every token figure, effort and request mode", async () => {
+  const handle = makeHandle({ provider: "openai", requestedModelId: "gpt-6-astra" });
+  await recordOperationCompleted(handle, {
+    status: "accepted",
+    latencyMs: 900,
+    errorClass: null,
+    modelId: "gpt-6-astra",
+    usage: {
+      input_tokens: 1200,
+      cached_input_tokens: 800,
+      cache_write_input_tokens: null,
+      output_tokens: 350,
+      reasoning_tokens: 300,
+    },
+    effortSent: "low",
+    requestMode: "forced_tool",
+  });
+  assert.equal(calls.length, 1);
+  assert.match(calls[0]!.sql, /input_tokens = EXCLUDED\.input_tokens/);
+  assert.match(calls[0]!.sql, /requested_model_id = COALESCE\(EXCLUDED\.requested_model_id/);
+  assert.deepEqual(calls[0]!.values.slice(10), [
+    "gpt-6-astra",
+    "low",
+    "forced_tool",
+    1200,
+    800,
+    null, // OpenAI reports no cache writes — stays null, not zero
+    350,
+    300,
+  ]);
+});
+
+test("V2.8.7: recordAiCall writes ONE terminal row for a non-Racer seat, with attempt number and refusal status", async () => {
+  await recordAiCall({
+    gameId: "g9",
+    turnIndex: 12,
+    operationKind: "integrity_review",
+    attemptNumber: 2,
+    provider: "anthropic",
+    requestedModelId: "claude-fable-5-1",
+    resolvedModelId: "claude-fable-5-1",
+    status: "refusal",
+    latencyMs: 2500,
+    errorClass: "refusal",
+    usage: {
+      input_tokens: 4000,
+      cached_input_tokens: 0,
+      cache_write_input_tokens: 0,
+      output_tokens: 20,
+      reasoning_tokens: null,
+    },
+    effortSent: "low",
+    requestMode: "auto_strict_tool",
+  });
+  assert.equal(calls.length, 1, "exactly one write — no separate start row for these seats");
+  assert.match(calls[0]!.sql, /ON CONFLICT \(operation_id\) DO UPDATE/);
+  const v = calls[0]!.values;
+  assert.equal(typeof v[0], "string");
+  assert.deepEqual(v.slice(1), [
+    "g9",
+    12,
+    "integrity_review",
+    2,
+    "anthropic",
+    "claude-fable-5-1",
+    "refusal",
+    2500,
+    "refusal",
+    "claude-fable-5-1",
+    "low",
+    "auto_strict_tool",
+    4000,
+    0,
+    0,
+    20,
+    null,
+  ]);
+});
+
+test("V2.8.7: migrations/0013_ai_usage_telemetry.sql adds the usage columns and widens the kind/status constraints", () => {
+  const body = readFileSync("migrations/0013_ai_usage_telemetry.sql", "utf8");
+  const statements = splitSqlStatements(body);
+  assert.ok(statements.some((s) => /ADD COLUMN IF NOT EXISTS input_tokens integer/.test(s)));
+  assert.ok(statements.some((s) => /ADD COLUMN IF NOT EXISTS reasoning_tokens integer/.test(s)));
+  assert.ok(statements.some((s) => /ADD COLUMN IF NOT EXISTS requested_model_id text/.test(s)));
+  const kind = statements.find((s) => /ADD CONSTRAINT turn_operations_kind_known/.test(s));
+  assert.ok(kind, "the kind constraint is re-added");
+  for (const k of ["racer_guess_intent", "adjudicator", "integrity_review", "validator", "composer_choice", "composer_answer", "composer_clue", "question_edit"]) {
+    assert.ok(kind!.includes(`'${k}'`), `kind constraint admits ${k}`);
+  }
+  const status = statements.find((s) => /ADD CONSTRAINT turn_operations_status_known/.test(s));
+  assert.ok(status && status.includes("'refusal'"), "status constraint admits refusal");
+  assert.ok(statements.some((s) => /turn_operations_game_kind_idx/.test(s)));
+});
+
+test("V2.8.7: migration 0013 stores no secret-shaped, answer-shaped, or prompt-shaped columns", () => {
+  // Same scan as 0012's, with quoted string literals stripped as well: the
+  // widened CHECK constraints list operation KINDS as values ('composer_answer'
+  // names the seat that answers, not a column that stores an answer), and
+  // only column definitions are what this guard is about.
+  const body = readFileSync("migrations/0013_ai_usage_telemetry.sql", "utf8")
+    .split("\n")
+    .filter((line) => !line.trim().startsWith("--"))
+    .join("\n")
+    .replace(/'[^']*'/g, "''")
+    .toLowerCase();
+  for (const forbidden of ["target", "secret", "answer", "explanation", "prompt", "question_text", "tool_call", "credential", "authorization"]) {
+    assert.equal(body.includes(forbidden), false, `migration must not define a "${forbidden}"-shaped column`);
+  }
 });
 
 // ---------------------------------------------------------------------------

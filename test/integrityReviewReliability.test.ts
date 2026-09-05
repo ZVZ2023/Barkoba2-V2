@@ -28,11 +28,15 @@ beforeEach(() => {
   globalThis.fetch = realFetch;
 });
 
+// V2.8.7 — the client validates the returned tool's NAME, so every stub names
+// the integrity-review tool exactly as the real API would.
+const TOOL = "submit_integrity_review";
+
 function stubAnthropicOnce(input: Record<string, unknown>) {
   globalThis.fetch = (async () => ({
     ok: true,
     status: 200,
-    json: async () => ({ content: [{ type: "tool_use", input }] }),
+    json: async () => ({ content: [{ type: "tool_use", name: TOOL, input }] }),
   })) as unknown as typeof fetch;
 }
 
@@ -179,7 +183,7 @@ test("V2.8.5.2 — 13. DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS is 1280 (the first at
       ok: true,
       status: 200,
       json: async () => ({
-        content: [{ type: "tool_use", input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
+        content: [{ type: "tool_use", name: TOOL, input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
       }),
     };
   }) as unknown as typeof fetch;
@@ -197,7 +201,7 @@ test("V2.8.5.2 — 13b. an explicit maxTokens override (the second attempt's lar
       ok: true,
       status: 200,
       json: async () => ({
-        content: [{ type: "tool_use", input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
+        content: [{ type: "tool_use", name: TOOL, input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }],
       }),
     };
   }) as unknown as typeof fetch;
@@ -219,6 +223,7 @@ test("V2.8.5.2 — 13c. a genuinely larger budget lets an otherwise-truncated-le
       content: [
         {
           type: "tool_use",
+          name: TOOL,
           input: {
             reasoning: "A hosszabb válasz is helyesen kezelve, csonkítás nélkül.",
             verdict: "upheld",

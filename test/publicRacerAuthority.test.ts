@@ -17,10 +17,10 @@ const CREATE_ROUTE = readFileSync("app/api/game/create/route.ts", "utf8");
 const COMPOSER_ENTRY = readFileSync("app/ComposerEntry.tsx", "utf8");
 const RACER_SETUP = readFileSync("app/RacerSetup.tsx", "utf8");
 
-test("PUBLIC_RACER_PROVIDER is xai, declared once", () => {
+test("PUBLIC_RACER_PROVIDER is openai (V2.8.7: GPT-6 Astra), declared once", () => {
   const matches = CREATE_ROUTE.match(/const PUBLIC_RACER_PROVIDER: ModelProviderId = "([^"]+)";/);
   assert.ok(matches, "PUBLIC_RACER_PROVIDER must be declared exactly this way");
-  assert.equal(matches?.[1], "xai");
+  assert.equal(matches?.[1], "openai");
   const count = (CREATE_ROUTE.match(/const PUBLIC_RACER_PROVIDER/g) ?? []).length;
   assert.equal(count, 1, "exactly one declaration, no duplicate policy constant");
 });

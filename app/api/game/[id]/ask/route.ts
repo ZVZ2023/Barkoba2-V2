@@ -13,6 +13,8 @@ import { answerAsComposer } from "@/lib/prompts/composerAnswer";
 import { judgeQuestionEdit } from "@/lib/prompts/questionEdit";
 import { consumeModelCall } from "@/lib/callBudget";
 import { decideAttemptBudget } from "@/lib/turnBudget";
+import { recordAnthropicSeatCall, type SeatCallObservation } from "@/lib/corpus/turnTelemetry";
+import { env } from "@/lib/env";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -443,6 +445,10 @@ export async function POST(
       }
 
       let verdict;
+      // V2.8.7 — every billable seat call is recorded with its usage
+      // (fail-open; see lib/corpus/turnTelemetry.ts).
+      const editObserved: { value: SeatCallObservation | null } = { value: null };
+      const editStartedAt = Date.now();
       try {
         verdict = await withLocalTimeout(
           EDIT_TOTAL_PROVIDER_BUDGET_MS,
@@ -450,9 +456,32 @@ export async function POST(
             original,
             edited,
             gameLanguage: game.game_language,
+            onCallObserved: (o) => {
+              editObserved.value = o;
+            },
           })
         );
+        await recordAnthropicSeatCall({
+          gameId,
+          turnIndex: game.qa_log.length,
+          operationKind: "question_edit",
+          requestedModelId: env.modelRacer(),
+          observed: editObserved.value,
+          status: "accepted",
+          errorClass: null,
+          latencyMs: Date.now() - editStartedAt,
+        });
       } catch (err) {
+        await recordAnthropicSeatCall({
+          gameId,
+          turnIndex: game.qa_log.length,
+          operationKind: "question_edit",
+          requestedModelId: env.modelRacer(),
+          observed: editObserved.value,
+          status: "provider_error",
+          errorClass: "provider_error",
+          latencyMs: Date.now() - editStartedAt,
+        });
         // eslint-disable-next-line no-console
         console.error("[barkoba] question edit check failed:", err);
         return NextResponse.json(
@@ -534,6 +563,8 @@ export async function POST(
       }
 
       let reanswer;
+      const reanswerObserved: { value: SeatCallObservation | null } = { value: null };
+      const reanswerStartedAt = Date.now();
       try {
         reanswer = await withLocalTimeout(
           secondCallDecision.allowanceMs,
@@ -549,9 +580,32 @@ export async function POST(
             questionsAsked: Math.max(0, game.question_count - 1),
             maxQuestions: game.max_questions,
             gameLanguage: game.game_language,
+            onCallObserved: (o) => {
+              reanswerObserved.value = o;
+            },
           })
         );
+        await recordAnthropicSeatCall({
+          gameId,
+          turnIndex: game.qa_log.length,
+          operationKind: "composer_answer",
+          requestedModelId: env.modelRacer(),
+          observed: reanswerObserved.value,
+          status: "accepted",
+          errorClass: null,
+          latencyMs: Date.now() - reanswerStartedAt,
+        });
       } catch (err) {
+        await recordAnthropicSeatCall({
+          gameId,
+          turnIndex: game.qa_log.length,
+          operationKind: "composer_answer",
+          requestedModelId: env.modelRacer(),
+          observed: reanswerObserved.value,
+          status: "provider_error",
+          errorClass: "provider_error",
+          latencyMs: Date.now() - reanswerStartedAt,
+        });
         // eslint-disable-next-line no-console
         console.error("[barkoba] re-answer after edit failed:", err);
         return NextResponse.json(
@@ -638,6 +692,8 @@ export async function POST(
     }
 
     let answer;
+    const answerObserved: { value: SeatCallObservation | null } = { value: null };
+    const answerStartedAt = Date.now();
     try {
       answer = await answerAsComposer({
         target: secret.target,
@@ -649,8 +705,31 @@ export async function POST(
         questionsAsked: game.question_count,
         maxQuestions: game.max_questions,
         gameLanguage: game.game_language,
+        onCallObserved: (o) => {
+          answerObserved.value = o;
+        },
+      });
+      await recordAnthropicSeatCall({
+        gameId,
+        turnIndex: game.qa_log.length + 1,
+        operationKind: "composer_answer",
+        requestedModelId: env.modelRacer(),
+        observed: answerObserved.value,
+        status: "accepted",
+        errorClass: null,
+        latencyMs: Date.now() - answerStartedAt,
       });
     } catch (err) {
+      await recordAnthropicSeatCall({
+        gameId,
+        turnIndex: game.qa_log.length + 1,
+        operationKind: "composer_answer",
+        requestedModelId: env.modelRacer(),
+        observed: answerObserved.value,
+        status: "provider_error",
+        errorClass: "provider_error",
+        latencyMs: Date.now() - answerStartedAt,
+      });
       // eslint-disable-next-line no-console
       console.error("[barkoba] Composer answer failed:", err);
       // Nothing is recorded, so the question is not spent. The player can retry.

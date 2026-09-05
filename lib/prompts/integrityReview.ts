@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import { renderClarification } from "./clarification";
 import type {
@@ -122,6 +122,15 @@ const INPUT_SCHEMA = INTEGRITY_REVIEW_INPUT_SCHEMA;
  */
 export class IntegrityReviewIncompleteError extends Error {}
 
+/**
+ * V2.8.7 — thrown when the call succeeded but the payload is not a review:
+ * a verdict outside {upheld, violated} or a non-array contradicting_turns.
+ * Deliberately NOT IntegrityReviewIncompleteError: a malformed verdict is not
+ * a truncated one, so it gets no automatic retry — it is an explicit
+ * integrity_review_unavailable failure, never a coerced "upheld".
+ */
+export class IntegrityReviewInvalidOutputError extends Error {}
+
 function renderTranscript(qaLog: QuestionLogEntry[]): string {
   const rows = qaLog
     .filter((e) => e.turn_type === "question" && e.question_text)
@@ -153,9 +162,15 @@ export async function runIntegrityReview(params: {
   gameLanguage: GameLanguage;
   /** V2.8.5.2 — defaults to DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS; the caller's retry loop passes a materially larger value on a truncated/incomplete first attempt. Never lowers review quality or reasoning requirements — only the output budget changes. */
   maxTokens?: number;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<IntegrityReviewResult> {
   const result = await callAnthropicTool<IntegrityReviewResult>({
-    model: env.modelStrong(),
+    // V2.8.7 — the adjudication seat's own model/effort pair; see
+    // lib/prompts/adjudicator.ts and lib/env.ts.
+    model: env.modelAdjudication(),
+    effort: env.effortAdjudication(),
+    onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -182,10 +197,22 @@ export async function runIntegrityReview(params: {
     temperature: 0,
   });
 
-  const verdict = result.verdict === "violated" ? "violated" : "upheld";
-  const turns = Array.isArray(result.contradicting_turns)
-    ? result.contradicting_turns.filter((n): n is number => typeof n === "number")
-    : [];
+  // V2.8.7 — VALIDATE, NEVER COERCE. An unexpected verdict value used to
+  // become "upheld" silently — the conservative direction, but still a
+  // verdict nobody gave. It is now an explicit failure.
+  const rawVerdict: unknown = result.verdict;
+  if (rawVerdict !== "upheld" && rawVerdict !== "violated") {
+    throw new IntegrityReviewInvalidOutputError(
+      `integrityReview: provider returned verdict ${JSON.stringify(rawVerdict)} outside {upheld, violated}; refusing to infer a verdict.`
+    );
+  }
+  const verdict = rawVerdict;
+  if (!Array.isArray(result.contradicting_turns)) {
+    throw new IntegrityReviewInvalidOutputError(
+      "integrityReview: provider returned a non-array contradicting_turns; refusing to accept a malformed review."
+    );
+  }
+  const turns = result.contradicting_turns.filter((n): n is number => typeof n === "number");
 
   // V2.8.4.3 — required, not merely preferred: an upheld-or-violated verdict
   // with no explanation behind it must never reach persistence. See
