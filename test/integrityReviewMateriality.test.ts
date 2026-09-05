@@ -29,20 +29,27 @@ const INTEGRITY_SRC = readFileSync("lib/prompts/integrityReview.ts", "utf8");
 
 // --- Prompt-contract: the required rules are actually present -------------
 
-test("requires classifying relevant answers into the four required categories before any verdict", () => {
-  assert.match(INTEGRITY_SRC, /CLASSIFY EVERY RELEVANT ANSWER FIRST, BEFORE ANY VERDICT/);
+test("requires classifying relevant answers into the four required categories, and the verdict must rest on that classification", () => {
+  // V2.8.7 — the step is still mandatory; the wording no longer narrates the
+  // reviewer's internal ordering (Claude Fable 5.1's classifier refused that
+  // as reasoning extraction). The rule itself is unchanged.
+  assert.match(INTEGRITY_SRC, /STEP 1 — CLASSIFY EVERY RELEVANT ANSWER\./);
+  assert.match(INTEGRITY_SRC, /the verdict must rest on this classification of the visible answers/);
   assert.match(INTEGRITY_SRC, /CORRECT — plainly true given the target/);
   assert.match(INTEGRITY_SRC, /DEFENSIBLE — a reasonable person could truthfully have answered this way/);
   assert.match(INTEGRITY_SRC, /AMBIGUOUS \/ IS-IS — the Composer declined to give a hard yes or no/);
   assert.match(INTEGRITY_SRC, /INCORRECT — clearly, unarguably false given the target/);
 });
 
-test("requires materiality: an incorrect answer alone is not enough, it must have redirected the Racer or made the solution unreasonably difficult", () => {
+test("requires materiality: an incorrect answer alone is not enough, it must have redirected the visible questioning or made the solution unreasonably difficult", () => {
   assert.match(INTEGRITY_SRC, /MATERIALITY/);
+  // V2.8.7 — judged against the visible line of questioning, never against
+  // the Racer's private reasoning (which the review is never given).
   assert.match(
     INTEGRITY_SRC,
-    /did this specific incorrect answer materially redirect the Racer's reasoning, or make reaching the correct solution unreasonably difficult/
+    /did this specific incorrect answer materially redirect the visible line of questioning, or make reaching the correct solution unreasonably difficult/
   );
+  assert.doesNotMatch(INTEGRITY_SRC, /Racer's reasoning/);
   assert.match(
     INTEGRITY_SRC,
     /Only return "violated" when at least one INCORRECT answer both exists AND was materially causal/
