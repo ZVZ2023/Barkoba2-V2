@@ -1,4 +1,5 @@
 import type { ComposerAnswer, GamePhase, GameResult, QuestionLogEntry } from "./types";
+import { isSandboxClarificationEntry } from "./sandboxClarification";
 
 // ---------------------------------------------------------------------------
 // Answer correction and rewind. Pure functions, no I/O.
@@ -151,9 +152,24 @@ export const CORRECTION_WINDOW_SIZE = 3;
  * replay-not-stored-position design. Enforced server-side regardless of
  * what the UI shows, so a stale or manually crafted request naming an
  * older turn is refused the same as one the UI never offered.
+ *
+ * V2.8.7.1 — a "+1" sandbox-clarification entry (lib/sandboxClarification.ts)
+ * is excluded from this count, the same way it is excluded from the
+ * player-visible transcript (GameClient.tsx's answeredTurns()) and from the
+ * question budget: it is a private, deterministic, budget-exempt exchange,
+ * never one of the Composer's own category answers. Counting it here was a
+ * real production bug — several private clarification turns after the five
+ * spine questions pushed every VISIBLE answer outside the window, so a
+ * sandbox_clarification_failed game had no answer left that either the UI
+ * would offer, or this same check would accept, to correct. The window is
+ * still exactly CORRECTION_WINDOW_SIZE VISIBLE answers; nothing about the
+ * budget or the window's size changes for ordinary play, which has no
+ * clarification entries to filter.
  */
 export function isWithinCorrectionWindow(qaLog: readonly QuestionLogEntry[], turnIndex: number): boolean {
-  const answered = qaLog.filter((e) => e.turn_type === "question" && e.composer_response !== null);
+  const answered = qaLog.filter(
+    (e) => e.turn_type === "question" && e.composer_response !== null && !isSandboxClarificationEntry(e)
+  );
   const eligible = answered.slice(-CORRECTION_WINDOW_SIZE);
   return eligible.some((e) => e.turn_index === turnIndex);
 }

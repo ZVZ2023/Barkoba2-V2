@@ -23,6 +23,7 @@ function state(overrides: Partial<AutoTurnState> = {}): AutoTurnState {
     hasPendingClueRequest: false,
     busy: false,
     turnFailed: false,
+    sandboxClarificationFailed: false,
     lastAutoTurnAt: null,
     qaLogLength: 0,
     ...overrides,
@@ -30,6 +31,25 @@ function state(overrides: Partial<AutoTurnState> = {}): AutoTurnState {
 }
 
 // --- the two situations the automatic path exists for ----------------------
+
+// --- V2.8.7.1: the "+1" corridor's own terminal failure must not loop ------
+
+test("sandbox_clarification_failed suspends the automatic path exactly like turnFailed", () => {
+  assert.equal(
+    shouldAutoRequestTurn(state({ sandboxClarificationFailed: true })),
+    false,
+    "must not auto-retry the deterministic classification failure into a loop"
+  );
+});
+
+test("sandbox_clarification_failed does not, on its own, offer the generic retry button", () => {
+  // The dedicated "+1" panel is what offers a way forward (a correction);
+  // shouldOfferTurnRetry is unaffected because turnFailed is false on this path.
+  assert.equal(
+    shouldOfferTurnRetry(state({ sandboxClarificationFailed: true, turnFailed: false })),
+    false
+  );
+});
 
 test("the opening turn is requested automatically", () => {
   assert.equal(shouldAutoRequestTurn(state({ qaLogLength: 0 })), true);

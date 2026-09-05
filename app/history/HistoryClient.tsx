@@ -172,7 +172,30 @@ export default function HistoryClient({ versionLabel }: Props) {
                     {entry.role ? ROLE_HU[entry.role] : "szerep ismeretlen"}
                   </span>
                 </div>
-                <span className={`text-sm font-medium ${status.className}`}>{status.text}</span>
+                <div className="flex items-center gap-3">
+                  <span className={`text-sm font-medium ${status.className}`}>{status.text}</span>
+                  {/*
+                    V2.8.7.1 — an owned, still-live game must actually open from
+                    here. Before this, History had no link to any game at all,
+                    for any lifecycle_state: a stuck-but-recoverable game (see
+                    lib/rewind.ts's isWithinCorrectionWindow fix) was reachable
+                    by no path from this page. Scoped to "in_progress" only —
+                    the one state the durable corpus row and the live game
+                    record can both still mean "reopen this and keep playing."
+                    If the live record has actually expired since the corpus
+                    row was written, /game/[id] itself resolves that honestly
+                    (its existing not_found path) rather than this page
+                    guessing at or fabricating the game's current state.
+                  */}
+                  {entry.lifecycle_state === "in_progress" && (
+                    <a
+                      href={`/game/${entry.game_id}`}
+                      className="min-h-11 rounded-md border border-[var(--ink)]/25 px-3 py-2 text-sm text-[var(--ink)] underline-offset-2 hover:underline"
+                    >
+                      Folytatás →
+                    </a>
+                  )}
+                </div>
               </li>
             );
           })}

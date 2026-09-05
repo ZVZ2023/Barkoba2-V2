@@ -67,6 +67,18 @@ export interface AutoTurnState {
   busy: boolean;
   /** The last turn attempt failed and no human has asked to try again. */
   turnFailed: boolean;
+  /**
+   * V2.8.7.1 — the "+1" sandbox-clarification corridor reported no coherent
+   * contract (app/api/game/[id]/turn/route.ts's sandbox_clarification_failed).
+   * The failed answer IS persisted (composer_response !== null) and nothing
+   * is pending, so without this the effect would see exactly the "ask for
+   * the next turn" shape and fire again immediately — hitting the identical,
+   * deterministic (zero-model-call) failure in a tight loop, and burying the
+   * correction control this same state is supposed to leave reachable.
+   * Cleared the same way `turnFailed` is: by the human acting (here, a
+   * successful correction), never automatically.
+   */
+  sandboxClarificationFailed: boolean;
   /** qa_log length the effect last fired for, or null if it has not. */
   lastAutoTurnAt: number | null;
   qaLogLength: number;
@@ -87,6 +99,10 @@ export function shouldAutoRequestTurn(state: AutoTurnState): boolean {
   // A failed attempt suspends the automatic path until a person retries.
   // Without this, clearing the guard below would turn one failure into a loop.
   if (state.turnFailed) return false;
+  // Same reasoning, for the "+1" corridor's own terminal, non-retryable
+  // failure — see the field's own doc. A person correcting one of the
+  // flagged answers is what clears this, never the effect itself.
+  if (state.sandboxClarificationFailed) return false;
   // Already asked for this exact state.
   if (state.lastAutoTurnAt === state.qaLogLength) return false;
   return true;

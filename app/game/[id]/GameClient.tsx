@@ -68,14 +68,21 @@ const SANDBOX_CLARIFICATION_FAILURE_HEADING: Record<GameLanguage, string> = {
   en: "Could not establish a clear target category",
 };
 
+// V2.8.7.1 — the game is NOT actually over here: game.phase never leaves
+// "questioning" (see app/api/game/[id]/turn/route.ts's own comment on this
+// branch), and the correction window fix in lib/rewind.ts's
+// isWithinCorrectionWindow means one of the five recent, visible answers
+// above is now reachably correctable. The copy says so — this used to read
+// as a dead end ("this game cannot continue... start a new game") when a
+// working way back was the whole point of the fix.
 const SANDBOX_CLARIFICATION_FAILURE_BODY: Record<GameLanguage, string> = {
-  hu: "A megadott válaszokból nem alakult ki egyértelmű, privát célkategória-szerződés. Ez a játék így nem folytatható — kérünk, kezdj új játékot egy pontosabban körülhatárolt céllal.",
-  en: "Your answers did not settle into a clear, private target-category contract. This game cannot continue — please start a new game with a more precisely bounded target.",
+  hu: "A megadott válaszokból nem alakult ki egyértelmű, privát célkategória-szerződés. Javítsd az egyik nemrégi válaszodat fent — ez nem fogyaszt új kérdést. Ha inkább újrakezdenéd, azt is megteheted.",
+  en: "Your answers did not settle into a clear, private target-category contract. Correct one of your recent answers above — this does not use another question. You can also start a new game instead, if you would rather.",
 };
 
 const SANDBOX_CLARIFICATION_NEW_GAME_LABEL: Record<GameLanguage, string> = {
-  hu: "Új játék",
-  en: "New game",
+  hu: "Inkább új játékot kezdek",
+  en: "Start a new game instead",
 };
 
 function pendingQuestion(game: GameRecord): QuestionLogEntry | null {
@@ -466,6 +473,15 @@ export default function GameClient({
           // state. Whatever failed before it is no longer the situation, so the
           // automatic resume is re-armed rather than left suspended.
           setTurnFailed(false);
+          // V2.8.7.1 — the "+1" corridor's own terminal state is cleared the
+          // same deliberate way: only by the human correcting the flagged
+          // answer, never by the effect that would otherwise re-request a
+          // turn and hit the identical, deterministic failure again. Whether
+          // this correction actually resolves the corridor is decided fresh
+          // on the NEXT /turn call (Phase One and the clarification state are
+          // both replayed from qa_log, never stored) — clearing this flag
+          // only re-arms that replay; it does not assume the outcome.
+          setSandboxClarificationFailed(false);
         }
       } catch {
         setError("Hálózati hiba — próbáld újra.");
@@ -566,6 +582,7 @@ export default function GameClient({
         hasPendingClueRequest: Boolean(pendingClueRequest(game)),
         busy,
         turnFailed,
+        sandboxClarificationFailed,
         lastAutoTurnAt: autoTurnFor.current,
         qaLogLength: game.qa_log.length,
       })
@@ -574,7 +591,7 @@ export default function GameClient({
     }
     autoTurnFor.current = game.qa_log.length;
     void sendTurn();
-  }, [game, busy, turnFailed, sendTurn]);
+  }, [game, busy, turnFailed, sandboxClarificationFailed, sendTurn]);
 
   // V2.8.4.1 — turn_in_progress: the server's lock is already held (most
   // often a still-finishing provider call from a prior attempt). Quiet,
@@ -667,6 +684,7 @@ export default function GameClient({
     hasPendingClueRequest: Boolean(clueWanted),
     busy,
     turnFailed,
+    sandboxClarificationFailed,
     lastAutoTurnAt: autoTurnFor.current,
     qaLogLength: game.qa_log.length,
   });

@@ -361,6 +361,63 @@ test("isWithinCorrectionWindow: fewer than the window size answered questions --
   assert.equal(isWithinCorrectionWindow(log, 2), true);
 });
 
+// ---------------------------------------------------------------------------
+// V2.8.7.1 — production bug: several private "+1" sandbox-clarification
+// entries (lib/sandboxClarification.ts) after the five spine questions
+// pushed every VISIBLE answer outside the 3-slot window, leaving a game
+// stuck in sandbox_clarification_failed with no answer the UI would offer,
+// or this function would accept, to correct. Field report: production game
+// 6744eeb6…, created 2026-09-05 11:41 Hungary time (target "LINE messaging
+// app"), five spine NOs then failed clarification, no way back.
+// ---------------------------------------------------------------------------
+
+function clarificationEntry(turnIndex: number, answer: ComposerAnswer | null): QuestionLogEntry {
+  return {
+    ...entry(turnIndex, answer),
+    racer_output_raw: JSON.stringify({ meta: "sandbox_clarification", action: "question" }),
+  };
+}
+
+test("isWithinCorrectionWindow: a private sandbox-clarification entry does not occupy a window slot or count as a candidate", () => {
+  // Reproduces the reported shape: 5 answered spine questions, then 2
+  // private clarification exchanges (Mixed gate + one sense), matching the
+  // route's own "+1" corridor order.
+  const log = [
+    entry(1, "NO"),
+    entry(2, "NO"),
+    entry(3, "NO"),
+    entry(4, "NO"),
+    entry(5, "NO"),
+    clarificationEntry(6, "NO"),
+    clarificationEntry(7, "NO"),
+  ];
+  // Before this fix, the window counted turns 5, 6, 7 — the ONLY visible
+  // spine answer among them (5) was the sole survivor, and any real game
+  // with a THIRD clarification turn (turns 6 requires filtering) would have
+  // pushed turn 5 out too, per the field report. After the fix, the window
+  // is the latest 3 VISIBLE answers: 3, 4, 5.
+  assert.equal(isWithinCorrectionWindow(log, 3), true, "the oldest of the three visible eligible turns");
+  assert.equal(isWithinCorrectionWindow(log, 4), true);
+  assert.equal(isWithinCorrectionWindow(log, 5), true, "the most recent visible answer is always eligible");
+  assert.equal(isWithinCorrectionWindow(log, 2), false, "aged out — same as ordinary play");
+  assert.equal(isWithinCorrectionWindow(log, 6), false, "a private clarification turn is never itself correctable");
+  assert.equal(isWithinCorrectionWindow(log, 7), false);
+});
+
+test("isWithinCorrectionWindow: exactly reproduces the field report — many clarification turns must never evict a visible spine answer", () => {
+  const log = [1, 2, 3, 4, 5].map((i) => entry(i, "NO"));
+  // Mixed gate NO, then five single-sense NOs — six clarification turns,
+  // matching the route's own failure-path test in
+  // test/layerTwoIntegration.test.ts ("+1 failure (defect 5)").
+  for (let i = 6; i <= 11; i += 1) log.push(clarificationEntry(i, "NO"));
+  assert.equal(log.length, 11);
+  assert.equal(
+    isWithinCorrectionWindow(log, 5),
+    true,
+    "the last spine answer must stay reachable regardless of how many private clarification turns followed it"
+  );
+});
+
 test("advanceHighWaterMark: ordinary play keeps the mark equal to the growing question_count", () => {
   assert.equal(advanceHighWaterMark(0, 0, 1), 1);
   assert.equal(advanceHighWaterMark(5, 5, 6), 6);
