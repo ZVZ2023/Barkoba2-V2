@@ -109,9 +109,6 @@ const QUARANTINED = [
   // prices it; it has no business anywhere near the target.
   "lib/aiCost.ts",
   "scripts/reportAiCost.ts",
-  // V2.8.7 — TEMPORARY Preview-only migration diagnostic; talks to the
-  // database and must be structurally incapable of reaching the secret.
-  "app/api/internal/preview-db/route.ts",
   // The latency probe drives the real Racer path against a live endpoint. It
   // carries whatever the Racer is given to an external vendor, so it sits in
   // the same blast radius as the adapters it exercises.
