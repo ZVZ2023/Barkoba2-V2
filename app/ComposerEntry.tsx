@@ -7,7 +7,7 @@ import { useRouter } from "next/navigation";
 import AccountControl from "./components/AccountControl";
 import GameShell from "./components/GameShell";
 import BudgetPicker, { pickedBudget } from "./components/BudgetPicker";
-import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
+import { CreditGateway, useEntitlement } from "./components/Entitlement";
 import type { Difficulty } from "@/lib/types";
 
 type ViewState =
@@ -149,11 +149,6 @@ export default function ComposerEntry({
       version={versionLabel}
       meta={<AccountControl authenticated={accountAuthenticated} photoUrl={accountPhotoUrl} />}
     >
-      <p className="text-sm text-[var(--ink-soft)]">
-        Gondolj valamire, és rögzítsd. Az AI teljesen vakon indul, és{" "}
-        {view.step === "valid" ? view.maxQuestions : 20} kérdése van, hogy kitalálja.
-      </p>
-
       {view.step === "submitting" && (
         <ThinkingState note="Ellenőrzi, hogy a célpont játszható-e, aztán indul a játék." />
       )}
@@ -162,8 +157,6 @@ export default function ComposerEntry({
 
       {!naming && view.step === "entry" && (
         <div className="flex flex-col gap-4">
-          <BalanceBadge view={entitlement.view} />
-
           <label className="flex flex-col gap-1 text-sm">
             <span className="text-[var(--ink)]">Amire gondolsz</span>
             <input

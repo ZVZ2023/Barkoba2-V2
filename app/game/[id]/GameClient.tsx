@@ -8,6 +8,7 @@ import { questionNumbers } from "@/lib/questionNumbers";
 import { isSandboxClarificationEntry } from "@/lib/sandboxClarification";
 import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry, shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
+import { computeRevealScrollTop, shouldRevealResult } from "@/lib/resultReveal";
 import {
   CLIENT_TURN_TIMEOUT_MS,
   CLUE_CLIENT_TIMEOUT_MS,
@@ -179,6 +180,15 @@ export default function GameClient({
   // after a rewind truncates the log — not only on the opening turn.
   const autoTurnFor = useRef<number | null>(null);
   const resolveFired = useRef(false);
+  // V2.8.7.2 — auto-reveal the terminal result. headerRef measures this
+  // screen's own header (see the effect below); resultHeadingRef is handed
+  // to ResultPanel so the SAME element the player is scrolled to and told
+  // about is the one that receives focus. previousPhaseRef is what makes
+  // the effect fire exactly once, on the transition INTO "complete" — see
+  // lib/resultReveal.ts's shouldRevealResult.
+  const headerRef = useRef<HTMLElement>(null);
+  const resultHeadingRef = useRef<HTMLHeadingElement>(null);
+  const previousPhaseRef = useRef(initialGame.phase);
   // V2.5-B4 — the last turn attempt failed and no human has asked to retry.
   // Suspends only the AUTOMATIC path; see lib/turnRecovery.ts for why clearing
   // the ref alone would turn one failure into a retry loop.
@@ -565,6 +575,35 @@ export default function GameClient({
     void resolveGame();
   }, [game.phase, guessRevealPending, resolveGame]);
 
+  // V2.8.7.2 — the player must never have to scroll to discover a terminal
+  // result. Fires exactly once, on the transition INTO "complete" (see
+  // lib/resultReveal.ts's shouldRevealResult) — never on an unrelated
+  // re-render while already complete, and never before resolution, so
+  // ordinary scrolling during play is untouched. Measures this screen's own
+  // header at the moment it fires, so the result lands just below it
+  // whether that header is in normal flow or (now or in the future) fixed —
+  // see lib/resultReveal.ts's computeRevealScrollTop for why that is
+  // measured rather than assumed.
+  useEffect(() => {
+    const reveal = shouldRevealResult({ previousPhase: previousPhaseRef.current, phase: game.phase });
+    previousPhaseRef.current = game.phase;
+    if (!reveal) return;
+    const heading = resultHeadingRef.current;
+    if (!heading) return;
+    const headerHeight = headerRef.current?.getBoundingClientRect().height ?? 0;
+    const targetTop = computeRevealScrollTop({
+      targetTop: heading.getBoundingClientRect().top,
+      currentScrollY: window.scrollY,
+      headerHeight,
+    });
+    window.scrollTo({ top: targetTop, behavior: "smooth" });
+    // preventScroll: the scroll above is already in flight (smooth, so it
+    // has not landed yet) — a focus-driven jump would fight it. Moving
+    // focus is what makes assistive tech announce the result; it does not
+    // depend on scroll position having settled first.
+    heading.focus({ preventScroll: true });
+  }, [game.phase]);
+
   // Ask the Racer for the next question whenever the game is live and nothing
   // is pending. That covers the opening turn and the resume after a rewind,
   // which leaves exactly the same state: last entry answered, none pending.
@@ -705,7 +744,10 @@ export default function GameClient({
 
   return (
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3">
+      <header
+        ref={headerRef}
+        className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3"
+      >
         <div className="flex min-w-0 flex-col">
           <a href="/" className="flex min-w-0 items-center gap-2" aria-label="Barkóba főoldal">
             <span
@@ -1152,6 +1194,7 @@ export default function GameClient({
           resolving={resolving}
           error={resolveError}
           onRetry={() => void resolveGame()}
+          headingRef={resultHeadingRef}
         />
       )}
 
