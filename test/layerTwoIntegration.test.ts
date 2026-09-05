@@ -331,10 +331,126 @@ test("+1 failure (defect 5): an incoherent target ends in the localized sandbox_
   assert.doesNotMatch(res.data.message, /Nem sikerült/, "an English game must never receive Hungarian UI text");
   assert.ok(res.data.game, "the persisted game record must still be returned for the client to keep displaying history");
 
-  // The failure must be durably persisted -- a fresh read shows the same terminal state, not a resumable one.
+  // The failure must be durably persisted -- a fresh read shows the same
+  // terminal recorded answer. It is NOT an unresumable dead end, though —
+  // see the recovery test immediately below, which is exactly what game.phase
+  // staying "questioning" here (never assigned in this branch) exists for.
   const reloaded = await getGame(gameId);
   assert.ok(reloaded);
   assert.equal(reloaded!.qa_log.at(-1)?.composer_response, "NO");
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.7.1 — production bug: field report on game 6744eeb6…, created
+// 2026-09-05 11:41 Hungary time, target "LINE messaging app". Five spine NOs,
+// then a private clarification failure, and the player was stuck: History
+// said "in progress" but nothing reopened it, and no correction control was
+// reachable (lib/rewind.ts's isWithinCorrectionWindow counted the private
+// clarification turns and evicted every visible spine answer from the
+// 3-slot window). Root cause and fix are both exercised end to end here,
+// through the REAL /turn and /correct route handlers.
+// ---------------------------------------------------------------------------
+
+test("+1 recovery: correcting one of the five spine answers resumes the SAME game, spends no extra question, and never re-enters the failed corridor", async () => {
+  const gameId = await makeGame(10, "en");
+  let res = await callTurn(gameId);
+  for (const ans of ["NO", "NO", "NO", "NO", "NO"]) {
+    res = await callTurn(gameId, { answer: ans, expected_revision: res.data.game.revision });
+  }
+  const questionCountBeforeClarification = res.data.game.question_count;
+  assert.equal(questionCountBeforeClarification, 5, "the five spine answers, and nothing more, are charged so far");
+
+  // Mixed gate NO, then five single-sense NOs -- the exact failure shape
+  // from the "+1 failure" test above.
+  for (const ans of ["NO", "NO", "NO", "NO", "NO", "NO"]) {
+    res = await callTurn(gameId, { answer: ans, expected_revision: res.data.game.revision });
+  }
+  assert.equal(res.status, 409);
+  assert.equal(res.data.error, "sandbox_clarification_failed");
+  const stuck = res.data.game;
+  assert.equal(stuck.phase, "questioning", "the failure never moves phase away from questioning");
+
+  // The 5th spine question ("Does the target name a kind of abstract or
+  // informational concept...") is the most recent VISIBLE answer -- it must
+  // be reachable for correction despite the six private clarification turns
+  // that followed it. (Before the fix: isWithinCorrectionWindow counted
+  // those six too, so turn_index 5 was long outside any 3-turn window.)
+  const spineEntries = (stuck.qa_log as QuestionLogEntry[]).filter((e) => !isSandboxClarificationEntry(e));
+  assert.equal(spineEntries.length, 5, "the five spine questions, and only those, are visible");
+  const q5 = spineEntries[4]!;
+  assert.equal(q5.composer_response, "NO");
+
+  // Another player must not be able to correct someone else's stuck game.
+  const otherPlayerReq = new NextRequest(`http://localhost/api/game/${gameId}/correct`, {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-bk-player": testPlayerId("b") },
+    body: JSON.stringify({ turn_index: q5.turn_index, answer: "YES", expected_log_length: stuck.qa_log.length }),
+  });
+  const deniedRes = await correctPOST(otherPlayerReq, { params: { id: gameId } });
+  const denied = await deniedRes.json();
+  assert.equal(deniedRes.status, 403);
+  assert.equal(denied.error, "not_a_participant");
+
+  // The owning Composer corrects Q5 NO -> YES: Q5 is the classification's own
+  // Abstract gate (see lib/phaseOne.ts), so this both flips the target's
+  // classification to a coherent "abstract" sandbox AND is exactly the
+  // correction the player would reach for, since it is the answer they most
+  // recently gave before the private clarification ever started.
+  const corrected = await callCorrect(gameId, {
+    turn_index: q5.turn_index,
+    answer: "YES",
+    expected_log_length: stuck.qa_log.length,
+  });
+  assert.equal(corrected.status, 200, JSON.stringify(corrected.data));
+  assert.equal(
+    corrected.data.game.qa_log.length,
+    5,
+    "the correction discards every private clarification turn along with anything the failure produced"
+  );
+  assert.equal(
+    corrected.data.game.question_count,
+    5,
+    "the correction itself never spends a question -- it replaces one of the five already charged"
+  );
+
+  // The NEXT /turn call must recompute classification fresh (never re-enter
+  // the failed corridor) and reach the model Racer, exactly the existing
+  // "recompute from the log" architecture Phase One and Layer Two already
+  // use for every other correction. Q5 is ALREADY answered by the correction
+  // above (composer_response "YES") -- like the very first /turn call of a
+  // game, this asks for the next move with no answer of its own.
+  const restore = stubOnce({
+    action: "guess",
+    guess_text: "Freedom of speech",
+    question_text: null,
+    rationale: "resolved-abstract-test",
+  });
+  try {
+    const resumed = await callTurn(gameId);
+    assert.equal(resumed.status, 200, JSON.stringify(resumed.data));
+    assert.notEqual(resumed.data.error, "sandbox_clarification_failed");
+    assert.equal(resumed.data.game.phase, "resolving", "the game is live and playing again, not stuck");
+    assert.equal(
+      resumed.data.game.question_count,
+      5,
+      "resuming and reaching a guess never spent a question beyond the original five -- no credit was charged for the recovery"
+    );
+  } finally {
+    restore();
+  }
+});
+
+test("+1 failure, expired game: /correct and /turn both answer honestly (404 not_found) rather than fabricating state for a game no longer in the store", async () => {
+  const goneId = randomUUID(); // never created -- stands in for an expired KV record
+  const turnRes = await callTurn(goneId, { answer: "YES", expected_revision: 0 });
+  assert.equal(turnRes.status, 404);
+  assert.equal(turnRes.data.error, "not_found");
+  assert.equal(turnRes.data.game, undefined, "must never fabricate a game record for state that is not there");
+
+  const correctRes = await callCorrect(goneId, { turn_index: 1, answer: "YES", expected_log_length: 1 });
+  assert.equal(correctRes.status, 404);
+  assert.equal(correctRes.data.error, "not_found");
+  assert.equal(correctRes.data.game, undefined);
 });
 
 test("+1 failure localization: a Hungarian game receives the Hungarian sandbox_clarification_failed message", async () => {
@@ -750,7 +866,13 @@ test("GameClient.tsx source contract: the clarification UI is unnumbered, self-i
   );
   assert.match(src, /sandboxClarificationFailed/, "must hold dedicated state for the failure panel, distinct from the generic error banner");
   assert.match(src, /Nem sikerült egyértelmű célkategóriát megállapítani/, "the failure panel must be localized and actionable, not a raw error code");
-  assert.match(src, /Új játék/, "the failure panel must offer the existing New Game navigation");
+  // V2.8.7.1 — the panel is no longer a dead end: game.phase never leaves
+  // "questioning" here, so the failure is recoverable via the ordinary
+  // correction UI (now reachable, per lib/rewind.ts's isWithinCorrectionWindow
+  // fix), and the panel says so rather than presenting "start a new game" as
+  // the only way forward.
+  assert.match(src, /Javítsd az egyik nemrégi válaszodat/, "the failure panel must point at the correction option, not only a restart");
+  assert.match(src, /Inkább új játékot kezdek/, "restarting must remain available as an explicit secondary choice");
 
   // V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (localization) — an English game
   // must not receive this Hungarian copy; both the private-clarification
@@ -758,7 +880,8 @@ test("GameClient.tsx source contract: the clarification UI is unnumbered, self-i
   // game.game_language, not a single hard-coded string.
   assert.match(src, /Private target clarification/, "the private-clarification label must have an English variant");
   assert.match(src, /Could not establish a clear target category/, "the failure panel heading must have an English variant");
-  assert.match(src, /"New game"/, "the New Game button must have an English variant");
+  assert.match(src, /Correct one of your recent answers/, "the correction guidance must have an English variant");
+  assert.match(src, /Start a new game instead/, "the secondary New Game choice must have an English variant");
   assert.match(src, /\[game\.game_language\]/, "the bilingual copy must actually be selected by game.game_language, not merely declared");
 });
 
