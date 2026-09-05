@@ -1,46 +1,66 @@
 import { NextResponse } from "next/server";
-import { readFileSync, readdirSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
+import { timingSafeEqual } from "node:crypto";
 import { neon } from "@neondatabase/serverless";
 import { env } from "@/lib/env";
 import { corpusConfigStatus } from "@/lib/corpus/db";
 import { splitSqlStatements } from "@/lib/corpus/sqlStatements";
 
 // ---------------------------------------------------------------------------
-// V2.8.7 — PREVIEW-ONLY database diagnostics and the ONE scoped migration.
+// V2.8.7 — PREVIEW-ONLY, OPERATOR-AUTHORIZED database diagnostics and the
+// ONE fixed migration plan for the verified Preview database.
 //
-// WHY THIS EXISTS. The V2.8.7 field test needs two facts about the Preview
-// deployment's database that nothing outside the deployment can establish
-// without holding its connection string: which Neon branch it is (so a
-// migration here can be shown never to touch production), and which
-// migrations are applied. This route answers both from INSIDE the
-// deployment, which already holds DATABASE_URL, so nobody has to handle the
-// string. It never returns the string, or any credential, or any game data.
+// TEMPORARY. Removed once the V2.8.7 Preview field test is over.
 //
-// GATES (all three, in this order):
-//   1. VERCEL_ENV === "preview" — anywhere else, including production and
-//      local dev, the route does not exist (404). Production schema changes
-//      are not authorized and cannot be made through this route.
+// FOUR GATES, IN ORDER, ALL REQUIRED:
+//   1. VERCEL_ENV === "preview" — anywhere else the route does not exist.
 //   2. Vercel Deployment Protection in front of every Preview URL.
-//   3. POST additionally requires the exact confirmation body
-//      {"confirm":"apply-0013-once"} — no other keys, no other value.
+//   3. SERVER-SIDE OPERATOR AUTHORIZATION: the caller must present the
+//      deployment's own BENCHMARK_INGRESS_SECRET (the existing operator
+//      secret, compared in constant time). The account-based admin allowlist
+//      (lib/admin.ts) cannot be used here: it needs the accounts tables that
+//      this very plan creates on the Preview database. Unconfigured secret
+//      means NO access for anyone — it never falls open.
+//   4. DATABASE IDENTITY PIN: before reporting or changing anything, the
+//      connected database must report exactly the Neon tenant id, timeline
+//      (branch) id and database name observed on 2026-09-05 for the Preview
+//      branch. Any other database — production above all — aborts with
+//      identity_mismatch. VERCEL_ENV alone never establishes isolation.
 //
-// WHAT POST DOES, EXACTLY. Applies migrations/0013_ai_usage_telemetry.sql —
-// that one file, never "everything pending" — in one transaction with its
-// ledger row, exactly as scripts/migrate.ts would, and only if 0012 is
-// already in the ledger (0013 alters the table 0012 creates). A second POST
-// is a no-op ("already applied").
-//
-// TEMPORARY, like the M1 benchmark trigger before it: remove once the V2.8.7
-// Preview field test is over. Quarantined from the secret store by
-// scripts/check-isolation.mjs.
+// THE PLAN. Exactly the eight files below, in dependency order, each in ONE
+// transaction with its own ledger row (identical to scripts/migrate.ts's
+// per-file semantics). A file already in the ledger is skipped; the first
+// failure stops the run with nothing after it attempted. The ledger is keyed
+// by FULL FILENAME, so the unrelated `0012_racer_guidance_catalog.sql`
+// already present neither hides nor collides with
+// `0012_turn_operation_telemetry.sql` — both names are checked literally.
+// Nothing here resets, drops, or deletes; nothing here can run outside
+// Preview or against any other database.
 // ---------------------------------------------------------------------------
 
 export const dynamic = "force-dynamic";
 
-const TARGET_MIGRATION = "0013_ai_usage_telemetry.sql";
-const PREREQUISITE_MIGRATION = "0012_turn_operation_telemetry.sql";
-const CONFIRMATION = "apply-0013-once";
+/** Observed on 2026-09-05 via this route's own identity query on the Preview branch. */
+const PINNED_IDENTITY = {
+  tenant_id: "364938e972147a257364743636f6c500",
+  timeline_id: "6dae9a7a8a8835838a103bd3d731e427",
+  database: "neondb",
+} as const;
+
+/** The authorized plan — nothing else is ever read for application. */
+const PLAN = [
+  "0006_contest_verdict.sql",
+  "0007_unlimited_play.sql",
+  "0008_purchase_provenance.sql",
+  "0009_player_accounts.sql",
+  "0010_registration_email_photo.sql",
+  "0011_email_unique.sql",
+  "0012_turn_operation_telemetry.sql",
+  "0013_ai_usage_telemetry.sql",
+] as const;
+
+const UNRELATED_SAME_PREFIX = "0012_racer_guidance_catalog.sql";
 
 function notFound() {
   return NextResponse.json({ error: "not_found" }, { status: 404 });
@@ -50,18 +70,12 @@ function isPreview(): boolean {
   return process.env.VERCEL_ENV === "preview";
 }
 
-function migrationsDir(): string {
-  return path.join(process.cwd(), "migrations");
-}
-
-function migrationFiles(): string[] {
-  try {
-    return readdirSync(migrationsDir())
-      .filter((f) => f.endsWith(".sql"))
-      .sort();
-  } catch {
-    return [];
-  }
+function operatorAuthorized(presented: string): boolean {
+  const expected = env.benchmarkIngressSecret();
+  if (!expected || !presented) return false;
+  const a = Buffer.from(presented);
+  const b = Buffer.from(expected);
+  return a.length === b.length && timingSafeEqual(a, b);
 }
 
 type NeonSql = ReturnType<typeof neon>;
@@ -70,6 +84,33 @@ function client(): NeonSql | null {
   const url = env.databaseUrl();
   if (!url) return null;
   return neon(url, { fetchOptions: { cache: "no-store" } });
+}
+
+async function identity(sql: NeonSql) {
+  const rows = (await sql`
+    SELECT current_database()                        AS database,
+           current_user                              AS role,
+           pg_is_in_recovery()                       AS in_recovery,
+           current_setting('neon.tenant_id',   true) AS tenant_id,
+           current_setting('neon.timeline_id', true) AS timeline_id
+  `) as Record<string, unknown>[];
+  const r = rows[0] ?? {};
+  return {
+    database: typeof r.database === "string" ? r.database : null,
+    role: typeof r.role === "string" ? r.role : null,
+    in_recovery: r.in_recovery === true,
+    tenant_id: typeof r.tenant_id === "string" && r.tenant_id ? r.tenant_id : null,
+    timeline_id: typeof r.timeline_id === "string" && r.timeline_id ? r.timeline_id : null,
+  };
+}
+
+function identityMatches(id: Awaited<ReturnType<typeof identity>>): boolean {
+  return (
+    id.tenant_id === PINNED_IDENTITY.tenant_id &&
+    id.timeline_id === PINNED_IDENTITY.timeline_id &&
+    id.database === PINNED_IDENTITY.database &&
+    id.in_recovery === false
+  );
 }
 
 async function ledger(sql: NeonSql): Promise<string[]> {
@@ -83,34 +124,6 @@ async function ledger(sql: NeonSql): Promise<string[]> {
   return rows.map((r) => String(r.filename));
 }
 
-/**
- * Identity of the database this deployment is actually connected to. Neon
- * exposes its tenant and timeline (= branch) ids as server settings; both
- * are read with missing_ok so a non-Neon Postgres simply reports null.
- * `in_recovery` false means a read-write primary — Neon runs exactly one
- * read-write compute per branch, which is what makes two read-write
- * endpoints two different branches.
- */
-async function identity(sql: NeonSql) {
-  const rows = (await sql`
-    SELECT current_database()                              AS database,
-           current_user                                    AS role,
-           pg_is_in_recovery()                             AS in_recovery,
-           current_setting('neon.tenant_id',   true)       AS tenant_id,
-           current_setting('neon.timeline_id', true)       AS timeline_id,
-           version()                                       AS server_version
-  `) as Record<string, unknown>[];
-  const r = rows[0] ?? {};
-  return {
-    database: r.database ?? null,
-    role: r.role ?? null,
-    in_recovery: r.in_recovery ?? null,
-    tenant_id: r.tenant_id || null,
-    timeline_id: r.timeline_id || null,
-    server_version: typeof r.server_version === "string" ? r.server_version.split(" on ")[0] : null,
-  };
-}
-
 async function usageColumnsPresent(sql: NeonSql): Promise<boolean> {
   const rows = (await sql`
     SELECT count(*)::int AS n
@@ -121,87 +134,139 @@ async function usageColumnsPresent(sql: NeonSql): Promise<boolean> {
   return Number(rows[0]?.n ?? 0) === 4;
 }
 
+/** Rows of usage evidence so far — counts only, nothing per game or player. */
+async function usageEvidence(sql: NeonSql) {
+  try {
+    const rows = (await sql`
+      SELECT operation_kind,
+             count(*)::int                                   AS calls,
+             count(input_tokens)::int                        AS with_usage,
+             count(DISTINCT game_id)::int                    AS games
+      FROM corpus.turn_operations
+      WHERE operation_kind <> 'corpus_write'
+      GROUP BY operation_kind
+      ORDER BY operation_kind
+    `) as Record<string, unknown>[];
+    return rows;
+  } catch {
+    return null;
+  }
+}
+
+function page(): NextResponse {
+  const html = `<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex">
+<title>Preview database — operator</title>
+<style>body{font:16px system-ui;margin:2rem;max-width:32rem}label{display:block;margin:1rem 0 .25rem}input,select,button{font:inherit;width:100%;padding:.6rem}button{margin-top:1rem}</style>
+<h1>Preview database — operator</h1>
+<p>Preview only. The secret is sent to this deployment and compared server-side; it is never stored or logged.</p>
+<form method="post">
+<label for="secret">Operator secret (BENCHMARK_INGRESS_SECRET)</label>
+<input id="secret" name="secret" type="password" autocomplete="off" required>
+<label for="action">Action</label>
+<select id="action" name="action"><option value="status">Status only (read)</option><option value="apply">Apply the eight-file plan</option></select>
+<button type="submit">Run</button>
+</form>`;
+  return new NextResponse(html, { status: 200, headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "private, no-store" } });
+}
+
 export async function GET() {
   if (!isPreview()) return notFound();
-  const status = corpusConfigStatus();
-  const sql = client();
-  if (!sql) {
-    return NextResponse.json({ environment: "preview", corpus: status, error: "database_not_configured" }, { status: 500 });
+  return page();
+}
+
+async function readBody(req: Request): Promise<{ secret: string; action: string }> {
+  const type = req.headers.get("content-type") ?? "";
+  if (type.includes("application/json")) {
+    const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+    return { secret: String(body.secret ?? ""), action: String(body.action ?? "") };
   }
-  try {
-    const applied = await ledger(sql);
-    const files = migrationFiles();
-    return NextResponse.json({
-      environment: "preview",
-      deployment_id: process.env.VERCEL_DEPLOYMENT_ID ?? null,
-      corpus: { host: status.host, database: status.database, reason: status.reason },
-      identity: await identity(sql),
-      migrations: {
-        files_bundled: files.length,
-        applied,
-        pending: files.filter((f) => !applied.includes(f)),
-        target: TARGET_MIGRATION,
-        target_applied: applied.includes(TARGET_MIGRATION),
-        prerequisite_applied: applied.includes(PREREQUISITE_MIGRATION),
-        usage_columns_present: await usageColumnsPresent(sql),
-      },
-    });
-  } catch (err) {
-    return NextResponse.json(
-      { environment: "preview", error: "diagnostic_failed", detail: err instanceof Error ? err.constructor.name : typeof err },
-      { status: 502 }
-    );
-  }
+  const form = await req.formData().catch(() => null);
+  return { secret: String(form?.get("secret") ?? ""), action: String(form?.get("action") ?? "") };
 }
 
 export async function POST(req: Request) {
   if (!isPreview()) return notFound();
 
-  let body: unknown;
-  try {
-    body = await req.json();
-  } catch {
-    return NextResponse.json({ error: "confirmation_required" }, { status: 400 });
+  const { secret, action } = await readBody(req);
+  if (!env.benchmarkIngressSecret()) {
+    return NextResponse.json({ error: "operator_secret_not_configured" }, { status: 500 });
   }
-  const keys = body && typeof body === "object" ? Object.keys(body as object) : [];
-  if (
-    keys.length !== 1 ||
-    keys[0] !== "confirm" ||
-    (body as { confirm?: unknown }).confirm !== CONFIRMATION
-  ) {
-    return NextResponse.json({ error: "confirmation_required" }, { status: 400 });
+  if (!operatorAuthorized(secret)) {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (action !== "status" && action !== "apply") {
+    return NextResponse.json({ error: "unknown_action" }, { status: 400 });
   }
 
+  const status = corpusConfigStatus();
   const sql = client();
   if (!sql) return NextResponse.json({ error: "database_not_configured" }, { status: 500 });
 
   try {
-    const applied = await ledger(sql);
-    if (applied.includes(TARGET_MIGRATION)) {
-      return NextResponse.json({ ok: true, result: "already_applied", migration: TARGET_MIGRATION });
+    const id = await identity(sql);
+    if (!identityMatches(id)) {
+      // eslint-disable-next-line no-console
+      console.error("[preview-db] identity_mismatch — refusing", { observed: id, pinned: PINNED_IDENTITY });
+      return NextResponse.json({ error: "identity_mismatch", observed: id, pinned: PINNED_IDENTITY }, { status: 409 });
     }
-    if (!applied.includes(PREREQUISITE_MIGRATION)) {
-      return NextResponse.json(
-        { error: "prerequisite_missing", migration: TARGET_MIGRATION, requires: PREREQUISITE_MIGRATION },
-        { status: 409 }
-      );
+
+    const before = await ledger(sql);
+    const report = {
+      environment: "preview",
+      deployment_id: process.env.VERCEL_DEPLOYMENT_ID ?? null,
+      corpus: { host: status.host, database: status.database, reason: status.reason },
+      identity: id,
+      ledger: before,
+      unrelated_same_prefix_present: before.includes(UNRELATED_SAME_PREFIX),
+      plan: PLAN,
+      plan_pending: PLAN.filter((f) => !before.includes(f)),
+      usage_columns_present: await usageColumnsPresent(sql),
+      usage_evidence: await usageEvidence(sql),
+    };
+
+    if (action === "status") return NextResponse.json(report);
+
+    const applied: string[] = [];
+    const skipped: string[] = [];
+    for (const file of PLAN) {
+      if (before.includes(file)) {
+        skipped.push(file);
+        continue;
+      }
+      const statements = splitSqlStatements(readFileSync(path.join(process.cwd(), "migrations", file), "utf8"));
+      try {
+        await sql.transaction([
+          ...statements.map((statement) => sql.query(statement)),
+          sql.query("INSERT INTO public.schema_migrations (filename) VALUES ($1)", [file]),
+        ]);
+        applied.push(file);
+        // eslint-disable-next-line no-console
+        console.log(`[preview-db] applied ${file} (${statements.length} statements) on timeline ${id.timeline_id}`);
+      } catch (err) {
+        const detail = err instanceof Error ? err.message.slice(0, 300) : String(err);
+        // eslint-disable-next-line no-console
+        console.error(`[preview-db] FAILED ${file} — rolled back, stopping: ${detail}`);
+        return NextResponse.json(
+          { ...report, error: "migration_failed", failed: file, detail, applied, skipped, ledger_after: await ledger(sql) },
+          { status: 502 }
+        );
+      }
     }
-    const file = path.join(migrationsDir(), TARGET_MIGRATION);
-    const statements = splitSqlStatements(readFileSync(file, "utf8"));
-    await sql.transaction([
-      ...statements.map((statement) => sql.query(statement)),
-      sql.query("INSERT INTO public.schema_migrations (filename) VALUES ($1)", [TARGET_MIGRATION]),
-    ]);
+
+    const after = await ledger(sql);
+    // eslint-disable-next-line no-console
+    console.log(`[preview-db] plan complete: applied=${applied.length} skipped=${skipped.length} ledger=${after.length}`);
     return NextResponse.json({
+      ...report,
       ok: true,
-      result: "applied",
-      migration: TARGET_MIGRATION,
-      statements: statements.length,
+      applied,
+      skipped,
+      ledger_after: after,
       usage_columns_present: await usageColumnsPresent(sql),
     });
   } catch (err) {
     return NextResponse.json(
-      { error: "migration_failed", migration: TARGET_MIGRATION, detail: err instanceof Error ? err.message.slice(0, 300) : String(err) },
+      { error: "diagnostic_failed", detail: err instanceof Error ? err.constructor.name : typeof err },
       { status: 502 }
     );
   }
