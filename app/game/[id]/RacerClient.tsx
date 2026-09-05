@@ -3,10 +3,12 @@
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
+import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { questionNumbers } from "@/lib/questionNumbers";
 import type { GameView } from "@/lib/gameView";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 import EvaluationState from "@/app/components/EvaluationState";
+import { useResultReveal } from "@/app/components/useResultReveal";
 import {
   ASK_CLIENT_TIMEOUT_MS,
   CLUE_CLIENT_TIMEOUT_MS,
@@ -71,6 +73,13 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveFired = useRef(false);
+  // V2.8.7.3 — auto-reveal the terminal result on this screen too: the SAME
+  // shared hook GameClient.tsx and HumanClient.tsx call (see
+  // app/components/useResultReveal.ts). Before this, this screen had no
+  // reveal mechanism at all — a player scrolled deep into a long game had
+  // to find the result manually, the same field gap V2.8.7.2 left unfixed
+  // here.
+  const { headerRef, headingRef: resultHeadingRef } = useResultReveal(game.phase);
   // V2.8.6 R2 — required by TurnRequestState but with no auto-retry loop on
   // this screen (every RacerClient action is human-initiated; there is no
   // auto-turn effect to suspend). Plain refs, not React state: nothing here
@@ -365,7 +374,10 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
 
   return (
     <main className="mx-auto flex w-full min-h-screen max-w-2xl flex-col gap-6 px-4 py-8 sm:px-6 sm:py-12">
-      <header className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3">
+      <header
+        ref={headerRef}
+        className="flex items-center justify-between gap-3 border-b border-[var(--ink)]/10 pb-3"
+      >
         <div className="flex min-w-0 flex-col">
           <a href="/" className="flex min-w-0 items-center gap-2" aria-label="Barkóba főoldal">
             <span
@@ -405,6 +417,90 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           : ""}
       </p>
 
+      {/*
+        V2.8.7.3 — the result is the PRIMARY visible content on completion:
+        it renders here, before the transcript, not after it (the old
+        behavior).
+      */}
+      {game.phase === "complete" && game.result && (
+        <section
+          className={
+            game.result === "racer_correct" || game.result === "racer_win_integrity_violation"
+              ? "rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-5"
+              : "rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-5"
+          }
+        >
+          {/*
+            V2.8.7.3 — ref/tabIndex/outline-none: see ResultPanel.tsx's own
+            comment on the identical pattern. tabIndex={-1} makes this a
+            valid PROGRAMMATIC focus target (never in the Tab order — only
+            useResultReveal's effect ever focuses it); outline-none
+            suppresses the default focus ring, which would otherwise read as
+            an editable-input affordance on a heading that accepts no input.
+          */}
+          <h2
+            ref={resultHeadingRef}
+            tabIndex={-1}
+            className="text-lg font-semibold text-[var(--ink)] outline-none"
+          >
+            {RESULT_HEADLINE[game.result] ?? "A játék véget ért."}
+          </h2>
+          <dl className="mt-4 flex flex-col gap-3 border-t border-[var(--ink)]/15 pt-4 text-sm">
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+                A megfejtés
+              </dt>
+              <dd className="mt-0.5 break-words text-[var(--ink)]">
+                {game.revealed_target}
+              </dd>
+            </div>
+            {game.final_guess_text && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+                  A tipped
+                </dt>
+                <dd className="mt-0.5 break-words text-[var(--ink)]">
+                  {game.final_guess_text}
+                </dd>
+              </div>
+            )}
+            <PostGameRegisterCTA />
+
+            <div>
+              <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+                Felhasznált kérdés
+              </dt>
+              <dd className="mt-0.5 text-[var(--ink)]">
+                {game.question_count} / {game.max_questions}
+              </dd>
+            </div>
+            {game.adjudication_notes && (
+              <div>
+                <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
+                  Értékelés
+                </dt>
+                <dd className="mt-0.5 break-words text-[var(--ink)]">
+                  {game.adjudication_notes}
+                </dd>
+              </div>
+            )}
+          </dl>
+          {game.private_target && (
+            <p className="mt-4 rounded-md border border-[var(--ink)]/15 bg-white/70 p-3 text-xs text-[var(--ink-soft)]">
+              Személyes titok volt: az értékelés a játék során megadott
+              információk alapján készült, nem független ellenőrzéssel.
+            </p>
+          )}
+
+          <a
+            href="/"
+            className="mt-5 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
+          >
+            Új játék
+          </a>
+        </section>
+      )}
+
       <section className="flex flex-col gap-4">
         {turns.length === 0 && live && (
           <p className="text-sm text-[var(--ink-soft)]">
@@ -412,7 +508,14 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           </p>
         )}
 
-        {turns.map((entry) =>
+        {/*
+          V2.8.7.3 — completed history renders NEWEST-first, matching
+          GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
+          completedHistoryForDisplay). `turns` itself (chronological) is
+          untouched and remains what the "last turn" edit-button check below
+          reads.
+        */}
+        {completedHistoryForDisplay(turns).map((entry) =>
           entry.turn_type === "clue" ? (
             <div
               key={entry.id}
@@ -662,73 +765,6 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
 
       {game.phase === "resolving" && (
         <EvaluationState error={error} busy={busy} onRetry={() => void resolveGame()} />
-      )}
-
-      {game.phase === "complete" && game.result && (
-        <section
-          className={
-            game.result === "racer_correct" || game.result === "racer_win_integrity_violation"
-              ? "rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-5"
-              : "rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-5"
-          }
-        >
-          <h2 className="text-lg font-semibold text-[var(--ink)]">
-            {RESULT_HEADLINE[game.result] ?? "A játék véget ért."}
-          </h2>
-          <dl className="mt-4 flex flex-col gap-3 border-t border-[var(--ink)]/15 pt-4 text-sm">
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
-                A megfejtés
-              </dt>
-              <dd className="mt-0.5 break-words text-[var(--ink)]">
-                {game.revealed_target}
-              </dd>
-            </div>
-            {game.final_guess_text && (
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
-                  A tipped
-                </dt>
-                <dd className="mt-0.5 break-words text-[var(--ink)]">
-                  {game.final_guess_text}
-                </dd>
-              </div>
-            )}
-            <PostGameRegisterCTA />
-
-            <div>
-              <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
-                Felhasznált kérdés
-              </dt>
-              <dd className="mt-0.5 text-[var(--ink)]">
-                {game.question_count} / {game.max_questions}
-              </dd>
-            </div>
-            {game.adjudication_notes && (
-              <div>
-                <dt className="text-xs uppercase tracking-wide text-[var(--ink-soft)]">
-                  Értékelés
-                </dt>
-                <dd className="mt-0.5 break-words text-[var(--ink)]">
-                  {game.adjudication_notes}
-                </dd>
-              </div>
-            )}
-          </dl>
-          {game.private_target && (
-            <p className="mt-4 rounded-md border border-[var(--ink)]/15 bg-white/70 p-3 text-xs text-[var(--ink-soft)]">
-              Személyes titok volt: az értékelés a játék során megadott
-              információk alapján készült, nem független ellenőrzéssel.
-            </p>
-          )}
-
-          <a
-            href="/"
-            className="mt-5 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
-          >
-            Új játék
-          </a>
-        </section>
       )}
 
       {error && (

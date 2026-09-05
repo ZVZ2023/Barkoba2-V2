@@ -16,6 +16,7 @@ import { readFileSync } from "node:fs";
 const COMPOSER_ENTRY = readFileSync("app/ComposerEntry.tsx", "utf8");
 const GAME_CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
 const RESULT_PANEL = readFileSync("app/game/[id]/ResultPanel.tsx", "utf8");
+const USE_RESULT_REVEAL = readFileSync("app/components/useResultReveal.ts", "utf8");
 
 // ---------------------------------------------------------------------------
 // 1. The obsolete startup copy above the target field is gone; the heading
@@ -71,38 +72,70 @@ test("ComposerEntry.tsx: entitlement logic, developer access, question limits, a
 // ---------------------------------------------------------------------------
 // 2. Auto-reveal: the terminal result moves into view and takes focus,
 //    without the player ever needing to scroll to discover it.
+//
+//    V2.8.7.4 — the reveal mechanism itself now lives in ONE shared hook,
+//    app/components/useResultReveal.ts, called by all three player-facing
+//    game screens (GameClient.tsx, RacerClient.tsx, HumanClient.tsx). See
+//    test/mobileRevealTranscriptOrder.test.ts for the cross-client
+//    consistency proof (all three call the hook, none reimplement it) and
+//    the cleanup/cancellation proof; this file keeps the GameClient.tsx-
+//    specific wiring checks (it is the hook's original caller and still
+//    hands the SAME ref through to ResultPanel).
 // ---------------------------------------------------------------------------
 
-test("GameClient.tsx: the auto-reveal effect measures the header, computes the scroll target via lib/resultReveal.ts, and moves focus without stealing scroll from the in-flight smooth scroll", () => {
-  assert.match(GAME_CLIENT, /from "@\/lib\/resultReveal"/, "must reuse the pure, tested decision/arithmetic — not reimplement it inline");
-  assert.match(GAME_CLIENT, /shouldRevealResult\(\{\s*previousPhase: previousPhaseRef\.current,\s*phase: game\.phase\s*\}\)/);
-  assert.match(GAME_CLIENT, /previousPhaseRef\.current = game\.phase/, "the ref must be updated on every check, or the transition could re-fire");
-  assert.match(GAME_CLIENT, /computeRevealScrollTop\(\{/);
-  assert.match(GAME_CLIENT, /window\.scrollTo\(\{\s*top: targetTop,\s*behavior: "smooth"\s*\}\)/);
-  assert.match(GAME_CLIENT, /heading\.focus\(\{\s*preventScroll: true\s*\}\)/, "focus must not fight the smooth scroll already in flight");
+test("app/components/useResultReveal.ts: calls focus() FIRST, then measures/scrolls -- the iOS fix (see test/resultReveal.test.ts for why the old order failed on iPhone)", () => {
+  assert.match(USE_RESULT_REVEAL, /from "@\/lib\/resultReveal"/, "must reuse the pure, tested decision/arithmetic — not reimplement it inline");
+  assert.match(USE_RESULT_REVEAL, /shouldRevealResult\(\{\s*previousPhase: previousPhaseRef\.current,\s*phase\s*\}\)/);
+  assert.match(USE_RESULT_REVEAL, /previousPhaseRef\.current = phase/, "the ref must be updated on every check, or the transition could re-fire");
+  assert.match(USE_RESULT_REVEAL, /computeRevealScrollTop\(\{/);
+  assert.match(USE_RESULT_REVEAL, /window\.scrollTo\(\{\s*top: targetTop,\s*behavior: "smooth"\s*\}\)/);
+  assert.match(USE_RESULT_REVEAL, /heading\.focus\(\{\s*preventScroll: true\s*\}\)/);
+  // Ordering, not just presence: focus() must appear BEFORE window.scrollTo
+  // in source -- the reverse of the original V2.8.7.2 order, which iOS
+  // Safari silently overrode.
+  const focusAt = USE_RESULT_REVEAL.indexOf("heading.focus({ preventScroll: true });");
+  const scrollAt = USE_RESULT_REVEAL.indexOf("window.scrollTo({");
+  assert.ok(focusAt > 0 && scrollAt > focusAt, "focus() must precede window.scrollTo(), not follow it");
+  // A post-layout wait sits between them -- the mechanism that makes the
+  // final scroll win regardless of what focus()'s own native jump did.
+  const between = USE_RESULT_REVEAL.slice(focusAt, scrollAt);
+  assert.match(between, /requestAnimationFrame\(\(\) => \{\s*innerFrame = requestAnimationFrame\(\(\) => \{/);
 });
 
-test("GameClient.tsx: the header is measured directly (headerRef), not assumed to be a fixed size", () => {
-  assert.match(GAME_CLIENT, /const headerRef = useRef<HTMLElement>\(null\)/);
-  assert.match(GAME_CLIENT, /ref=\{headerRef\}/);
-  assert.match(GAME_CLIENT, /headerRef\.current\?\.getBoundingClientRect\(\)\.height/);
+test("app/components/useResultReveal.ts: cancels both pending animation frames on cleanup/unmount -- a stale callback must never measure or scroll after the screen moves on", () => {
+  assert.match(USE_RESULT_REVEAL, /let outerFrame = 0;/);
+  assert.match(USE_RESULT_REVEAL, /let innerFrame = 0;/);
+  assert.match(USE_RESULT_REVEAL, /return \(\) => \{\s*cancelAnimationFrame\(outerFrame\);\s*cancelAnimationFrame\(innerFrame\);\s*\};/);
 });
 
-test("GameClient.tsx: the SAME heading ref is handed to ResultPanel that the effect scrolls to and focuses", () => {
-  assert.match(GAME_CLIENT, /const resultHeadingRef = useRef<HTMLHeadingElement>\(null\)/);
+test("app/components/useResultReveal.ts: measures the header directly (headerRef), not a fixed size, and owns both refs it needs", () => {
+  assert.match(USE_RESULT_REVEAL, /const headerRef = useRef<HTMLElement>\(null\)/);
+  assert.match(USE_RESULT_REVEAL, /const headingRef = useRef<HTMLHeadingElement>\(null\)/);
+  assert.match(USE_RESULT_REVEAL, /headerRef\.current\?\.getBoundingClientRect\(\)\.height/);
+  assert.match(USE_RESULT_REVEAL, /return \{ headerRef, headingRef \};/);
+});
+
+test("app/components/useResultReveal.ts: the effect only depends on phase -- it must not re-fire for an unrelated re-render (e.g. a resolve-retry error clearing)", () => {
+  const effectStart = USE_RESULT_REVEAL.indexOf("shouldRevealResult({");
+  assert.ok(effectStart > 0);
+  const effectRegion = USE_RESULT_REVEAL.slice(Math.max(0, effectStart - 200), effectStart + 1400);
+  assert.match(effectRegion, /\}, \[phase\]\);/);
+});
+
+test("GameClient.tsx: calls the shared hook and hands the SAME heading ref through to ResultPanel that the hook scrolls to and focuses", () => {
+  assert.match(GAME_CLIENT, /from "@\/app\/components\/useResultReveal"/);
+  assert.match(GAME_CLIENT, /const \{ headerRef, headingRef: resultHeadingRef \} = useResultReveal\(game\.phase\)/);
+  assert.match(GAME_CLIENT, /ref=\{headerRef\}/, "the header must be measured, not assumed");
   const resultRender = GAME_CLIENT.slice(
     GAME_CLIENT.indexOf('game.phase === "complete" &&'),
     GAME_CLIENT.indexOf('game.phase === "complete" &&') + 400
   );
   assert.match(resultRender, /<ResultPanel/);
   assert.match(resultRender, /headingRef=\{resultHeadingRef\}/);
-});
-
-test("GameClient.tsx: the auto-reveal effect only depends on game.phase -- it must not re-fire for an unrelated re-render (e.g. a resolve-retry error clearing)", () => {
-  const effectStart = GAME_CLIENT.indexOf("shouldRevealResult({");
-  assert.ok(effectStart > 0);
-  const effectRegion = GAME_CLIENT.slice(Math.max(0, effectStart - 400), effectStart + 900);
-  assert.match(effectRegion, /\}, \[game\.phase\]\);/);
+  // GameClient.tsx must not reimplement any of the reveal mechanism inline
+  // now that it lives in the shared hook.
+  assert.doesNotMatch(GAME_CLIENT, /requestAnimationFrame/);
+  assert.doesNotMatch(GAME_CLIENT, /computeRevealScrollTop/);
 });
 
 test("ResultPanel.tsx: the result heading is a valid, ring-free PROGRAMMATIC focus target, for every terminal outcome equally", () => {
@@ -124,13 +157,9 @@ test("ResultPanel.tsx: HEADLINE covers a correct AI guess and an incorrect one, 
   // the wiring itself never reads game.result.
 });
 
-test("ResultPanel.tsx: the result is still rendered directly after the transcript, not moved somewhere the auto-reveal effect has to compensate for", () => {
-  const transcriptClose = GAME_CLIENT.indexOf("))}\n      </section>");
-  const resolvingBlock = GAME_CLIENT.indexOf('game.phase === "resolving" && !guessRevealPending');
+test("ResultPanel.tsx: V2.8.7.3 -- the result now renders BEFORE the transcript section, not after it (the old V2.8.7.2 behavior)", () => {
   const resultBlock = GAME_CLIENT.indexOf('game.phase === "complete" &&');
-  assert.ok(transcriptClose > 0 && resolvingBlock > transcriptClose && resultBlock > resolvingBlock);
-  // Nothing else sits between the transcript's own closing tag and these two
-  // phase-gated panels.
-  const between = GAME_CLIENT.slice(transcriptClose, resultBlock);
-  assert.doesNotMatch(between, /<section|<ResultPanel|<EvaluationState[^>]*\/>\s*\)\s*\}\s*\n\s*\n\s*\{[a-zA-Z]/);
+  const transcriptSectionOpen = GAME_CLIENT.indexOf('<section className="flex flex-col gap-4">');
+  const historyCall = GAME_CLIENT.indexOf("completedHistoryForDisplay(turns).map");
+  assert.ok(resultBlock > 0 && transcriptSectionOpen > resultBlock && historyCall > transcriptSectionOpen);
 });

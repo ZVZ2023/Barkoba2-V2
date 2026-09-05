@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ComposerGameView, GameView } from "@/lib/gameView";
+import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { resultCopy } from "@/lib/resultCopy";
 import {
   HH_TURN_CLIENT_TIMEOUT_MS,
@@ -13,7 +14,8 @@ import {
   type RequestOwnership,
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
-import type { ComposerAnswer } from "@/lib/types";
+import { useResultReveal } from "@/app/components/useResultReveal";
+import type { ComposerAnswer, GamePhase } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // V2.3 — the Human↔Human screen. One component, both seats.
@@ -57,6 +59,13 @@ export default function HumanClient({
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const resolving = useRef(false);
+  // V2.8.7.3 — auto-reveal the terminal result on this screen too: the SAME
+  // shared hook GameClient.tsx and RacerClient.tsx call (see
+  // app/components/useResultReveal.ts). view.phase is a plain string (the
+  // shared projection's own loose typing — see lib/gameView.ts), but it only
+  // ever holds a real GamePhase value, same as every other comparison
+  // against it in this file (e.g. `view.phase === "complete"` below).
+  const { headerRef, headingRef: resultHeadingRef } = useResultReveal(view.phase as GamePhase);
 
   // V2.8.6 R2 — request ownership + canonical-truth reconciliation for
   // POST /hh/turn, reused from lib/turnRequestGuard.ts's runOwnedHhTurnRequest
@@ -250,7 +259,10 @@ export default function HumanClient({
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
-      <header className="flex items-baseline justify-between border-b border-neutral-900/10 pb-2">
+      <header
+        ref={headerRef}
+        className="flex items-baseline justify-between border-b border-neutral-900/10 pb-2"
+      >
         <div>
           <span className="font-semibold">Barkóba</span>
           <span className="ml-2 text-sm text-neutral-600">
@@ -307,8 +319,64 @@ export default function HumanClient({
         </div>
       )}
 
+      {/*
+        V2.8.7.3 — the result is the PRIMARY visible content on completion:
+        it renders here, before the transcript, not after it (the old
+        behavior).
+      */}
+      {over && (
+        <div className="flex flex-col gap-2 rounded-md border border-neutral-900/15 bg-white/70 p-4">
+          {/*
+            The reader's own outcome, first and largest. The adjudication text
+            still follows below — it explains, it no longer announces.
+
+            V2.8.7.3 — this was a plain <div>; now an <h2> with
+            ref/tabIndex/outline-none, matching ResultPanel.tsx's and
+            RacerClient.tsx's own identical pattern: tabIndex={-1} makes it a
+            valid PROGRAMMATIC focus target (never in the Tab order — only
+            useResultReveal's effect ever focuses it), and outline-none
+            suppresses the default focus ring, which would otherwise read as
+            an editable-input affordance on a heading that accepts no input.
+          */}
+          <h2
+            ref={resultHeadingRef}
+            tabIndex={-1}
+            className={`text-2xl font-bold tracking-tight outline-none ${
+              outcome.won ? "text-[#1e3a24]" : "text-[#8b2f2f]"
+            }`}
+          >
+            {outcome.headline}
+          </h2>
+          <div className="text-base text-neutral-800">{outcome.detail}</div>
+          {view.revealed_target && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-600">A megfejtés</div>
+              <div className="text-base">{view.revealed_target}</div>
+            </div>
+          )}
+          {view.final_guess_text && (
+            <div>
+              <div className="text-xs uppercase tracking-wide text-neutral-600">A tipp</div>
+              <div className="text-base">{view.final_guess_text}</div>
+            </div>
+          )}
+          {view.adjudication_notes && (
+            <p className="text-sm text-neutral-700">{view.adjudication_notes}</p>
+          )}
+          {view.integrity_notes && (
+            <p className="text-sm text-neutral-700">{view.integrity_notes}</p>
+          )}
+        </div>
+      )}
+
+      {/*
+        V2.8.7.3 — completed history renders NEWEST-first, matching
+        GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
+        completedHistoryForDisplay). The canonical, server-projected
+        view.turns stays chronological; only this render call reverses it.
+      */}
       <ol className="flex flex-col gap-2">
-        {view.turns.map((t) => (
+        {completedHistoryForDisplay(view.turns).map((t) => (
           <li key={t.turn_index} className="rounded-md border border-neutral-900/10 bg-white/60 p-3">
             <div className="text-xs text-neutral-500">#{t.turn_index}</div>
             {t.question_text && <div className="text-[15px]">{t.question_text}</div>}
@@ -535,39 +603,6 @@ export default function HumanClient({
 
       {view.phase === "resolving" && (
         <p className="text-sm text-neutral-700">Értékelés folyamatban…</p>
-      )}
-
-      {over && (
-        <div className="flex flex-col gap-2 rounded-md border border-neutral-900/15 bg-white/70 p-4">
-          {/* The reader's own outcome, first and largest. The adjudication text
-              still follows below — it explains, it no longer announces. */}
-          <div
-            className={`text-2xl font-bold tracking-tight ${
-              outcome.won ? "text-[#1e3a24]" : "text-[#8b2f2f]"
-            }`}
-          >
-            {outcome.headline}
-          </div>
-          <div className="text-base text-neutral-800">{outcome.detail}</div>
-          {view.revealed_target && (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-600">A megfejtés</div>
-              <div className="text-base">{view.revealed_target}</div>
-            </div>
-          )}
-          {view.final_guess_text && (
-            <div>
-              <div className="text-xs uppercase tracking-wide text-neutral-600">A tipp</div>
-              <div className="text-base">{view.final_guess_text}</div>
-            </div>
-          )}
-          {view.adjudication_notes && (
-            <p className="text-sm text-neutral-700">{view.adjudication_notes}</p>
-          )}
-          {view.integrity_notes && (
-            <p className="text-sm text-neutral-700">{view.integrity_notes}</p>
-          )}
-        </div>
       )}
 
       <a href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
