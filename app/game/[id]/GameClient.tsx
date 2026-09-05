@@ -10,6 +10,7 @@ import { effectiveConsumed, isWithinCorrectionWindow } from "@/lib/rewind";
 import { shouldAutoRequestTurn, shouldOfferTurnRetry, shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import {
   CLIENT_TURN_TIMEOUT_MS,
+  CLUE_CLIENT_TIMEOUT_MS,
   RESOLVE_CLIENT_TIMEOUT_MS,
   createRequestOwnership,
   mergeViewIntoGame,
@@ -236,6 +237,25 @@ export default function GameClient({
   // they are sequential with the call they follow, never concurrent with it.
   const answerInFlightRef = useRef(false);
 
+  // V2.8.6 R2 — sendClue()'s own request-ownership tracker, independent of
+  // sendTurn's and resolveGame's above (a third, separate request stream —
+  // same reasoning as resolveOwnershipRef's own doc). Safe as a THIRD
+  // independent stream rather than sharing sendTurn's: the clue-request
+  // panel and the pending-question panel are mutually exclusive render
+  // branches below (clueWanted and pending can never both be true — each
+  // checks the qa_log's single last entry's turn_type), so there is no
+  // button that can race sendTurn's, unlike RacerClient.tsx's screen (see
+  // that file's own comment on why IT shares one mutex instead).
+  const clueOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!clueOwnershipRef.current) {
+    clueOwnershipRef.current = createRequestOwnership();
+  }
+  const activeClueRequestRef = useRef<ActiveRequestHandle | null>(null);
+  // (D) synchronous submission guard for sendClue() itself — see
+  // answerInFlightRef's own doc above for why a plain ref, not React state.
+  const clueInFlightRef = useRef(false);
+  const clueTurnFailedRef = useRef(false);
+
   const pending = pendingQuestion(game);
   // The Racer spent a credit and is waiting on words, not on YES/NO.
   const clueWanted = pendingClueRequest(game);
@@ -249,25 +269,79 @@ export default function GameClient({
   const phaseOneScopeUnresolved = derivePhaseOneState(game.qa_log, game.game_language).unresolved;
   const [clueText, setClueText] = useState("");
 
+  // V2.8.6 R2 — rebuilt on runOwnedTurnRequest, the same shared,
+  // ownership-guarded module sendTurn/resolveGame already use (see
+  // lib/turnRequestGuard.ts). Previously a plain fetch/setState wrapper with
+  // no lock-sharing, no revision, no ownership and no reconciliation —
+  // exactly the shape that module's own doc names as the original
+  // sendTurn defect.
   const sendClue = useCallback(async () => {
-    setBusy(true);
-    setError(null);
+    // (D) synchronous guard — see clueInFlightRef's own doc above.
+    if (clueInFlightRef.current) return;
+    clueInFlightRef.current = true;
+    // Read once, before the request begins: clueText is cleared on success
+    // inside setGame below, so the value captured here (not a re-read of
+    // React state after the fact) is what must be sent.
+    const textToSend = clueText;
     try {
-      const res = await fetch(`/api/game/${game.game_id}/clue`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ clue_text: clueText }),
-      });
-      const data = await res.json();
-      if (data.game) setGame(data.game as GameRecord);
-      if (!res.ok) setError(data.message || "Valami hiba történt.");
-      else setClueText("");
-    } catch {
-      setError("Nem sikerült elküldeni a súgót.");
+      await runOwnedTurnRequest(
+        clueOwnershipRef.current as RequestOwnership,
+        {
+          requestTurn: async (signal) => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/clue`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                clue_text: textToSend,
+                // V2.8.6 R2 — the My Car Key invariant, extended to /clue.
+                expected_revision: gameRef.current.revision,
+              }),
+              signal,
+            });
+            const data = (await res.json()) as TurnResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const body = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: body.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame: (next) => {
+            // Clear the draft only once the transcript actually shows the
+            // clue landed (mirrors RacerClient's own reconciliationShowsProgress
+            // use for its compose fields) — not merely because THIS attempt's
+            // own HTTP response was ok, since a lost-response reconciliation
+            // must also be able to clear it.
+            if (reconciliationShowsProgress(gameRef.current, next)) {
+              setClueText("");
+            }
+            setGame(next);
+          },
+          setError,
+          setTurnFailed: (failed) => {
+            clueTurnFailedRef.current = failed;
+          },
+          setBusy,
+          setAmbiguousMode: () => {},
+          setExplanation: () => {},
+          clearAutoTurnGuard: () => {},
+          setTurnInProgress: () => {},
+          registerActiveRequest: (handle) => {
+            activeClueRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeClueRequestRef.current = null;
+          },
+        },
+        CLUE_CLIENT_TIMEOUT_MS
+      );
     } finally {
-      setBusy(false);
+      clueInFlightRef.current = false;
     }
-  }, [clueText, game.game_id]);
+  }, [clueText]);
 
   // S1 / RB-1 — the actual GameClient.sendTurn() defect and its fix are
   // documented in lib/turnRequestGuard.ts's module doc. This function is now

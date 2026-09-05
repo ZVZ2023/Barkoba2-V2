@@ -4,8 +4,21 @@ import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
 import { questionNumbers } from "@/lib/questionNumbers";
+import type { GameView } from "@/lib/gameView";
 import type { GameRecord, QuestionLogEntry } from "@/lib/types";
 import EvaluationState from "@/app/components/EvaluationState";
+import {
+  ASK_CLIENT_TIMEOUT_MS,
+  CLUE_CLIENT_TIMEOUT_MS,
+  createRequestOwnership,
+  mergeViewIntoGame,
+  reconciliationShowsProgress,
+  runOwnedTurnRequest,
+  type ActiveRequestHandle,
+  type RequestOwnership,
+  type TurnResponseBody,
+} from "@/lib/turnRequestGuard";
+import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 
 /** Stored values stay YES/NO/AMBIGUOUS; only the display is Hungarian. */
 const ANSWER_HU: Record<string, string> = {
@@ -58,55 +71,259 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveFired = useRef(false);
+  // V2.8.6 R2 — required by TurnRequestState but with no auto-retry loop on
+  // this screen (every RacerClient action is human-initiated; there is no
+  // auto-turn effect to suspend). Plain refs, not React state: nothing here
+  // renders differently based on either value, so there is nothing for a
+  // re-render to accomplish — see runOwnedTurnRequest's own doc for what
+  // each callback means.
+  const turnFailedRef = useRef(false);
+  const turnInProgressRef = useRef(false);
+
+  // V2.8.6 R2 — request ownership + canonical-truth reconciliation, reused
+  // from lib/turnRequestGuard.ts unchanged (see its module doc — the same
+  // fix GameClient.sendTurn already carries). ONE shared tracker for send()
+  // and askForClue(): both buttons are visible and tappable in the same
+  // instant on this screen (unlike GameClient, where the clue-request panel
+  // and the answer panel are mutually exclusive render branches) and both
+  // routes acquire the SAME per-game server lock (see /ask's and /clue's own
+  // lock-sharing comments) — so client-side they are correctly treated as
+  // one action stream, not two independently-racing ones.
+  const requestOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!requestOwnershipRef.current) {
+    requestOwnershipRef.current = createRequestOwnership();
+  }
+  const gameRef = useRef(game);
+  useEffect(() => {
+    gameRef.current = game;
+  }, [game]);
+  const activeRequestRef = useRef<ActiveRequestHandle | null>(null);
+  // V2.8.6 R2 (D) — synchronous submission guard, claimed before any await,
+  // mirroring GameClient's answerInFlightRef: a plain ref update is
+  // synchronous, unlike React state, so checking it FIRST closes the exact
+  // window a double-tap or duplicate event needs, before `disabled={busy}`
+  // has had a chance to commit.
+  const actionInFlightRef = useRef(false);
 
   // SÚGÓ. Derived from the record on every render, so the control cannot
   // disagree with what the server will allow.
   const clueOn = cluesEnabled(game);
   const cluesLeft = clueCreditsAvailable(game);
 
+  // V2.8.6 R2 — reuses the SAME shared requestOwnershipRef/actionInFlightRef/
+  // activeRequestRef as send(), not a second independent set: /clue and /ask
+  // acquire the SAME server-side per-game lock (see /clue's own comment on
+  // why), and both buttons are visible and tappable in the same instant on
+  // this screen — see the mutex's own doc above send().
   const askForClue = useCallback(async () => {
-    setBusy(true);
-    setError(null);
+    if (actionInFlightRef.current) return;
+    actionInFlightRef.current = true;
     try {
-      const res = await fetch(`/api/game/${game.game_id}/clue`, { method: "POST" });
-      const data = await res.json();
-      if (data.game) setGame(data.game as GameRecord);
-      if (!res.ok) setError(data.message || "Valami hiba történt.");
-    } catch {
-      setError("Nem sikerült súgót kérni.");
+      await runOwnedTurnRequest(
+        requestOwnershipRef.current as RequestOwnership,
+        {
+          requestTurn: async (signal) => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/clue`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ expected_revision: gameRef.current.revision }),
+              signal,
+            });
+            const data = (await res.json()) as TurnResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const viewBody = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: viewBody.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame,
+          setError,
+          setTurnFailed: (failed) => {
+            turnFailedRef.current = failed;
+          },
+          setBusy,
+          setAmbiguousMode: () => {},
+          setExplanation: () => {},
+          clearAutoTurnGuard: () => {},
+          setTurnInProgress: (inProgress) => {
+            turnInProgressRef.current = inProgress;
+          },
+          registerActiveRequest: (handle) => {
+            activeRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeRequestRef.current = null;
+          },
+        },
+        CLUE_CLIENT_TIMEOUT_MS
+      );
     } finally {
-      setBusy(false);
+      actionInFlightRef.current = false;
     }
-  }, [game.game_id]);
+  }, []);
 
+  // V2.8.6 R2 — this function used to be a plain fetch/setState wrapper,
+  // exactly the shape lib/turnRequestGuard.ts's own module doc describes as
+  // the defect GameClient.sendTurn had. It is now a thin transport/state
+  // adapter over runOwnedTurnRequest: request ownership (a superseded call's
+  // late success/failure/finally can never overwrite what a newer one
+  // already established), a bounded wait (ASK_CLIENT_TIMEOUT_MS, matching
+  // /ask's own maxDuration/lock-TTL numbers), and canonical-truth
+  // reconciliation on an uncertain transport failure (one GET /view read,
+  // never a second /ask call) all live in that shared, tested module.
   const send = useCallback(
     async (body: Record<string, unknown>) => {
-      setBusy(true);
-      setError(null);
+      // (D) synchronous guard — see actionInFlightRef's own doc above.
+      if (actionInFlightRef.current) return;
+      actionInFlightRef.current = true;
+      // V2.8.6 R2 — captured by requestTurn below, read by setGame. `true`
+      // only for a direct, known-successful HTTP response (mirrors the
+      // original's own "res.ok" gate for clearing the compose fields — a
+      // documented rejection like edit_changes_intent still bumps the CAS
+      // revision by recording the rejection, so revision-based progress
+      // alone is not the right signal here). Stays `null` when the primary
+      // request never resolved at all (thrown/aborted), which is exactly
+      // when reconciliation's OWN progress check below is the only signal
+      // available — the "server saved it but the response was lost" case.
+      let attemptOk: boolean | null = null;
       try {
-        const res = await fetch(`/api/game/${game.game_id}/ask`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(body),
-        });
-        const data = await res.json();
-        if (data.game) setGame(data.game as GameRecord);
-        if (!res.ok) setError(data.message || "Valami hiba történt.");
-        else {
-          setQuestion("");
-          setGuess("");
-          setGuessMode(false);
-          setEditing(null);
-          setEditText("");
-        }
-      } catch {
-        setError("Hálózati hiba — próbáld újra.");
+        await runOwnedTurnRequest(
+          requestOwnershipRef.current as RequestOwnership,
+          {
+            requestTurn: async (signal) => {
+              const res = await fetch(`/api/game/${gameRef.current.game_id}/ask`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  ...body,
+                  // V2.8.6 R2 — the My Car Key invariant, extended to /ask.
+                  // Every action this function submits mutates, so the
+                  // current real revision always rides along.
+                  expected_revision: gameRef.current.revision,
+                }),
+                signal,
+              });
+              attemptOk = res.ok;
+              const data = (await res.json()) as TurnResponseBody;
+              return { ok: res.ok, data };
+            },
+            requestView: async () => {
+              const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+              const viewBody = (await res.json()) as { view?: GameView };
+              return { ok: res.ok, view: viewBody.view ?? null };
+            },
+          },
+          {
+            getGame: () => gameRef.current,
+            setGame: (next) => {
+              // V2.8.6 R2 — clear the compose fields on a direct success, or
+              // when a lost-response reconciliation shows the attempt
+              // genuinely landed (reconciliationShowsProgress) — but never
+              // on a direct, known failure (attemptOk === false), even one
+              // that itself advanced the CAS revision (e.g. a recorded
+              // edit_changes_intent rejection): the player still has the
+              // rejection reason on screen and should not lose their draft.
+              const shouldClear =
+                attemptOk === true ||
+                (attemptOk === null && reconciliationShowsProgress(gameRef.current, next));
+              if (shouldClear) {
+                setQuestion("");
+                setGuess("");
+                setGuessMode(false);
+                setEditing(null);
+                setEditText("");
+              }
+              setGame(next);
+            },
+            setError,
+            setTurnFailed: (failed) => {
+              turnFailedRef.current = failed;
+            },
+            setBusy,
+            // RacerClient has no ambiguous-answer or "+1" sandbox-clarification
+            // UI (those are GameClient/human-Composer concepts) — harmless no-ops.
+            setAmbiguousMode: () => {},
+            setExplanation: () => {},
+            clearAutoTurnGuard: () => {},
+            setTurnInProgress: (inProgress) => {
+              turnInProgressRef.current = inProgress;
+            },
+            registerActiveRequest: (handle) => {
+              activeRequestRef.current = handle;
+            },
+            clearActiveRequest: () => {
+              activeRequestRef.current = null;
+            },
+          },
+          ASK_CLIENT_TIMEOUT_MS
+        );
       } finally {
-        setBusy(false);
+        // (D) released only once the owned request has fully reached its
+        // terminal/reconciled state.
+        actionInFlightRef.current = false;
       }
     },
-    [game.game_id]
+    []
   );
+
+  // V2.8.6 R2 — foreground reconciliation, mirroring GameClient's own
+  // visibilitychange handler (see lib/turnRequestGuard.ts's
+  // CLIENT_TURN_TIMEOUT_MS doc for the "silent stall" forensic this pattern
+  // repairs). A busy request already within its legitimate window is left
+  // alone; a STALE one is aborted directly, driving it down
+  // runOwnedTurnRequest's own existing abort→reconcile path. When nothing is
+  // busy, an opportunistic canonical read applies only if it shows genuine
+  // progress.
+  //
+  // ASK_CLIENT_TIMEOUT_MS (120s), not CLUE_CLIENT_TIMEOUT_MS (90s), even
+  // though activeRequestRef is shared by both send() and askForClue(): the
+  // handle itself does not say which route it belongs to, and using the
+  // LARGER of the two here is conservative in the safe direction — a
+  // genuinely stale /clue request is still caught, at most ~30s later than
+  // its own internal timeoutMs would have caught it anyway (that internal
+  // timer keeps running regardless of this handler).
+  useEffect(() => {
+    function handleVisibility() {
+      if (document.visibilityState !== "visible") return;
+      if (busy) {
+        const active = activeRequestRef.current;
+        if (
+          !shouldReconcileStaleRequestOnForeground({
+            busy,
+            activeRequestStartedAt: active?.startedAt ?? null,
+            now: Date.now(),
+            timeoutMs: ASK_CLIENT_TIMEOUT_MS,
+          })
+        ) {
+          return;
+        }
+        active?.abort();
+        return;
+      }
+      void (async () => {
+        try {
+          const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+          const body = (await res.json()) as { view?: GameView };
+          if (!res.ok || !body.view) return;
+          const before = gameRef.current;
+          const reconciled = mergeViewIntoGame(before, body.view);
+          if (reconciliationShowsProgress(before, reconciled)) {
+            setGame(reconciled);
+            setError(null);
+            turnFailedRef.current = false;
+          }
+        } catch {
+          // Best-effort background refresh, not a user action — silent.
+        }
+      })();
+    }
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [busy]);
 
   const resolveGame = useCallback(async () => {
     setBusy(true);

@@ -12,40 +12,61 @@ import { readFileSync } from "node:fs";
 // test/composerAuthority.test.ts already use for these exact files — a
 // weaker claim than an executed test, said plainly rather than implied.
 //
-// runOwnedTurnRequest's own behavioral fix is proven directly (real
-// execution, mocked transport) in test/turnRequestGuard.test.ts. This file
-// covers the two files that do NOT go through that machinery:
-// RacerClient.tsx's /ask and /clue handlers and GameClient.tsx's /correct
-// handler already satisfied every Commit 2 requirement before this change
-// (never required `game`, never reconciled, never called /view) — asserted
-// here as regression coverage, not implied by their being unmodified.
-// HumanClient.tsx's /view poll DID need a real fix (it silently discarded
-// every non-ok response, including a documented auth failure) and is
-// asserted for the actual code change.
+// V2.8.6 R2 — RacerClient.tsx's /ask handler (send) was rebuilt on
+// runOwnedTurnRequest (see lib/turnRequestGuard.ts and
+// test/turnRequestGuard.test.ts, which prove that module's own behavior
+// directly). It now DOES require `game` on the primary response and DOES
+// reconcile through /view on an uncertain transport failure — the opposite
+// of this file's original R1-era assertion, which recorded what was true
+// only because /ask itself had no reliability contract yet. Updated here,
+// not merely left broken, because the OLD assertion is now describing a
+// defect (an unbounded, unrecoverable request) rather than a safe minimal
+// surface.
 // ---------------------------------------------------------------------------
 
 const GAME_CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
 const RACER_CLIENT = readFileSync("app/game/[id]/RacerClient.tsx", "utf8");
 const HUMAN_CLIENT = readFileSync("app/game/[id]/HumanClient.tsx", "utf8");
 
-test("RacerClient's /ask handler never requires `game` and never reconciles/issues /view", () => {
+test("RacerClient's /ask handler (send) is built on runOwnedTurnRequest and reconciles through /view", () => {
   const sendFn = RACER_CLIENT.slice(
     RACER_CLIENT.indexOf("const send = useCallback("),
-    RACER_CLIENT.indexOf("const resolveGame = useCallback(")
+    RACER_CLIENT.indexOf("// V2.8.6 R2 — foreground reconciliation")
   );
-  assert.match(sendFn, /if \(data\.game\) setGame\(data\.game as GameRecord\)/, "game must be optional, never destructured unconditionally");
-  assert.match(sendFn, /if \(!res\.ok\) setError\(data\.message/, "the server's own message must be shown on failure");
-  assert.doesNotMatch(sendFn, /\/view/, "must never issue a reconciliation read");
+  assert.match(sendFn, /runOwnedTurnRequest\(/, "must go through the shared ownership/reconciliation module");
+  assert.match(sendFn, /expected_revision: gameRef\.current\.revision/, "the My Car Key revision must ride along on every /ask call");
+  assert.match(sendFn, /requestView: async \(\) =>/, "must supply a canonical /view read for reconciliation");
 });
 
-test("RacerClient's /clue handler (askForClue) never requires `game` and never reconciles/issues /view", () => {
+test("RacerClient's /clue handler (askForClue) is built on runOwnedTurnRequest and shares send()'s mutex", () => {
+  // V2.8.6 R2 Commit 2 — askForClue was rebuilt alongside /clue's own server
+  // reliability change, exactly like send() was for /ask in Commit 1 (see
+  // that test's own doc above for why the OLD assertion here is now
+  // describing a defect, not a safe minimal surface).
   const clueFn = RACER_CLIENT.slice(
     RACER_CLIENT.indexOf("const askForClue = useCallback("),
     RACER_CLIENT.indexOf("const send = useCallback(")
   );
-  assert.match(clueFn, /if \(data\.game\) setGame\(data\.game as GameRecord\)/);
-  assert.match(clueFn, /if \(!res\.ok\) setError\(data\.message/);
-  assert.doesNotMatch(clueFn, /\/view/);
+  assert.match(clueFn, /runOwnedTurnRequest\(/, "must go through the shared ownership/reconciliation module");
+  assert.match(clueFn, /requestOwnershipRef\.current as RequestOwnership/, "must share send()'s mutex, not a second independent one");
+  assert.match(clueFn, /expected_revision: gameRef\.current\.revision/);
+  assert.match(clueFn, /requestView: async \(\) =>/);
+});
+
+test("GameClient's /clue handler (sendClue) is built on runOwnedTurnRequest with its own independent ownership stream", () => {
+  // V2.8.6 R2 Commit 2 — sendClue gets its OWN ownership/in-flight/active-
+  // request trio (clueOwnershipRef), distinct from sendTurn's, mirroring
+  // resolveGame's own precedent (a third independent request stream) —
+  // safe because the clue-request panel and the pending-question panel are
+  // mutually exclusive render branches, so no button can race sendTurn's.
+  const clueFn = GAME_CLIENT.slice(
+    GAME_CLIENT.indexOf("const sendClue = useCallback("),
+    GAME_CLIENT.indexOf("const sendTurn = useCallback(")
+  );
+  assert.match(clueFn, /runOwnedTurnRequest\(/);
+  assert.match(clueFn, /clueOwnershipRef\.current as RequestOwnership/, "must use its own ownership tracker, not sendTurn's");
+  assert.match(clueFn, /expected_revision: gameRef\.current\.revision/);
+  assert.match(clueFn, /requestView: async \(\) =>/);
 });
 
 test("GameClient's /correct handler never requires `game` and never reconciles/issues /view", () => {
@@ -63,9 +84,34 @@ test("HumanClient's /view poll (refresh) recognizes documented auth errors and s
     HUMAN_CLIENT.indexOf("const refresh = useCallback("),
     HUMAN_CLIENT.indexOf("// One fetch on mount")
   );
-  assert.match(HUMAN_CLIENT, /import \{ isAuthApplicationError \} from "@\/lib\/turnRequestGuard"/);
+  // V2.8.6 R2 — HumanClient now imports several names from turnRequestGuard.ts
+  // (runOwnedHhTurnRequest and friends, for send()'s own reliability rebuild),
+  // so this only requires isAuthApplicationError to be AMONG them, not the
+  // sole import on its own line.
+  assert.match(
+    HUMAN_CLIENT,
+    /import \{[^}]*\bisAuthApplicationError\b[^}]*\} from "@\/lib\/turnRequestGuard"/s
+  );
   assert.match(refreshFn, /isAuthApplicationError\(data\.error\)/, "a documented auth error must be recognized explicitly");
   assert.match(refreshFn, /setError\(data\.message/, "the safe server message must be surfaced for a documented error");
+});
+
+test("HumanClient's /hh/turn handler (send) is built on runOwnedHhTurnRequest and submits record_revision, never the derived revision", () => {
+  const sendFn = HUMAN_CLIENT.slice(
+    HUMAN_CLIENT.indexOf("const send = useCallback("),
+    HUMAN_CLIENT.indexOf("// V2.8.6 R2 — foreground reconciliation")
+  );
+  assert.match(sendFn, /runOwnedHhTurnRequest\(/, "must go through the shared H↔H ownership/reconciliation module");
+  assert.match(
+    sendFn,
+    /expected_revision: viewRef\.current\.record_revision/,
+    "must submit the real CAS revision, not lib/gameView.ts's derived revisionOf() poll marker"
+  );
+  assert.doesNotMatch(
+    sendFn,
+    /expected_revision: view\.revision\b/,
+    "must never submit the derived poll marker as expected_revision"
+  );
 });
 
 test("HumanClient's /view poll still silently discards a genuine transient/malformed failure (unchanged for the unknown case)", () => {
