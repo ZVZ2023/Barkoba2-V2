@@ -30,11 +30,20 @@ ALTER TABLE accounts.players
 -- Cheap sanity check, not RFC 5322 — matches lib/emailVerification.ts
 -- looksLikeEmail() exactly, so the app and the database never disagree about
 -- what counts as a plausible address.
+-- V2.8.7 — IDEMPOTENT RE-RUN, same reasoning as 0008: a Preview database
+-- carried these two CHECK constraints without this file's ledger row. The
+-- columns above were already guarded; the constraints are pure CHECKs, so
+-- each is dropped if present and recreated with its exact original
+-- definition. Inert where 0010 is already in the ledger (production).
+ALTER TABLE accounts.players
+  DROP CONSTRAINT IF EXISTS player_account_email_shape;
 ALTER TABLE accounts.players
   ADD CONSTRAINT player_account_email_shape CHECK (
     email IS NULL OR email ~ '^[^@\s]+@[^@\s]+\.[^@\s]+$'
   );
 
+ALTER TABLE accounts.players
+  DROP CONSTRAINT IF EXISTS player_account_verification_token_shape;
 ALTER TABLE accounts.players
   ADD CONSTRAINT player_account_verification_token_shape CHECK (
     email_verification_token IS NULL OR email_verification_token ~ '^[0-9a-f]{64}$'

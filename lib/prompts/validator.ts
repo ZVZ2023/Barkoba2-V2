@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import { renderClarification } from "./clarification";
 import type { ValidatorResult } from "../types";
@@ -94,10 +94,15 @@ const INPUT_SCHEMA = {
 export async function runValidator(
   target: string,
   privateClarification: string,
-  maxQuestions: number
+  maxQuestions: number,
+  options: {
+    /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+    onCallObserved?: (observation: AnthropicCallObservation) => void;
+  } = {}
 ): Promise<ValidatorResult> {
   const result = await callAnthropicTool<ValidatorResult>({
     model: env.modelStrong(),
+    onCallObserved: options.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {

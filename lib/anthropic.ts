@@ -29,4 +29,11 @@ export {
   isSamplingParamRejection,
   resetSamplingParamCache,
   anthropicAdapter,
+  // V2.8.7 — forced-tool-choice compatibility, refusal, usage.
+  AnthropicRefusalError,
+  isForcedToolChoiceRejection,
+  readAnthropicUsage,
+  requestModeFor,
+  responseContractInstruction,
 } from "./providers/anthropic";
+export type { AnthropicCallObservation, AnthropicRequestMode } from "./providers/anthropic";

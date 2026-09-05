@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import type { GameLanguage, QuestionEditResult } from "../types";
 
@@ -58,9 +58,12 @@ export async function judgeQuestionEdit(params: {
   original: string;
   edited: string;
   gameLanguage: GameLanguage;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<QuestionEditResult> {
   const result = await callAnthropicTool<QuestionEditResult>({
     model: env.modelRacer(),
+    onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {

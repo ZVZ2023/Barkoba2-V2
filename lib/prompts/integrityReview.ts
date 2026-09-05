@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import { renderClarification } from "./clarification";
 import type {
@@ -31,15 +31,15 @@ import type {
 
 const SYSTEM_PROMPT = `You are the Integrity Reviewer for Barkóba. A Composer set a secret target and answered a series of yes/no questions from an AI Racer. You now see the target, the private clarification, and the full transcript — the complete, authoritative question/answer ledger. You decide one narrow question: did a Composer answer materially mislead the Racer?
 
-STEP 1 — CLASSIFY EVERY RELEVANT ANSWER FIRST, BEFORE ANY VERDICT.
+STEP 1 — CLASSIFY EVERY RELEVANT ANSWER.
 For each YES/NO answer that bears on the disputed guess (you do not need to classify every answer in the game, only the ones that matter to the outcome), assign exactly one of:
 - CORRECT — plainly true given the target.
 - DEFENSIBLE — a reasonable person could truthfully have answered this way, even if another reading also exists. This is not a violation, however imperfect it looks in hindsight.
 - AMBIGUOUS / IS-IS — the Composer declined to give a hard yes or no. Always out of your scope; see below.
 - INCORRECT — clearly, unarguably false given the target. The kind a reasonable observer would call a lie, not a stretch.
-Do this classification honestly and specifically before reasoning about materiality or reaching a verdict — a verdict without this step first is exactly the failure mode this instruction exists to prevent.
+Classify honestly and specifically; the verdict must rest on this classification of the visible answers.
 
-STEP 2 — MATERIALITY. An INCORRECT answer is not, by itself, a violation of the OUTCOME. Ask: did this specific incorrect answer materially redirect the Racer's reasoning, or make reaching the correct solution unreasonably difficult, given the rest of the ledger? An incorrect answer that the Racer's own later questions and guess never actually relied on — one that turned out to be beside the point — does not meet this bar. Only return "violated" when at least one INCORRECT answer both exists AND was materially causal in this sense.
+STEP 2 — MATERIALITY. An INCORRECT answer is not, by itself, a violation of the OUTCOME. Ask: did this specific incorrect answer materially redirect the visible line of questioning, or make reaching the correct solution unreasonably difficult, given the rest of the ledger? An incorrect answer that the later questions and the final guess never actually relied on — one that turned out to be beside the point — does not meet this bar. Only return "violated" when at least one INCORRECT answer both exists AND was materially causal in this sense.
 
 WHAT NEVER COUNTS, ON ITS OWN, AS A VIOLATION:
 - AMBIGUOUS / IS-IS answers. They are a legitimate move, always outside your scope, however arguable, incomplete, or imprecise the underlying situation was. Never award a violation, in whole or in part, because an IS-IS answer existed — materiality analysis under STEP 2 applies only to answers you classified INCORRECT, never to AMBIGUOUS ones.
@@ -60,9 +60,9 @@ DEFAULT TO UPHELD. Return "violated" only when STEP 1 classified at least one an
 
 You are accusing a person of cheating. A wrong accusation is worse than a missed one.
 
-When you do find a violation, list the turn_index of every materially-causal incorrect answer in contradicting_turns, and say in reasoning specifically which answer contradicted what and how it misdirected the Racer. If the verdict is upheld, contradicting_turns must be empty. Explain any disputed terminology plainly and educationally — what the correct distinction actually is — without framing it as blaming the player; a wrong classification is a mistake to explain, not a character judgment.
+When you do find a violation, list the turn_index of every materially-causal incorrect answer in contradicting_turns, and state briefly in the reasoning field which answer contradicted what and how it misdirected the questioning. If the verdict is upheld, contradicting_turns must be empty. Explain any disputed terminology plainly and educationally — what the correct distinction actually is — without framing it as blaming the player; a wrong classification is a mistake to explain, not a character judgment.
 
-WRITE YOUR REASONING IN THE GAME LANGUAGE. You will be told which language this game is played in; write the reasoning field in that language. Your judgement is made the same way in every language — only the wording changes.
+WRITE YOUR JUSTIFICATION IN THE GAME LANGUAGE. You will be told which language this game is played in; write the reasoning field — a brief factual justification, not an account of your deliberation — in that language. Your judgement is made the same way in every language — only the wording changes.
 
 Never use the words "Composer", "Racer", "Validator" or "Adjudicator" in it. Those are internal engineering labels. In Hungarian refer to the sides naturally: "az ellenfeled", "a másik játékos", "te", "az AI".
 
@@ -89,7 +89,7 @@ export const INTEGRITY_REVIEW_INPUT_SCHEMA: Record<string, unknown> = {
     reasoning: {
       type: "string",
       description:
-        "Work through it before deciding. If you believe an answer was false, say which answer, what the target is, and why the two cannot both hold. If nothing is clearly false, one sentence is enough.",
+        "A brief factual justification of the verdict, not an account of your deliberation. If you believe an answer was false, say which answer, what the target is, and why the two cannot both hold. If nothing is clearly false, one sentence is enough.",
     },
     verdict: {
       type: "string",
@@ -122,6 +122,15 @@ const INPUT_SCHEMA = INTEGRITY_REVIEW_INPUT_SCHEMA;
  */
 export class IntegrityReviewIncompleteError extends Error {}
 
+/**
+ * V2.8.7 — thrown when the call succeeded but the payload is not a review:
+ * a verdict outside {upheld, violated} or a non-array contradicting_turns.
+ * Deliberately NOT IntegrityReviewIncompleteError: a malformed verdict is not
+ * a truncated one, so it gets no automatic retry — it is an explicit
+ * integrity_review_unavailable failure, never a coerced "upheld".
+ */
+export class IntegrityReviewInvalidOutputError extends Error {}
+
 function renderTranscript(qaLog: QuestionLogEntry[]): string {
   const rows = qaLog
     .filter((e) => e.turn_type === "question" && e.question_text)
@@ -153,9 +162,15 @@ export async function runIntegrityReview(params: {
   gameLanguage: GameLanguage;
   /** V2.8.5.2 — defaults to DEFAULT_INTEGRITY_REVIEW_MAX_TOKENS; the caller's retry loop passes a materially larger value on a truncated/incomplete first attempt. Never lowers review quality or reasoning requirements — only the output budget changes. */
   maxTokens?: number;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<IntegrityReviewResult> {
   const result = await callAnthropicTool<IntegrityReviewResult>({
-    model: env.modelStrong(),
+    // V2.8.7 — the Integrity Review's own explicitly configured model/effort
+    // (lib/env.ts modelIntegrityReview); separate from the Adjudicator's.
+    model: env.modelIntegrityReview(),
+    effort: env.effortIntegrityReview(),
+    onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {
@@ -182,10 +197,22 @@ export async function runIntegrityReview(params: {
     temperature: 0,
   });
 
-  const verdict = result.verdict === "violated" ? "violated" : "upheld";
-  const turns = Array.isArray(result.contradicting_turns)
-    ? result.contradicting_turns.filter((n): n is number => typeof n === "number")
-    : [];
+  // V2.8.7 — VALIDATE, NEVER COERCE. An unexpected verdict value used to
+  // become "upheld" silently — the conservative direction, but still a
+  // verdict nobody gave. It is now an explicit failure.
+  const rawVerdict: unknown = result.verdict;
+  if (rawVerdict !== "upheld" && rawVerdict !== "violated") {
+    throw new IntegrityReviewInvalidOutputError(
+      `integrityReview: provider returned verdict ${JSON.stringify(rawVerdict)} outside {upheld, violated}; refusing to infer a verdict.`
+    );
+  }
+  const verdict = rawVerdict;
+  if (!Array.isArray(result.contradicting_turns)) {
+    throw new IntegrityReviewInvalidOutputError(
+      "integrityReview: provider returned a non-array contradicting_turns; refusing to accept a malformed review."
+    );
+  }
+  const turns = result.contradicting_turns.filter((n): n is number => typeof n === "number");
 
   // V2.8.4.3 — required, not merely preferred: an upheld-or-violated verdict
   // with no explanation behind it must never reach persistence. See

@@ -1,5 +1,6 @@
 import { anthropicAdapter } from "./anthropic";
 import { xaiAdapter } from "./xai";
+import { openaiAdapter } from "./openai";
 import { env } from "../env";
 import type { ModelProviderId, ProviderAdapter } from "./types";
 
@@ -44,6 +45,9 @@ import type { ModelProviderId, ProviderAdapter } from "./types";
 const REGISTRY: Record<ModelProviderId, ProviderAdapter> = {
   anthropic: anthropicAdapter,
   xai: xaiAdapter,
+  // V2.8.7 — GPT-6 Astra, the public Racer. Registered together with
+  // lib/providers/openai.ts, exactly as B3 registered xai.
+  openai: openaiAdapter,
 };
 
 /** The default seat provider, and the behaviour of every game recorded so far. */
@@ -103,6 +107,7 @@ export function isProviderAvailable(id: ModelProviderId): boolean {
   // seat choice, so a runtime that cannot reach Anthropic is broken in ways
   // this flag is not the right place to report.
   if (id === "anthropic") return true;
+  if (id === "openai") return env.openaiApiKey() !== null;
   return env.xaiApiKey() !== null;
 }
 

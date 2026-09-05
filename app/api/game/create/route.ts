@@ -58,6 +58,7 @@ import {
 } from "@/lib/providers";
 import type { ModelProviderId } from "@/lib/providers/types";
 import { env } from "@/lib/env";
+import { recordAnthropicSeatCall, type SeatCallObservation } from "@/lib/corpus/turnTelemetry";
 
 /**
  * V2.5 — resolve whether this creation is a tagged benchmark run.
@@ -140,7 +141,11 @@ function resolveBenchmark(req: NextRequest): {
  * boundary is drawn — reusing resolveBenchmark()'s existing secret-header
  * gate rather than inventing a second one.
  */
-const PUBLIC_RACER_PROVIDER: ModelProviderId = "xai";
+// V2.8.7 — GPT-6 Astra (OpenAI) replaces Grok as the one public Racer. Same
+// server-authoritative rule, same two refusals, same "no substitution":
+// a runtime without OPENAI_API_KEY refuses the public game rather than
+// quietly racing another model.
+const PUBLIC_RACER_PROVIDER: ModelProviderId = "openai";
 
 function resolveRacerProvider(
   requested: unknown
@@ -222,6 +227,30 @@ const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 // QUESTION_BUDGETS moved to lib/questionBudget.ts in 2.3.0.0 so the server that
 // validates a budget and the screens that offer it share one definition.
+
+/**
+ * V2.8.7 — one terminal telemetry row for a creation-time Anthropic seat call
+ * (the Validator, or the AI Composer choosing what to play), with whatever
+ * usage the call yielded. Fail-open; see lib/corpus/turnTelemetry.ts.
+ */
+async function recordCreateSeatCall(
+  gameId: string,
+  kind: "validator" | "composer_choice",
+  observed: SeatCallObservation | null,
+  status: "accepted" | "provider_error",
+  startedAt: number
+): Promise<void> {
+  await recordAnthropicSeatCall({
+    gameId,
+    turnIndex: null,
+    operationKind: kind,
+    requestedModelId: env.modelStrong(),
+    observed,
+    status,
+    errorClass: status === "accepted" ? null : "provider_error",
+    latencyMs: Date.now() - startedAt,
+  });
+}
 
 export async function POST(req: NextRequest) {
   // Account authority and guest continuity are deliberately separate. A guest
@@ -385,6 +414,10 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    // V2.8.7 — minted first so the model call below is attributable (cost).
+    const aiGameId = randomUUID();
+    const targetObserved: { value: SeatCallObservation | null } = { value: null };
+    const targetStartedAt = Date.now();
     let chosen;
     try {
       chosen = await chooseComposerTarget({
@@ -394,8 +427,13 @@ export async function POST(req: NextRequest) {
         // and adjudication all came back in English under a Hungarian UI.
         gameLanguage: aiGameLanguage,
         maxQuestions: budgetChoice,
+        onCallObserved: (o) => {
+          targetObserved.value = o;
+        },
       });
+      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "accepted", targetStartedAt);
     } catch (err) {
+      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "provider_error", targetStartedAt);
       // eslint-disable-next-line no-console
       console.error("[barkoba] Composer target selection failed:", err);
       return NextResponse.json(
@@ -417,7 +455,6 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const aiGameId = randomUUID();
     await createSecret(
       aiGameId,
       chosen.target,
@@ -533,10 +570,21 @@ export async function POST(req: NextRequest) {
   );
   if (!racerProviderChoice.ok) return racerProviderChoice.response;
 
+  // V2.8.7 — minted BEFORE the Validator call so it is attributable to this
+  // game's cost; nothing is persisted under it until createSecret below.
+  const gameId = randomUUID();
+  const validatorObserved: { value: SeatCallObservation | null } = { value: null };
+  const validatorStartedAt = Date.now();
   let validation;
   try {
-    validation = await runValidator(target, clarification, maxQuestions);
+    validation = await runValidator(target, clarification, maxQuestions, {
+      onCallObserved: (o) => {
+        validatorObserved.value = o;
+      },
+    });
+    await recordCreateSeatCall(gameId, "validator", validatorObserved.value, "accepted", validatorStartedAt);
   } catch (err) {
+    await recordCreateSeatCall(gameId, "validator", validatorObserved.value, "provider_error", validatorStartedAt);
     // eslint-disable-next-line no-console
     console.error("[barkoba] Validator call failed:", err);
     return NextResponse.json(
@@ -576,7 +624,6 @@ export async function POST(req: NextRequest) {
   // scoped flow: it removes a "waiting for the Composer to think" state that
   // the second player would otherwise sit in, and it means a join link is never
   // live for a game that has no secret yet.
-  const gameId = randomUUID();
   await createSecret(gameId, target, clarification);
   // Immutable once questioning begins, per spec — locked at creation since
   // M1-M2 has no edit path between VALID and the first Racer question anyway.

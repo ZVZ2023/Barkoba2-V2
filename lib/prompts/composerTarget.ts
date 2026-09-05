@@ -1,4 +1,4 @@
-import { callAnthropicTool } from "../anthropic";
+import { callAnthropicTool, type AnthropicCallObservation } from "../anthropic";
 import { env } from "../env";
 import type {
   ComposerTargetResult,
@@ -114,11 +114,14 @@ export async function chooseComposerTarget(params: {
   difficulty: Difficulty;
   gameLanguage: GameLanguage;
   maxQuestions: number;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<ComposerTargetResult> {
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
 
   const result = await callAnthropicTool<ComposerTargetResult>({
     model: env.modelStrong(),
+    onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [
       {

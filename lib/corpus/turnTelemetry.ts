@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import { getSql, isCorpusConfigured, type SqlClient } from "./db";
+import type { ModelCallUsage } from "../providers/types";
 
 // ---------------------------------------------------------------------------
 // S2 / RB-2 — durable turn-operation telemetry.
@@ -159,7 +160,21 @@ function getSqlSafely(): SqlClient | null {
   }
 }
 
-export type OperationKind = "provider_attempt" | "corpus_write";
+export type OperationKind =
+  | "provider_attempt"
+  | "corpus_write"
+  // --- V2.8.7 (migration 0013) — every other billable model call a game
+  // makes, so per-seat cost can be read from one table. See lib/aiCost.ts
+  // for how kinds map to the racer / adjudication / other buckets.
+  | "racer_guess_intent"
+  | "adjudicator"
+  | "integrity_review"
+  | "validator"
+  // The AI Composer choosing what to play (lib/prompts/composerTarget.ts).
+  | "composer_choice"
+  | "composer_answer"
+  | "composer_clue"
+  | "question_edit";
 
 export type OperationStatus =
   | "started"
@@ -182,6 +197,14 @@ export type OperationStatus =
    */
   | "shared_budget_exhausted"
   | "presumed_killed"
+  /**
+   * V2.8.7 — the provider returned a successful response that DECLINED the
+   * call (Claude Fable 5.1's stop_reason "refusal"). Distinct from
+   * provider_error because it may be billed and is never retried
+   * automatically; the player sees the same recoverable "unavailable"
+   * outcome either way.
+   */
+  | "refusal"
   // --- corpus_write outcomes, mirroring gameCorpus.ts's own CorpusOutcome
   // literally — see the review fix on recordGameState's return value below.
   | "written"
@@ -289,6 +312,15 @@ export interface CompletionOutcome {
    * with — and on corpus_write, which never carries a model at all.
    */
   modelId?: string | null;
+  /**
+   * V2.8.7 — token usage the provider reported for this call, or null/omitted
+   * when it reported none (recorded as unknown, never zero).
+   */
+  usage?: ModelCallUsage | null;
+  /** V2.8.7 — the reasoning effort actually sent, where the provider has the concept. */
+  effortSent?: string | null;
+  /** V2.8.7 — "forced_tool" | "auto_strict_tool" (lib/providers/anthropic.ts). */
+  requestMode?: string | null;
 }
 
 /**
@@ -321,18 +353,37 @@ export async function recordOperationCompleted(
   if (!sql) return;
 
   const modelIdForRow = outcome.modelId ?? handle.requestedModelId ?? null;
+  const usage = outcome.usage ?? null;
 
   const upsert = (async () => {
+    // V2.8.7 (migration 0013) — the usage columns are appended AFTER the
+    // 0012 columns so the positional contract every existing reader of this
+    // statement relies on is unchanged; they are always written (null =
+    // unknown), never conditionally omitted.
     await sql`
       INSERT INTO corpus.turn_operations
-        (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class, completed_at)
-      VALUES (${handle.operationId}, ${handle.gameId}, ${handle.turnIndex}, ${handle.operationKind}, ${handle.attemptNumber}, ${handle.provider}, ${modelIdForRow}, ${outcome.status}, ${outcome.latencyMs}, ${outcome.errorClass}, now())
+        (operation_id, game_id, turn_index, operation_kind, attempt_number, provider, model_id, status, latency_ms, error_class,
+         requested_model_id, reasoning_effort, request_mode,
+         input_tokens, cached_input_tokens, cache_write_input_tokens, output_tokens, reasoning_tokens,
+         completed_at)
+      VALUES (${handle.operationId}, ${handle.gameId}, ${handle.turnIndex}, ${handle.operationKind}, ${handle.attemptNumber}, ${handle.provider}, ${modelIdForRow}, ${outcome.status}, ${outcome.latencyMs}, ${outcome.errorClass},
+        ${handle.requestedModelId}, ${outcome.effortSent ?? null}, ${outcome.requestMode ?? null},
+        ${usage?.input_tokens ?? null}, ${usage?.cached_input_tokens ?? null}, ${usage?.cache_write_input_tokens ?? null}, ${usage?.output_tokens ?? null}, ${usage?.reasoning_tokens ?? null},
+        now())
       ON CONFLICT (operation_id) DO UPDATE SET
         status = EXCLUDED.status,
         latency_ms = EXCLUDED.latency_ms,
         error_class = EXCLUDED.error_class,
         completed_at = EXCLUDED.completed_at,
-        model_id = COALESCE(EXCLUDED.model_id, corpus.turn_operations.model_id)
+        model_id = COALESCE(EXCLUDED.model_id, corpus.turn_operations.model_id),
+        requested_model_id = COALESCE(EXCLUDED.requested_model_id, corpus.turn_operations.requested_model_id),
+        reasoning_effort = EXCLUDED.reasoning_effort,
+        request_mode = EXCLUDED.request_mode,
+        input_tokens = EXCLUDED.input_tokens,
+        cached_input_tokens = EXCLUDED.cached_input_tokens,
+        cache_write_input_tokens = EXCLUDED.cache_write_input_tokens,
+        output_tokens = EXCLUDED.output_tokens,
+        reasoning_tokens = EXCLUDED.reasoning_tokens
       WHERE corpus.turn_operations.status = 'started'
     `;
   })().catch((err) => {
@@ -344,6 +395,99 @@ export async function recordOperationCompleted(
   });
 
   await withTelemetryTimeout(upsert, undefined);
+}
+
+/**
+ * V2.8.7 — everything one non-Racer-attempt model call records, in one
+ * write. Same non-sensitive shape as the two-step start/complete pair above:
+ * who, when, how long, how it ended, and (new) what it consumed.
+ */
+export interface AiCallRecord {
+  gameId: string;
+  turnIndex: number | null;
+  operationKind: OperationKind;
+  /** 1-based attempt within a bounded retry loop (integrity review's two attempts); null when the seat never retries. */
+  attemptNumber?: number | null;
+  provider: string;
+  requestedModelId: string | null;
+  resolvedModelId: string | null;
+  status: OperationStatus;
+  latencyMs: number | null;
+  errorClass: string | null;
+  usage: ModelCallUsage | null;
+  effortSent: string | null;
+  requestMode: string | null;
+}
+
+/**
+ * V2.8.7 — the observation shape every Anthropic seat call yields
+ * (lib/providers/anthropic.ts's AnthropicCallObservation, structurally), so
+ * routes can record a seat call without importing the provider module.
+ */
+export interface SeatCallObservation {
+  resolvedModel: string;
+  usage: ModelCallUsage;
+  requestMode: string;
+  effort: string | null;
+}
+
+/**
+ * V2.8.7 — convenience for the non-Racer Anthropic seats (Validator,
+ * Composer target/answer/clue, question-edit judge): one terminal row from
+ * the observation the call yielded, or an unknown-usage row when it yielded
+ * none (the call failed before a 200).
+ */
+export async function recordAnthropicSeatCall(input: {
+  gameId: string;
+  turnIndex: number | null;
+  operationKind: OperationKind;
+  requestedModelId: string;
+  observed: SeatCallObservation | null;
+  status: OperationStatus;
+  errorClass: string | null;
+  latencyMs: number;
+}): Promise<void> {
+  await recordAiCall({
+    gameId: input.gameId,
+    turnIndex: input.turnIndex,
+    operationKind: input.operationKind,
+    provider: "anthropic",
+    requestedModelId: input.requestedModelId,
+    resolvedModelId: input.observed?.resolvedModel ?? null,
+    status: input.status,
+    latencyMs: input.latencyMs,
+    errorClass: input.errorClass,
+    usage: input.observed?.usage ?? null,
+    effortSent: input.observed?.effort ?? null,
+    requestMode: input.observed?.requestMode ?? null,
+  });
+}
+
+/**
+ * Record one completed model call as a single terminal row — the seats other
+ * than the Racer's guarded attempt loop have no "started" phase worth a
+ * separate durable write, and recordOperationCompleted's upsert creates the
+ * row directly when no start row exists. Fail-open like everything here.
+ */
+export async function recordAiCall(record: AiCallRecord): Promise<void> {
+  const handle: OperationHandle = {
+    operationId: randomUUID(),
+    gameId: record.gameId,
+    turnIndex: record.turnIndex,
+    operationKind: record.operationKind,
+    attemptNumber: record.attemptNumber ?? null,
+    provider: record.provider,
+    requestedModelId: record.requestedModelId,
+  };
+  await recordOperationCompleted(handle, {
+    status: record.status,
+    latencyMs: record.latencyMs,
+    errorClass: record.errorClass,
+    modelId: record.resolvedModelId,
+    usage: record.usage,
+    effortSent: record.effortSent,
+    requestMode: record.requestMode,
+  });
 }
 
 export interface PresumedKilledOperation {

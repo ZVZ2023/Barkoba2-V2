@@ -432,7 +432,7 @@ test("REQUIRED 7: anthropicAdapter forwards the caller's AbortSignal to fetch", 
   global.fetch = (async (_url: string, options?: RequestInit) => {
     capturedSignal = options?.signal ?? undefined;
     return new Response(
-      JSON.stringify({ model: "claude-stub", content: [{ type: "tool_use", input: {} }] }),
+      JSON.stringify({ model: "claude-stub", content: [{ type: "tool_use", name: "submit_turn", input: {} }] }),
       { status: 200 }
     );
   }) as typeof fetch;

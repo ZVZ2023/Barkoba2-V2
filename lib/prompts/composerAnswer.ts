@@ -1,4 +1,4 @@
-import { callAnthropicTool, MODEL_PROVIDER } from "../anthropic";
+import { callAnthropicTool, MODEL_PROVIDER, type AnthropicCallObservation } from "../anthropic";
 import { scrubClue, scrubExplanation } from "../disclosureGuard";
 import { env } from "../env";
 import type {
@@ -205,6 +205,8 @@ export async function answerAsComposer(params: {
   questionsAsked: number;
   maxQuestions: number;
   gameLanguage: GameLanguage;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<ComposerAnswerOutcome> {
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
   const remaining = Math.max(0, params.maxQuestions - params.questionsAsked);
@@ -217,6 +219,7 @@ export async function answerAsComposer(params: {
     onModelResolved: (id) => {
       resolvedModel = id;
     },
+    onCallObserved: params.onCallObserved,
     system: COMPOSER_ANSWER_SYSTEM_PROMPT,
     messages: [
       {
@@ -322,6 +325,8 @@ export async function requestClueFromComposer(params: {
   maxQuestions: number;
   clueMode: ClueMode;
   gameLanguage: GameLanguage;
+  /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
+  onCallObserved?: (observation: AnthropicCallObservation) => void;
   // V2.5: `provenance` is ADDITIVE on the existing return shape rather than a
   // wrapper. Nothing serializes this result into raw_output, so there is no
   // purity argument for a wrapper here, and an added field keeps every existing
@@ -344,6 +349,7 @@ export async function requestClueFromComposer(params: {
 
   const result = await callAnthropicTool<{ reasoning?: string; clue_text?: string }>({
     model: requestedClueModel,
+    onCallObserved: params.onCallObserved,
     onModelResolved: (id) => {
       resolvedClueModel = id;
     },

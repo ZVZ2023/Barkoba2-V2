@@ -91,6 +91,22 @@ export async function GET() {
       xai_available: isProviderAvailable("xai"),
       xai_model: env.xaiModelRacer(),
       xai_max_tokens: env.xaiMaxTokensRacer(),
+      // V2.8.7 — the public Racer. `openai_available` is the same predicate
+      // game creation refuses on, so a false here explains a refused public
+      // game exactly. Vendor model names, an effort word and a number: no key.
+      openai_available: isProviderAvailable("openai"),
+      openai_model: env.openaiModelRacer(),
+      openai_reasoning_effort: env.openaiReasoningEffortRacer(),
+      openai_max_output_tokens: env.openaiMaxOutputTokensRacer(),
+    },
+    // V2.8.7 — which model and effort adjudicate (Adjudicator + Integrity
+    // Review). Configuration only; the record of what actually judged is
+    // corpus.turn_operations.model_id per call.
+    adjudication: {
+      anthropic_model: env.modelAdjudication(),
+      effort: env.effortAdjudication(),
+      integrity_review_model: env.modelIntegrityReview(),
+      integrity_review_effort: env.effortIntegrityReview(),
     },
     // V2.7.0.18 — WHICH origin outbound emails (verification, recovery) send
     // players' browsers to, and WHY. `source` matters as much as `url`: a

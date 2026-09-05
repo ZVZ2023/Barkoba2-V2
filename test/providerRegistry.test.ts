@@ -39,7 +39,7 @@ test("an unknown provider throws instead of silently falling back", () => {
   // system stops this at compile time; this asserts the runtime does too, for
   // the path where the id arrives from a request body or a stored record.
   assert.throws(
-    () => getAdapter("openai" as never),
+    () => getAdapter("mistral" as never),
     /Unknown model provider/,
     "an unregistered provider must fail loudly"
   );
@@ -56,7 +56,9 @@ test("isModelProviderId accepts only registered providers", () => {
   assert.equal(isModelProviderId("anthropic"), true);
   // Registered in B3, together with lib/providers/xai.ts.
   assert.equal(isModelProviderId("xai"), true);
-  assert.equal(isModelProviderId("openai"), false);
+  // Registered in V2.8.7, together with lib/providers/openai.ts.
+  assert.equal(isModelProviderId("openai"), true);
+  assert.equal(isModelProviderId("gemini"), false);
   assert.equal(isModelProviderId(""), false);
   assert.equal(isModelProviderId(null), false);
   assert.equal(isModelProviderId(42), false);

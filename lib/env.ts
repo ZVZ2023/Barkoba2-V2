@@ -77,6 +77,30 @@ export const env = {
   // each fires once per game, so cost is not the constraint there, quality is.
   modelStrong: () => process.env.ANTHROPIC_MODEL_STRONG || "claude-sonnet-5",
 
+  /**
+   * V2.8.7 — the ADJUDICATION seats only: Adjudicator and Integrity Review
+   * (the calls that decide whether a verdict stands). Validator and Composer
+   * target selection stay on modelStrong — unrelated seats are unchanged.
+   *
+   * Default is Claude Fable 5.1 at "low" effort, the V2.8.7 product decision
+   * (Astra Light for the Racer, Fable Low for adjudication). Effort maps to
+   * the Messages API's output_config.effort; see lib/providers/anthropic.ts
+   * for the forced-tool-choice compatibility this model requires.
+   */
+  modelAdjudication: () => process.env.ANTHROPIC_MODEL_ADJUDICATION || "claude-fable-5-1",
+  effortAdjudication: () => process.env.ANTHROPIC_EFFORT_ADJUDICATION || "low",
+
+  /**
+   * V2.8.7 — the Integrity Review's OWN model/effort, explicitly configured.
+   * Claude Fable 5.1's classifier refuses the transcript-consistency review
+   * (stop_reason "refusal", category reasoning_extraction) while accepting
+   * the Adjudicator, so the two seats are configured separately. Unset means
+   * the adjudication model — a deliberate, visible default, never a runtime
+   * fallback: a refusal still fails the review, it never switches models.
+   */
+  modelIntegrityReview: () => process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW || env.modelAdjudication(),
+  effortIntegrityReview: () => process.env.ANTHROPIC_EFFORT_INTEGRITY_REVIEW || env.effortAdjudication(),
+
   // Rate limiting. RATE_LIMIT_DISABLED=true is meant for local dev/testing only.
   rateLimitDisabled: () => process.env.RATE_LIMIT_DISABLED === "true",
   rateLimitGamesPerHour: () => optionalInt("RATE_LIMIT_GAMES_PER_HOUR", 5),
@@ -323,6 +347,39 @@ export const env = {
    * and question budget stay byte-identical across providers.
    */
   xaiMaxTokensRacer: () => optionalInt("XAI_MAX_TOKENS_RACER", 2048),
+
+  // --- V2.8.7: OpenAI GPT-6 Astra as the public Racer ----------------------
+  //
+  // OPTIONAL, NOT required() — mirrors xaiApiKey exactly. Null means the
+  // OpenAI seat is not selectable in this runtime, and game creation REFUSES
+  // an OpenAI game rather than quietly starting one on another provider.
+  openaiApiKey: () => process.env.OPENAI_API_KEY || null,
+
+  /**
+   * The OpenAI model that fills the Racer seat. Server-controlled: no request
+   * may state it. "gpt-6-astra" is the exact id verified against OpenAI's
+   * model page on 2026-09-05 (single snapshot, no dated alias). The recorded
+   * model_id per turn proves which was really used either way.
+   */
+  openaiModelRacer: () => process.env.OPENAI_MODEL_RACER || "gpt-6-astra",
+
+  /**
+   * Reasoning effort for every OpenAI Racer call — `reasoning.effort` on the
+   * Responses API. "low" is the V2.8.7 product decision (the UI's "Light"
+   * setting is not a separate model); gpt-6-astra accepts low/medium/high and
+   * rejects "none". Server-held, like the model id; the latency probe may
+   * override it per call.
+   */
+  openaiReasoningEffortRacer: () => process.env.OPENAI_REASONING_EFFORT_RACER || "low",
+
+  /**
+   * Minimum output allowance for an OpenAI Racer turn. Reasoning tokens count
+   * against max_output_tokens and are billed as output; a cap sized for a
+   * no-reasoning answer would truncate before the function call is emitted.
+   * TRANSPORT parameter only — prompt, schema, transcript and question budget
+   * stay byte-identical across providers.
+   */
+  openaiMaxOutputTokensRacer: () => optionalInt("OPENAI_MAX_OUTPUT_TOKENS_RACER", 8192),
 
   // --- V2.6.x: registration email verification (Resend) --------------------
   //

@@ -87,11 +87,19 @@ async function callAsk(gameId: string, body: unknown, playerId?: string) {
   return { status: res.status, data: await res.json() };
 }
 
-function anthropicResponse(input: Record<string, unknown>) {
+/** V2.8.7 — the client validates the returned tool's NAME; echo the one the request asked for. */
+function requestedToolName(init: unknown): string {
+  const body = (init as { body?: string } | undefined)?.body;
+  if (!body) return "unknown_tool";
+  const parsed = JSON.parse(body) as { tools?: Array<{ name?: string }> };
+  return parsed.tools?.[0]?.name ?? "unknown_tool";
+}
+
+function anthropicResponse(input: Record<string, unknown>, toolName = "unknown_tool") {
   return {
     ok: true,
     status: 200,
-    json: async () => ({ model: "test-model", content: [{ type: "tool_use", input }] }),
+    json: async () => ({ model: "test-model", content: [{ type: "tool_use", name: toolName, input }] }),
     text: async () => "",
   } as unknown as Response;
 }
@@ -100,12 +108,12 @@ function anthropicResponse(input: Record<string, unknown>) {
 function stubAnthropicQueue(inputs: Array<Record<string, unknown>>) {
   const original = globalThis.fetch;
   let calls = 0;
-  globalThis.fetch = (async () => {
+  globalThis.fetch = (async (_url: unknown, init?: unknown) => {
     const idx = calls;
     calls += 1;
     const input = inputs[idx];
     if (!input) throw new Error(`unexpected extra Anthropic call #${idx + 1}`);
-    return anthropicResponse(input);
+    return anthropicResponse(input, requestedToolName(init));
   }) as typeof fetch;
   return {
     callCount: () => calls,
@@ -120,8 +128,10 @@ function stubAnthropicControlled() {
   const original = globalThis.fetch;
   let calls = 0;
   let resolveFn: ((v: Response) => void) | null = null;
-  globalThis.fetch = (async () => {
+  let pendingToolName = "unknown_tool";
+  globalThis.fetch = (async (_url: unknown, init?: unknown) => {
     calls += 1;
+    pendingToolName = requestedToolName(init);
     return new Promise<Response>((resolve) => {
       resolveFn = resolve;
     });
@@ -132,7 +142,7 @@ function stubAnthropicControlled() {
       assert.ok(resolveFn, "no pending Anthropic call to resolve");
       const r = resolveFn!;
       resolveFn = null;
-      r(anthropicResponse(input));
+      r(anthropicResponse(input, pendingToolName));
     },
     restore: () => {
       globalThis.fetch = original;
@@ -270,7 +280,7 @@ test("edit-turn budget gate: the second call is skipped once fewer than 15s of t
   const originalFetch = globalThis.fetch;
   let calls = 0;
   try {
-    globalThis.fetch = (async () => {
+    globalThis.fetch = (async (_url: unknown, init?: unknown) => {
       calls += 1;
       // V2.8.6 R2 — simulate the FIRST call (judgeQuestionEdit) itself
       // having consumed 46 of the 60-second edit budget by the time it
@@ -281,7 +291,7 @@ test("edit-turn budget gate: the second call is skipped once fewer than 15s of t
       // seconds.
       const t0 = originalNow();
       Date.now = () => t0 + 46_000;
-      return anthropicResponse({ reasoning: "typo fix", same_intent: true });
+      return anthropicResponse({ reasoning: "typo fix", same_intent: true }, requestedToolName(init));
     }) as typeof fetch;
 
     const res = await callAsk(
