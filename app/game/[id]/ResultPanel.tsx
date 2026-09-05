@@ -1,6 +1,7 @@
 "use client";
 
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
+import type { RefObject } from "react";
 import type { GameRecord } from "@/lib/types";
 
 // This component is quarantined from secretStore by scripts/check-isolation.mjs.
@@ -12,6 +13,13 @@ interface Props {
   resolving: boolean;
   error: string | null;
   onRetry: () => void;
+  /**
+   * V2.8.7.2 — GameClient.tsx's auto-reveal effect (lib/resultReveal.ts)
+   * focuses and scrolls to THIS heading the instant the game reaches its
+   * terminal result. Optional so nothing else that might ever render this
+   * component without wiring the reveal behavior is forced to.
+   */
+  headingRef?: RefObject<HTMLHeadingElement>;
 }
 
 // V2.8.4.3 — the "PC" incident: a completed review (verdict "upheld") with an
@@ -42,7 +50,7 @@ const SUBHEAD: Record<string, string> = {
     "Az ellenőrzés legalább egy ellentmondó választ talált.",
 };
 
-export default function ResultPanel({ game, resolving, error, onRetry }: Props) {
+export default function ResultPanel({ game, resolving, error, onRetry, headingRef }: Props) {
   if (game.phase === "resolving") {
     return (
       <section className="rounded-md border border-[var(--green)]/30 bg-[var(--green)]/6 p-4">
@@ -90,7 +98,22 @@ export default function ResultPanel({ game, resolving, error, onRetry }: Props) 
           : "rounded-md border border-[var(--green)]/30 bg-[var(--green)]/5 p-5"
       }
     >
-      <h2 className="text-lg font-semibold text-[var(--ink)]">
+      {/*
+        V2.8.7.2 — tabIndex={-1} makes this a valid PROGRAMMATIC focus target
+        (assistive tech announces it, "beneath the fixed header" scroll math
+        in lib/resultReveal.ts measures it) without adding it to the Tab
+        order — nobody reaches it by pressing Tab, only GameClient.tsx's own
+        auto-reveal effect ever focuses it. outline-none suppresses the
+        browser's default focus RING specifically because that ring reads as
+        an editable-input affordance on a heading that accepts no input; the
+        focus move itself (and its screen-reader announcement) still happens
+        regardless of any visible ring.
+      */}
+      <h2
+        ref={headingRef}
+        tabIndex={-1}
+        className="text-lg font-semibold text-[var(--ink)] outline-none"
+      >
         {HEADLINE[game.result] ?? "A játék véget ért."}
       </h2>
       <p className="mt-1 text-sm text-[var(--ink-soft)]">{SUBHEAD[game.result] ?? ""}</p>
