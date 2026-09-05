@@ -27,6 +27,9 @@ const nextConfig = {
       "/api/game/[id]/clue": ["./VERSION"],
       "/api/game/[id]/correct": ["./VERSION"],
       "/api/game/[id]/resolve": ["./VERSION"],
+      // V2.8.7 — TEMPORARY Preview-only migration diagnostic reads the
+      // migrations directory at runtime; same tracing rule as VERSION.
+      "/api/internal/preview-db": ["./migrations/**"],
     },
   },
 };
