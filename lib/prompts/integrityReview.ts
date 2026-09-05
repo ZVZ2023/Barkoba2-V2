@@ -166,10 +166,10 @@ export async function runIntegrityReview(params: {
   onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<IntegrityReviewResult> {
   const result = await callAnthropicTool<IntegrityReviewResult>({
-    // V2.8.7 — the adjudication seat's own model/effort pair; see
-    // lib/prompts/adjudicator.ts and lib/env.ts.
-    model: env.modelAdjudication(),
-    effort: env.effortAdjudication(),
+    // V2.8.7 — the Integrity Review's own explicitly configured model/effort
+    // (lib/env.ts modelIntegrityReview); separate from the Adjudicator's.
+    model: env.modelIntegrityReview(),
+    effort: env.effortIntegrityReview(),
     onCallObserved: params.onCallObserved,
     system: SYSTEM_PROMPT,
     messages: [

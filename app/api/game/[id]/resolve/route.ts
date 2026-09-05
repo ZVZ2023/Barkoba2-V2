@@ -56,13 +56,13 @@ async function recordAdjudicationCall(
     operationKind: kind,
     attemptNumber,
     provider: "anthropic",
-    requestedModelId: env.modelAdjudication(),
+    requestedModelId: kind === "adjudicator" ? env.modelAdjudication() : env.modelIntegrityReview(),
     resolvedModelId: observed?.resolvedModel ?? null,
     status: outcome.status,
     latencyMs: outcome.latencyMs,
     errorClass: outcome.errorClass,
     usage: observed?.usage ?? null,
-    effortSent: observed?.effort ?? env.effortAdjudication(),
+    effortSent: observed?.effort ?? (kind === "adjudicator" ? env.effortAdjudication() : env.effortIntegrityReview()),
     requestMode: observed?.requestMode ?? null,
   });
 }

@@ -134,18 +134,26 @@ async function usageColumnsPresent(sql: NeonSql): Promise<boolean> {
   return Number(rows[0]?.n ?? 0) === 4;
 }
 
-/** Rows of usage evidence so far — counts only, nothing per game or player. */
+/**
+ * Usage evidence so far — per game and seat: call counts, how many carried
+ * usage, and token SUMS (for pricing). Operational figures only: no
+ * question text, answers, targets, or player identity.
+ */
 async function usageEvidence(sql: NeonSql) {
   try {
     const rows = (await sql`
-      SELECT operation_kind,
-             count(*)::int                                   AS calls,
-             count(input_tokens)::int                        AS with_usage,
-             count(DISTINCT game_id)::int                    AS games
+      SELECT game_id, operation_kind, provider, model_id, status,
+             count(*)::int                       AS calls,
+             count(input_tokens)::int            AS with_usage,
+             sum(input_tokens)::int              AS input_tokens,
+             sum(cached_input_tokens)::int       AS cached_input_tokens,
+             sum(cache_write_input_tokens)::int  AS cache_write_input_tokens,
+             sum(output_tokens)::int             AS output_tokens,
+             sum(reasoning_tokens)::int          AS reasoning_tokens
       FROM corpus.turn_operations
       WHERE operation_kind <> 'corpus_write'
-      GROUP BY operation_kind
-      ORDER BY operation_kind
+      GROUP BY game_id, operation_kind, provider, model_id, status
+      ORDER BY game_id, operation_kind, status
     `) as Record<string, unknown>[];
     return rows;
   } catch {

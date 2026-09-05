@@ -90,6 +90,17 @@ export const env = {
   modelAdjudication: () => process.env.ANTHROPIC_MODEL_ADJUDICATION || "claude-fable-5-1",
   effortAdjudication: () => process.env.ANTHROPIC_EFFORT_ADJUDICATION || "low",
 
+  /**
+   * V2.8.7 — the Integrity Review's OWN model/effort, explicitly configured.
+   * Claude Fable 5.1's classifier refuses the transcript-consistency review
+   * (stop_reason "refusal", category reasoning_extraction) while accepting
+   * the Adjudicator, so the two seats are configured separately. Unset means
+   * the adjudication model — a deliberate, visible default, never a runtime
+   * fallback: a refusal still fails the review, it never switches models.
+   */
+  modelIntegrityReview: () => process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW || env.modelAdjudication(),
+  effortIntegrityReview: () => process.env.ANTHROPIC_EFFORT_INTEGRITY_REVIEW || env.effortAdjudication(),
+
   // Rate limiting. RATE_LIMIT_DISABLED=true is meant for local dev/testing only.
   rateLimitDisabled: () => process.env.RATE_LIMIT_DISABLED === "true",
   rateLimitGamesPerHour: () => optionalInt("RATE_LIMIT_GAMES_PER_HOUR", 5),

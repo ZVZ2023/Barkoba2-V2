@@ -95,6 +95,8 @@ beforeEach(() => {
   process.env.ANTHROPIC_API_KEY = "test-key";
   delete process.env.ANTHROPIC_MODEL_ADJUDICATION;
   delete process.env.ANTHROPIC_EFFORT_ADJUDICATION;
+  delete process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW;
+  delete process.env.ANTHROPIC_EFFORT_INTEGRITY_REVIEW;
   globalThis.fetch = realFetch;
 });
 
@@ -381,10 +383,33 @@ test("unrelated seats are unchanged: Validator and Composer target still use mod
     assert.ok(src.includes(expectModel), `${path} keeps ${expectModel}`);
     assert.doesNotMatch(src, /modelAdjudication|effortAdjudication/, `${path} is not an adjudication seat`);
   }
-  for (const path of ["lib/prompts/adjudicator.ts", "lib/prompts/integrityReview.ts"]) {
-    const src = readFileSync(path, "utf8");
-    assert.match(src, /env\.modelAdjudication\(\)/);
-    assert.match(src, /env\.effortAdjudication\(\)/);
-    assert.doesNotMatch(src, /modelStrong/);
-  }
+  const adj = readFileSync("lib/prompts/adjudicator.ts", "utf8");
+  assert.match(adj, /env\.modelAdjudication\(\)/);
+  assert.match(adj, /env\.effortAdjudication\(\)/);
+  assert.doesNotMatch(adj, /modelStrong/);
+  // The Integrity Review has its OWN explicitly configured seat (Fable 5.1's
+  // classifier refuses this review); unset it follows the adjudication model.
+  const rev = readFileSync("lib/prompts/integrityReview.ts", "utf8");
+  assert.match(rev, /env\.modelIntegrityReview\(\)/);
+  assert.match(rev, /env\.effortIntegrityReview\(\)/);
+  assert.doesNotMatch(rev, /modelStrong/);
+});
+
+test("the Integrity Review model is separately configurable and defaults to the adjudication model — never a runtime fallback", async () => {
+  delete process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW;
+  let sent = stubAnthropic({ reply: (body) => ({ model: "m", stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: (body.tools as Array<{ name: string }>)[0]!.name, input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }] }) });
+  await runIntegrityReview(REVIEW);
+  assert.equal(sent[0]!.body.model, "claude-fable-5-1");
+
+  process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW = "claude-sonnet-5";
+  sent = stubAnthropic({ reply: (body) => ({ model: "m", stop_reason: "tool_use", usage: {}, content: [{ type: "tool_use", name: (body.tools as Array<{ name: string }>)[0]!.name, input: { reasoning: "ok", verdict: "upheld", contradicting_turns: [] } }] }) });
+  await runIntegrityReview(REVIEW);
+  assert.equal(sent[0]!.body.model, "claude-sonnet-5");
+  assert.deepEqual(sent[0]!.body.output_config, { effort: "low" });
+  assert.deepEqual(sent[0]!.body.tool_choice, { type: "tool", name: "submit_integrity_review" }, "Sonnet 5 keeps forced tool mode");
+  delete process.env.ANTHROPIC_MODEL_INTEGRITY_REVIEW;
+
+  // A refusal on whichever model is configured is still a failure, never a switch.
+  stubAnthropic({ reply: () => ({ model: "m", stop_reason: "refusal", stop_details: { category: "reasoning_extraction" }, usage: {}, content: [] }) });
+  await assert.rejects(() => runIntegrityReview(REVIEW), AnthropicRefusalError);
 });

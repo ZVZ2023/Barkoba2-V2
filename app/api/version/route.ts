@@ -105,6 +105,8 @@ export async function GET() {
     adjudication: {
       anthropic_model: env.modelAdjudication(),
       effort: env.effortAdjudication(),
+      integrity_review_model: env.modelIntegrityReview(),
+      integrity_review_effort: env.effortIntegrityReview(),
     },
     // V2.7.0.18 — WHICH origin outbound emails (verification, recovery) send
     // players' browsers to, and WHY. `source` matters as much as `url`: a
