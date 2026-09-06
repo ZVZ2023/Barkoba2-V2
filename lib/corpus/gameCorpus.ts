@@ -704,6 +704,29 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
 
 const PLAYER_HISTORY_LIMIT = 100;
 
+/**
+ * Which seat `playerId` occupied in a corpus.games row. Shared by
+ * listPlayerHistory and getArchivedGameForOwner (V2.8.8.3) so the two never
+ * drift into subtly different seat-derivation logic for the same columns.
+ * Exact for every game recorded since migration 0003 via
+ * composer_player_id/racer_player_id. Pre-V2.3 rows never had those columns
+ * populated, so they fall back to the single-human-seat convention those
+ * games always followed (composer_kind/racer_kind never both "human" before
+ * Human-vs-Human existed). Null only if neither can determine it.
+ */
+function deriveHistoryRole(
+  row: Record<string, unknown>,
+  playerId: string
+): "composer" | "racer" | null {
+  if (row.composer_player_id === playerId) return "composer";
+  if (row.racer_player_id === playerId) return "racer";
+  if (row.composer_player_id === null && row.racer_player_id === null) {
+    if (row.composer_kind === "human" && row.racer_kind !== "human") return "composer";
+    if (row.racer_kind === "human" && row.composer_kind !== "human") return "racer";
+  }
+  return null;
+}
+
 export interface PlayerHistoryEntry {
   game_id: string;
   created_at: string;
@@ -751,29 +774,189 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
        LIMIT ${PLAYER_HISTORY_LIMIT}
     `;
 
-    const games = rows.map((row) => {
-      let role: "composer" | "racer" | null = null;
-      if (row.composer_player_id === playerId) role = "composer";
-      else if (row.racer_player_id === playerId) role = "racer";
-      else if (row.composer_player_id === null && row.racer_player_id === null) {
-        if (row.composer_kind === "human" && row.racer_kind !== "human") role = "composer";
-        else if (row.racer_kind === "human" && row.composer_kind !== "human") role = "racer";
-      }
-      return {
-        game_id: String(row.operational_game_id),
-        created_at:
-          row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-        lifecycle_state: String(row.lifecycle_state),
-        outcome: typeof row.outcome === "string" ? row.outcome : null,
-        role,
-        experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
-      };
-    });
+    const games = rows.map((row) => ({
+      game_id: String(row.operational_game_id),
+      created_at:
+        row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      lifecycle_state: String(row.lifecycle_state),
+      outcome: typeof row.outcome === "string" ? row.outcome : null,
+      role: deriveHistoryRole(row, playerId),
+      experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
+    }));
     return { ok: true, games };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[barkoba] corpus: player history read failed for ${playerId}:`, err);
     return { ok: false, games: [] };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// V2.8.8.3 — DURABLE COMPLETED-GAME DETAIL.
+//
+// /game/[id] reads the LIVE record from Redis (lib/gameStore.ts), which
+// expires after GAME_TTL_SECONDS (~24h). Once it does, a completed game
+// became permanently unopenable from Játékaim even though its full evidence
+// already lives durably in corpus (games + game_targets + game_resolutions +
+// game_turns) — exactly the gap that made "Megnyitás" open nothing for an
+// older game. This is the corpus-backed FALLBACK, used ONLY when Redis has
+// nothing (see app/game/[id]/page.tsx — the live path is completely
+// unchanged and always tried first).
+//
+// SCOPED BY CONSTRUCTION, THREE WAYS AT ONCE, ALL IN THE SAME QUERY:
+//   1. lifecycle_state = 'completed' — an in-progress, abandoned, or
+//      stalled-resolving game can NEVER be returned here. This is the one
+//      gate that matters most: game_targets only ever holds a target that
+//      was legitimately declassified at resolution, so requiring
+//      'completed' is what makes it structurally impossible for this
+//      function to ever leak an unrevealed secret. There is no code path
+//      here that can return a target for a game that isn't finished.
+//   2. (player_id = $2 OR composer_player_id = $2 OR racer_player_id = $2)
+//      — exactly the same three-column ownership test listPlayerHistory
+//      already uses, in the WHERE clause itself rather than a check applied
+//      afterward. A caller who was not part of this game gets no row at
+//      all, indistinguishable from a nonexistent game_id.
+//   3. operational_game_id = $1 — one specific game, never a listing.
+//
+// A malformed game_id (not a valid uuid) is caught and treated as
+// not_found, matching how a nonexistent one is treated — neither leaks
+// anything about which case it was.
+// ---------------------------------------------------------------------------
+
+export interface ArchivedGameTurn {
+  turn_index: number;
+  turn_type: string;
+  question_text: string | null;
+  composer_response: string | null;
+  ambiguous_explanation: string | null;
+  clue_text: string | null;
+  guess_text: string | null;
+}
+
+export interface ArchivedGameRecord {
+  game_id: string;
+  created_at: string;
+  /** V2.8.8.3 presentation audit — drives ArchivedGameView's bilingual narrative copy and content `lang` attributes. */
+  game_language: string;
+  composer_kind: string;
+  racer_kind: string;
+  /** Same convention as PlayerHistoryEntry: null means "recorded before V2.8.8", never "competitive". */
+  experience_mode: string | null;
+  role: "composer" | "racer" | null;
+  max_questions: number;
+  question_count: number;
+  ambiguous_count: number;
+  /** The FINAL verdict — corpus.games.outcome, the same GameResult value the live result screens key off. */
+  outcome: string | null;
+  final_action: string | null;
+  final_guess_text: string | null;
+  /** The PROVISIONAL verdict — the Adjudicator's own correct/incorrect judgment, before Integrity Review could override it (see lib/resolveResult.ts's table; Integrity Review never runs on a correct guess). */
+  adjudicator_verdict: string | null;
+  adjudication_notes: string | null;
+  integrity_verdict: string | null;
+  integrity_notes: string | null;
+  /** 1-based turn_index values Integrity Review found inconsistent, or null if no review ran or nothing was flagged. */
+  integrity_flagged_turns: number[] | null;
+  target: string | null;
+  /** False ONLY in the anomalous case where a completed game's target row is itself missing — never a secrecy signal (that is enforced entirely by the lifecycle_state gate above, before this field is ever populated). */
+  target_retained: boolean;
+  /** False ONLY in the anomalous case where a completed game's resolution row is itself missing. */
+  resolution_retained: boolean;
+  turns: ArchivedGameTurn[];
+}
+
+export type ArchivedGameLookup =
+  | { status: "found"; record: ArchivedGameRecord }
+  | { status: "not_found" };
+
+export async function getArchivedGameForOwner(
+  gameId: string,
+  playerId: string
+): Promise<ArchivedGameLookup> {
+  if (!isCorpusConfigured()) return { status: "not_found" };
+  const sql = getSql();
+  if (!sql) return { status: "not_found" };
+
+  try {
+    const rows = await sql`
+      SELECT g.corpus_game_id, g.operational_game_id, g.created_at,
+             g.composer_kind, g.racer_kind, g.experience_mode, g.game_language,
+             g.max_questions, g.question_count, g.ambiguous_count, g.outcome,
+             g.player_id, g.composer_player_id, g.racer_player_id,
+             t.target,
+             r.final_action, r.final_guess_text, r.adjudicator_verdict,
+             r.adjudication_notes, r.integrity_verdict, r.integrity_notes,
+             r.integrity_flagged_turns
+        FROM corpus.games g
+        LEFT JOIN corpus.game_targets t ON t.corpus_game_id = g.corpus_game_id
+        LEFT JOIN corpus.game_resolutions r ON r.corpus_game_id = g.corpus_game_id
+       WHERE g.operational_game_id = ${gameId}::uuid
+         AND g.lifecycle_state = 'completed'
+         AND (g.player_id = ${playerId} OR g.composer_player_id = ${playerId} OR g.racer_player_id = ${playerId})
+    `;
+    const row = rows[0];
+    if (!row) return { status: "not_found" };
+
+    const turnRows = await sql`
+      SELECT turn_index, turn_type, question_text, composer_response,
+             ambiguous_explanation, clue_text, guess_text
+        FROM corpus.game_turns
+       WHERE corpus_game_id = ${String(row.corpus_game_id)}
+         AND branch = 'main'
+       ORDER BY turn_index ASC
+    `;
+
+    const record: ArchivedGameRecord = {
+      game_id: String(row.operational_game_id),
+      created_at:
+        row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      // NOT NULL at the schema level (migration 0001); the "hu" fallback only
+      // guards a row from a future nullable-relaxation, matching
+      // lib/gameLanguage.ts's own AUTO resolution default elsewhere.
+      game_language: typeof row.game_language === "string" ? row.game_language : "hu",
+      composer_kind: String(row.composer_kind),
+      racer_kind: String(row.racer_kind),
+      experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
+      role: deriveHistoryRole(row, playerId),
+      max_questions: Number(row.max_questions),
+      question_count: Number(row.question_count),
+      ambiguous_count: Number(row.ambiguous_count),
+      outcome: typeof row.outcome === "string" ? row.outcome : null,
+      final_action: typeof row.final_action === "string" ? row.final_action : null,
+      final_guess_text: typeof row.final_guess_text === "string" ? row.final_guess_text : null,
+      adjudicator_verdict: typeof row.adjudicator_verdict === "string" ? row.adjudicator_verdict : null,
+      adjudication_notes: typeof row.adjudication_notes === "string" ? row.adjudication_notes : null,
+      integrity_verdict: typeof row.integrity_verdict === "string" ? row.integrity_verdict : null,
+      integrity_notes: typeof row.integrity_notes === "string" ? row.integrity_notes : null,
+      integrity_flagged_turns: Array.isArray(row.integrity_flagged_turns)
+        ? (row.integrity_flagged_turns as unknown[]).map((n) => Number(n))
+        : null,
+      target: typeof row.target === "string" ? row.target : null,
+      // A completed game's target/resolution rows are written in the SAME
+      // atomic transaction as the games row itself (see syncGame), so their
+      // absence here is genuinely anomalous, not an ordinary historical gap
+      // — surfaced honestly rather than silently rendered as empty fields.
+      target_retained: typeof row.target === "string",
+      // final_action is populated in the SAME resolve-route call that sets
+      // outcome/lifecycle_state='completed', so it is never legitimately
+      // null once a resolutions row genuinely exists (see
+      // lib/resolveResult.ts's deriveResult, which requires it).
+      resolution_retained: typeof row.final_action === "string",
+      turns: turnRows.map((t) => ({
+        turn_index: Number(t.turn_index),
+        turn_type: String(t.turn_type),
+        question_text: typeof t.question_text === "string" ? t.question_text : null,
+        composer_response: typeof t.composer_response === "string" ? t.composer_response : null,
+        ambiguous_explanation: typeof t.ambiguous_explanation === "string" ? t.ambiguous_explanation : null,
+        clue_text: typeof t.clue_text === "string" ? t.clue_text : null,
+        guess_text: typeof t.guess_text === "string" ? t.guess_text : null,
+      })),
+    };
+    return { status: "found", record };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] corpus: archived game read failed for ${gameId}:`, err);
+    return { status: "not_found" };
   }
 }
 

@@ -5,9 +5,11 @@ import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import { resolveAccountHeaderState, resolveActingPlayerIdentity } from "@/lib/actingPlayer";
 import { decideGamePageAccess } from "@/lib/seats";
 import { buildGameView, stripRacerOutputRaw } from "@/lib/gameView";
+import { getArchivedGameForOwner } from "@/lib/corpus/gameCorpus";
 import GameClient from "./GameClient";
 import RacerClient from "./RacerClient";
 import HumanClient from "./HumanClient";
+import ArchivedGameView from "./ArchivedGameView";
 
 // Server component. Reads public game state directly from gameStore — there is
 // no GET /api/game/[id] route for the single-human modes, because adding one
@@ -72,6 +74,29 @@ export default async function GamePage({ params }: { params: { id: string } }) {
   // way — whenever identity resolution itself already settles the outcome
   // (an outage, or nobody presented a usable identity at all).
   const game = identity.kind === "identified" ? await getGame(params.id) : null;
+
+  // -------------------------------------------------------------------------
+  // V2.8.8.3 — DURABLE COMPLETED-GAME DETAIL. Live Redis is ALWAYS tried
+  // first and, when it has the record, this branch never runs at all —
+  // in-progress/live behavior is completely unchanged. Only once Redis has
+  // genuinely nothing (its ~24h TTL has passed) does this fall back to the
+  // durable corpus record. getArchivedGameForOwner does its OWN independent
+  // ownership + completed-only scoping in its SQL WHERE clause (never trusts
+  // this page alone), so a non-owner or an in-progress/abandoned game's
+  // secret can never reach this branch — see that function's own doc.
+  // -------------------------------------------------------------------------
+  if (!game && identity.kind === "identified") {
+    const archived = await getArchivedGameForOwner(params.id, identity.playerId);
+    if (archived.status === "found") {
+      return (
+        <ArchivedGameView
+          record={archived.record}
+          versionLabel={formatVersionLabel(getAppVersion())}
+        />
+      );
+    }
+  }
+
   const decision = decideGamePageAccess(identity, game);
 
   if (decision.kind === "service_unavailable") {
