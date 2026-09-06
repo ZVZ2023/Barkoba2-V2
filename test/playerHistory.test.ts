@@ -81,10 +81,10 @@ test("returns only the requested player's games, scoped by the WHERE clause", as
   );
 
   const history = await listPlayerHistory(mine);
-  assert.ok(history);
-  assert.equal(history!.length, 2);
+  assert.equal(history.ok, true);
+  assert.equal(history.games.length, 2);
   assert.deepEqual(
-    history!.map((g) => g.game_id).sort(),
+    history.games.map((g) => g.game_id).sort(),
     ["1", "3"]
   );
 });
@@ -97,7 +97,7 @@ test("orders newest first", async () => {
   );
 
   const history = await listPlayerHistory(playerId);
-  assert.deepEqual(history!.map((g) => g.game_id), ["new", "old"]);
+  assert.deepEqual(history.games.map((g) => g.game_id), ["new", "old"]);
 });
 
 test("derives role from the named seat columns when present", async () => {
@@ -109,7 +109,7 @@ test("derives role from the named seat columns when present", async () => {
   );
 
   const history = await listPlayerHistory(playerId);
-  const byId = Object.fromEntries(history!.map((g) => [g.game_id, g.role]));
+  const byId = Object.fromEntries(history.games.map((g) => [g.game_id, g.role]));
   assert.equal(byId["as-composer"], "composer");
   assert.equal(byId["as-racer"], "racer");
 });
@@ -136,7 +136,7 @@ test("falls back to composer_kind/racer_kind for pre-V2.3 rows with no seat colu
   );
 
   const history = await listPlayerHistory(playerId);
-  const byId = Object.fromEntries(history!.map((g) => [g.game_id, g.role]));
+  const byId = Object.fromEntries(history.games.map((g) => [g.game_id, g.role]));
   assert.equal(byId["legacy-composer"], "composer");
   assert.equal(byId["legacy-racer"], "racer");
 });
@@ -153,16 +153,28 @@ test("outcome and lifecycle_state pass through honestly for an unfinished game",
   );
 
   const history = await listPlayerHistory(playerId);
-  assert.equal(history?.length, 1);
-  const [entry] = history!;
+  assert.equal(history.games.length, 1);
+  const [entry] = history.games;
   assert.equal(entry!.lifecycle_state, "abandoned_inferred");
   assert.equal(entry!.outcome, null);
 });
 
-test("a corpus read failure returns null, not an empty list", async () => {
+test("V2.8.8.2 — a corpus read failure returns ok:false with an empty list, never silently ok:true", async () => {
   __setSqlClientForTests((() => Promise.reject(new Error("neon unavailable"))) as unknown as typeof fakeSql);
   const history = await listPlayerHistory("2".repeat(32));
-  assert.equal(history, null);
+  assert.equal(history.ok, false);
+  assert.deepEqual(history.games, []);
+});
+
+test("V2.8.8.2 — corpus genuinely not configured is ok:true with an empty list, NOT a failure -- distinct from a real read failure", async () => {
+  delete process.env.DATABASE_URL;
+  delete process.env.CORPUS_ENABLED;
+  const history = await listPlayerHistory("6".repeat(32));
+  assert.equal(history.ok, true);
+  assert.deepEqual(history.games, []);
+  // Restore for afterEach's own (harmless, redundant) cleanup and any later test in this file.
+  process.env.DATABASE_URL = "postgresql://u:p@fake.tld/db";
+  process.env.CORPUS_ENABLED = "true";
 });
 
 test("GET /api/player/history refuses an unidentifiable caller", async () => {

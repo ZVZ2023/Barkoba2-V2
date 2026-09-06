@@ -191,22 +191,29 @@ export default function HistoryClient({ versionLabel }: Props) {
                     here. Before this, History had no link to any game at all,
                     for any lifecycle_state: a stuck-but-recoverable game (see
                     lib/rewind.ts's isWithinCorrectionWindow fix) was reachable
-                    by no path from this page. Scoped to "in_progress" only —
-                    the one state the durable corpus row and the live game
-                    record can both still mean "reopen this and keep playing."
-                    If the live record has actually expired since the corpus
-                    row was written, /game/[id] itself resolves that honestly
-                    (its existing not_found path) rather than this page
-                    guessing at or fabricating the game's current state.
+                    by no path from this page.
+
+                    V2.8.8.2 — widened from "in_progress" only. A COMPLETED
+                    game had no link at all here, so a player could never
+                    actually re-open the transcript, target, guess, hints,
+                    adjudication or integrity-review detail /game/[id] already
+                    renders for a finished game (see ResultPanel.tsx and this
+                    direction's own client components) — the one confirmed
+                    gap this pass closes. Every lifecycle_state gets a link
+                    now: /game/[id]'s OWN existing, unchanged access control
+                    (decideGamePageAccess) still enforces strict per-game
+                    ownership, and its OWN existing not_found path still
+                    handles a record that has actually expired from the live
+                    store since the corpus row was written — this page still
+                    never guesses at or fabricates the game's current state,
+                    it only always OFFERS to check.
                   */}
-                  {entry.lifecycle_state === "in_progress" && (
-                    <a
-                      href={`/game/${entry.game_id}`}
-                      className="min-h-11 rounded-md border border-[var(--ink)]/25 px-3 py-2 text-sm text-[var(--ink)] underline-offset-2 hover:underline"
-                    >
-                      Folytatás →
-                    </a>
-                  )}
+                  <a
+                    href={`/game/${entry.game_id}`}
+                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-3 py-2 text-sm text-[var(--ink)] underline-offset-2 hover:underline"
+                  >
+                    {entry.lifecycle_state === "in_progress" ? "Folytatás →" : "Megnyitás →"}
+                  </a>
                 </div>
               </li>
             );
