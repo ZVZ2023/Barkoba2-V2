@@ -4,7 +4,13 @@ import ThinkingState from "./components/ThinkingState";
 import NamePrompt from "./components/NamePrompt";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { ClueMode, Difficulty } from "@/lib/types";
+import type { Difficulty, ExperienceMode } from "@/lib/types";
+import {
+  DEFAULT_EXPERIENCE_MODE,
+  EXPERIENCE_MODES,
+  EXPERIENCE_MODE_DESCRIPTION_HU,
+  EXPERIENCE_MODE_LABEL_HU,
+} from "@/lib/experienceMode";
 import AccountControl from "./components/AccountControl";
 import GameShell from "./components/GameShell";
 import { BalanceBadge, CreditGateway, useEntitlement } from "./components/Entitlement";
@@ -19,11 +25,18 @@ const DIFFICULTIES: { value: Difficulty; label: string; blurb: string }[] = [
   { value: "hard", label: "Nehéz", blurb: "Több lépés a megfejtésig — nem homályosabb." },
 ];
 
-const CLUE_MODES: { value: ClueMode; label: string; blurb: string }[] = [
-  { value: "none", label: "Nincs segítség", blurb: "Csak a válaszok." },
-  { value: "minimal", label: "Minimális", blurb: "Néha egy apró terelés, ha elakadsz." },
-  { value: "progressive", label: "Fokozatos", blurb: "Egyre több segítség, ahogy fogynak a kérdések." },
-];
+// V2.8.8 — REPLACES the old CLUE_MODES ("Segítség") selector for every new
+// game: the four experience modes now derive clue_mode themselves (server-
+// side, lib/experienceMode.ts's clueModeForExperienceMode), so a player can
+// no longer create a contradictory combination like Competitive + Progressive
+// assistance. clue_mode itself is untouched for every historical game — see
+// lib/clueCredits.ts's cluesEnabled().
+const EXPERIENCE_MODE_OPTIONS: { value: ExperienceMode; label: string; blurb: string }[] =
+  EXPERIENCE_MODES.map((value) => ({
+    value,
+    label: EXPERIENCE_MODE_LABEL_HU[value],
+    blurb: EXPERIENCE_MODE_DESCRIPTION_HU[value],
+  }));
 
 const BUDGETS = [20, 35, 50, 100];
 
@@ -41,7 +54,8 @@ export default function RacerSetup({
 }) {
   const router = useRouter();
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
-  const [clueMode, setClueMode] = useState<ClueMode>("none");
+  // V2.8.8 — visibly defaults to Friendly, never Competitive (decision #3).
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>(DEFAULT_EXPERIENCE_MODE);
   const [budget, setBudget] = useState(20);
   // V2.5 — the language of PLAY, not of this screen. There is no human target
   // text to read here, so "Automatikus" means Hungarian; choosing English makes
@@ -65,7 +79,11 @@ export default function RacerSetup({
         body: JSON.stringify({
           mode: "ai_composer",
           difficulty,
-          clue_mode: difficulty === "hard" ? clueMode : "none",
+          // V2.8.8 — a NEW client always sends its visible selection; the
+          // server derives clue_mode from it and ignores any clue_mode this
+          // client might otherwise have sent (see resolveExperienceAndClueMode
+          // in app/api/game/create/route.ts).
+          experience_mode: experienceMode,
           max_questions: budget,
           game_language: gameLanguage,
         }),
@@ -148,26 +166,31 @@ export default function RacerSetup({
         </p>
       </div>
 
-      {difficulty === "hard" && (
-        <div className="flex flex-col gap-2">
-          <span className="text-sm text-[var(--ink)]">Segítség</span>
-          <div className="flex flex-wrap gap-2">
-            {CLUE_MODES.map((c) => (
-              <button
-                key={c.value}
-                onClick={() => setClueMode(c.value)}
-                disabled={busy}
-                className={pill(clueMode === c.value)}
-              >
-                {c.label}
-              </button>
-            ))}
-          </div>
-          <p className="text-xs text-[var(--ink-soft)]">
-            {CLUE_MODES.find((c) => c.value === clueMode)?.blurb}
-          </p>
+      {/*
+        V2.8.8 — replaces the old difficulty==="hard"-only "Segítség"
+        selector. Always shown: difficulty and the experience mode are
+        separate axes now (a player may pick Friendly at any difficulty),
+        so this is never conditionally hidden the way the old assistance
+        picker was.
+      */}
+      <div className="flex flex-col gap-2">
+        <span className="text-sm text-[var(--ink)]">Élmény</span>
+        <div className="flex flex-wrap gap-2">
+          {EXPERIENCE_MODE_OPTIONS.map((m) => (
+            <button
+              key={m.value}
+              onClick={() => setExperienceMode(m.value)}
+              disabled={busy}
+              className={pill(experienceMode === m.value)}
+            >
+              {m.label}
+            </button>
+          ))}
         </div>
-      )}
+        <p className="text-xs text-[var(--ink-soft)]">
+          {EXPERIENCE_MODE_OPTIONS.find((m) => m.value === experienceMode)?.blurb}
+        </p>
+      </div>
 
       <div className="flex flex-col gap-2">
         <span className="text-sm text-[var(--ink)]">Kérdések</span>

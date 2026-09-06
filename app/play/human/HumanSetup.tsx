@@ -4,7 +4,23 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import BudgetPicker, { pickedBudget } from "@/app/components/BudgetPicker";
 import { BalanceBadge, CreditGateway, useEntitlement } from "@/app/components/Entitlement";
-import type { Difficulty } from "@/lib/types";
+import {
+  DEFAULT_EXPERIENCE_MODE,
+  EXPERIENCE_MODES,
+  EXPERIENCE_MODE_DESCRIPTION_HU,
+  EXPERIENCE_MODE_LABEL_HU,
+} from "@/lib/experienceMode";
+import type { Difficulty, ExperienceMode } from "@/lib/types";
+
+// V2.8.8 — new selector: this screen never had an assistance picker (the
+// Composer's voluntary hint had no gate at all before V2.8.8 — see
+// app/api/game/[id]/hh/turn/route.ts's own note on that).
+const EXPERIENCE_MODE_OPTIONS: { value: ExperienceMode; label: string; blurb: string }[] =
+  EXPERIENCE_MODES.map((value) => ({
+    value,
+    label: EXPERIENCE_MODE_LABEL_HU[value],
+    blurb: EXPERIENCE_MODE_DESCRIPTION_HU[value],
+  }));
 
 // ---------------------------------------------------------------------------
 // V2.3 — creating a Human↔Human game.
@@ -20,6 +36,8 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
   const [target, setTarget] = useState("");
   const [clarification, setClarification] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  // V2.8.8 — visibly defaults to Friendly, never Competitive (decision #3).
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>(DEFAULT_EXPERIENCE_MODE);
   // null means "follow the recommendation". It stays null until the Composer
   // actually overrides, so changing difficulty keeps moving the suggestion
   // rather than silently freezing whatever was shown first.
@@ -47,6 +65,10 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
           target: target.trim(),
           private_clarification: clarification.trim(),
           difficulty,
+          // V2.8.8 — a NEW client always submits its visible selection; the
+          // server derives clue_mode from it (see resolveExperienceAndClueMode
+          // in app/api/game/create/route.ts).
+          experience_mode: experienceMode,
           // The server re-resolves this; the client only proposes.
           max_questions: budget,
           force,
@@ -114,6 +136,30 @@ export default function HumanSetup({ versionLabel }: { versionLabel: string }) {
           disabled={busy}
         />
       </label>
+
+      <div className="flex flex-col gap-2">
+        <span className="text-sm font-medium">Élmény</span>
+        <div className="flex flex-wrap gap-2">
+          {EXPERIENCE_MODE_OPTIONS.map((m) => (
+            <button
+              key={m.value}
+              type="button"
+              onClick={() => setExperienceMode(m.value)}
+              disabled={busy}
+              className={`min-h-11 flex-1 rounded-md border px-3 py-2 text-sm font-medium ${
+                experienceMode === m.value
+                  ? "border-[#1e3a24] bg-[#1e3a24] text-[#f6ece0]"
+                  : "border-neutral-900/15 bg-white/70 text-neutral-900"
+              }`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+        <p className="text-xs text-neutral-600">
+          {EXPERIENCE_MODE_OPTIONS.find((m) => m.value === experienceMode)?.blurb}
+        </p>
+      </div>
 
       <BudgetPicker
         difficulty={difficulty}

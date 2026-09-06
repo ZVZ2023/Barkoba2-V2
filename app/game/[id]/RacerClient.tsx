@@ -3,6 +3,7 @@
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
+import { EXPERIENCE_MODE_LABEL_HU } from "@/lib/experienceMode";
 import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { questionNumbers } from "@/lib/questionNumbers";
 import type { GameView } from "@/lib/gameView";
@@ -412,9 +413,17 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       <p className="-mt-2 text-sm text-[var(--ink-soft)]">
         <span className="font-medium text-[var(--ink)]">Az AI gondolt valamire. Te kérdezel.</span>
         {game.difficulty ? ` · ${DIFFICULTY_HU[game.difficulty] ?? game.difficulty}` : ""}
-        {game.clue_mode && game.clue_mode !== "none"
-          ? ` · ${CLUE_HU[game.clue_mode] ?? game.clue_mode} segítség`
-          : ""}
+        {/*
+          V2.8.8 — a mode-bearing game shows its mode instead of the raw
+          clue_mode suffix (clue_mode is now DERIVED from the mode — showing
+          both would just repeat the same fact in two vocabularies). A
+          legacy game (no experience_mode) keeps the exact original suffix.
+        */}
+        {game.experience_mode
+          ? ` · ${EXPERIENCE_MODE_LABEL_HU[game.experience_mode]}`
+          : game.clue_mode && game.clue_mode !== "none"
+            ? ` · ${CLUE_HU[game.clue_mode] ?? game.clue_mode} segítség`
+            : ""}
       </p>
 
       {/*

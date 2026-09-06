@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { pendingClueRequest } from "@/lib/clueCredits";
+import { EXPERIENCE_MODE_LABEL_HU } from "@/lib/experienceMode";
 import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { derivePhaseOneState, isReferentScopeQuestion } from "@/lib/phaseOne";
 import { questionNumbers } from "@/lib/questionNumbers";
@@ -773,6 +774,9 @@ export default function GameClient({
 
       <p className="-mt-2 text-sm text-[var(--ink-soft)]">
         <span className="font-medium text-[var(--ink)]">Te gondoltál valamire. Az AI kérdez.</span>
+        {/* V2.8.8 — shown only for a mode-bearing game; a legacy game (no
+            experience_mode) shows nothing here, exactly as before. */}
+        {game.experience_mode ? ` · ${EXPERIENCE_MODE_LABEL_HU[game.experience_mode]}` : ""}
       </p>
 
       {/*

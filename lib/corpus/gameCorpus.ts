@@ -703,6 +703,12 @@ export interface PlayerHistoryEntry {
    * existed). Null only if neither can determine it.
    */
   role: "composer" | "racer" | null;
+  /**
+   * V2.8.8 — NULL for every game recorded before this field existed (a
+   * historical absence of choice, never "competitive" — same convention as
+   * GameRecord.experience_mode itself). See lib/experienceMode.ts.
+   */
+  experience_mode: string | null;
 }
 
 export async function listPlayerHistory(playerId: string): Promise<PlayerHistoryEntry[] | null> {
@@ -713,7 +719,8 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
   try {
     const rows = await sql`
       SELECT operational_game_id, created_at, lifecycle_state, outcome,
-             composer_player_id, racer_player_id, composer_kind, racer_kind
+             composer_player_id, racer_player_id, composer_kind, racer_kind,
+             experience_mode
         FROM corpus.games
        WHERE player_id = ${playerId}
        ORDER BY created_at DESC
@@ -735,6 +742,7 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
         lifecycle_state: String(row.lifecycle_state),
         outcome: typeof row.outcome === "string" ? row.outcome : null,
         role,
+        experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
       };
     });
   } catch (err) {

@@ -15,6 +15,7 @@ import {
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import { useResultReveal } from "@/app/components/useResultReveal";
+import { EXPERIENCE_MODE_LABEL_HU } from "@/lib/experienceMode";
 import type { ComposerAnswer, ExperienceMode, GamePhase } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -304,6 +305,9 @@ export default function HumanClient({
       <div className="flex items-center justify-between text-sm text-neutral-700">
         <span>
           {view.question_count} / {view.max_questions} kérdés
+          {/* V2.8.8 — shown only for a mode-bearing game; a legacy game (no
+              experience_mode) shows nothing here, exactly as before. */}
+          {view.experience_mode ? ` · ${EXPERIENCE_MODE_LABEL_HU[view.experience_mode]}` : ""}
         </span>
         {!over && !view.awaiting_racer && (
           <span className={view.your_turn ? "font-semibold text-[#1e3a24]" : "text-neutral-500"}>
