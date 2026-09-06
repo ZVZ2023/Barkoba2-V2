@@ -88,6 +88,7 @@ function game(o: Partial<GameRecord> = {}): GameRecord {
     racer_provider: null,
     difficulty: null,
     clue_mode: null,
+    experience_mode: null,
     question_count: 0,
     question_count_high_water_mark: 0,
     ambiguous_count: 0,
@@ -150,6 +151,8 @@ function view(o: Partial<GameView> = {}): GameView {
     revealed_target: null,
     revision: 0,
     record_revision: 0,
+    experience_mode: null,
+    hint_credits_available: 0,
     ...o,
   };
 }

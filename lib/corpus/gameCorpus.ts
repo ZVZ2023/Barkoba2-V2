@@ -310,7 +310,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
     INSERT INTO corpus.games (
       operational_game_id, player_id, composer_player_id, racer_player_id,
       app_version, commit_sha,
-      composer_kind, racer_kind, difficulty, clue_mode, game_language,
+      composer_kind, racer_kind, difficulty, clue_mode, experience_mode, game_language,
       max_questions, private_target,
       lifecycle_state, outcome, termination_reason, last_phase,
       question_count, ambiguous_count,
@@ -321,6 +321,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       ${game.composer_player_id}, ${game.racer_player_id},
       ${version.version}, ${version.commit},
       ${game.composer_kind}, ${game.racer_kind}, ${game.difficulty}, ${game.clue_mode},
+      ${game.experience_mode},
       ${game.game_language}, ${game.max_questions}, ${game.private_target},
       ${life.lifecycle_state}, ${life.outcome}, ${life.termination_reason}, ${game.phase},
       ${game.question_count}, ${game.ambiguous_count},
@@ -328,10 +329,11 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       ${env.collectionContext()},
       ${game.benchmark_case_id}, ${game.benchmark_run_id}
     )
-    -- V2.5: the two benchmark columns are ABSENT from this set-list on purpose.
-    -- They are settled at creation and never change, and corpus.games is
-    -- immutable once finalized — a re-sync that tried to rewrite them would
-    -- raise and roll back the whole transaction, taking the repair pass with it.
+    -- V2.5: the two benchmark columns, and (V2.8.8) experience_mode, are
+    -- ABSENT from this set-list on purpose. They are settled at creation and
+    -- never change, and corpus.games is immutable once finalized — a
+    -- re-sync that tried to rewrite them would raise and roll back the
+    -- whole transaction, taking the repair pass with it.
     ON CONFLICT (operational_game_id) DO UPDATE SET
       player_id          = EXCLUDED.player_id,
       composer_player_id = EXCLUDED.composer_player_id,

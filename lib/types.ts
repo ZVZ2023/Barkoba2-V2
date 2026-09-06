@@ -48,6 +48,24 @@ export type Difficulty = "easy" | "medium" | "hard";
 export type ClueMode = "none" | "minimal" | "progressive";
 
 /**
+ * V2.8.8 — the player-facing experience preset. Deliberately NOT named
+ * "mode": that bare word already means two other things in this codebase —
+ * POST /api/game/create's `body.mode` (which of the three creation paths:
+ * "ai_composer" / "human_composer" / "human_human", i.e. WHO plays which
+ * seat) and the "game-mode" migration 0003 explicitly refused to add as a
+ * corpus column (composer_kind/racer_kind already encode direction). This
+ * is a third, independent axis: a tone/assistance preset a player chooses,
+ * orthogonal to both direction and difficulty.
+ *
+ * Set once at creation (see lib/experienceMode.ts's clueModeForExperienceMode
+ * for how it derives the internal clue_mode preset) and never renegotiated —
+ * same discipline as `difficulty`. NULL means "created before experience
+ * modes existed", not "competitive" — see lib/gameStore.ts's getGame()
+ * backfill and lib/clueCredits.ts's cluesEnabled() for what NULL preserves.
+ */
+export type ExperienceMode = "competitive" | "friendly" | "teaching" | "humorous";
+
+/**
  * The semantic level of the locked target. Fixed at lock time and never
  * renegotiated, because the failure it prevents is the Composer sliding
  * between readings mid-game — answering one question about the category and
@@ -395,6 +413,14 @@ export interface GameRecord {
   difficulty: Difficulty | null;
   /** Only ever non-"none" on Hard. Null in 0.3.x games. */
   clue_mode: ClueMode | null;
+  /**
+   * V2.8.8 — the player-facing experience preset (see ExperienceMode's own
+   * doc for why this is not called "mode"). Set once at creation, in EVERY
+   * direction (human Setter/AI Racer, AI Setter/human Racer, human/human),
+   * never renegotiated. NULL for every game created before V2.8.8 — a
+   * historical absence of a choice, not a value of "competitive".
+   */
+  experience_mode: ExperienceMode | null;
   question_count: number;
   /**
    * V2.8.4.2 — CORRECTION-BUDGET INTEGRITY. The highest `question_count`

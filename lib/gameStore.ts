@@ -58,6 +58,7 @@ export async function createGame(
     racer_provider: null,
     difficulty: null,
     clue_mode: null,
+    experience_mode: null,
     question_count: 0,
     question_count_high_water_mark: 0,
     ambiguous_count: 0,
@@ -116,6 +117,11 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   // game_language was added in M3; pre-M3 records default to English.
   if (record.game_language !== "hu" && record.game_language !== "en") {
     record.game_language = "en";
+  }
+  // V2.8.8 — experience_mode did not exist before this. NULL means "no
+  // choice existed", never "competitive" — see ExperienceMode's own doc.
+  if (record.experience_mode === undefined) {
+    record.experience_mode = null;
   }
   // Resolution fields; older records live for up to GAME_TTL_SECONDS.
   if (record.integrity_flagged_turns === undefined) record.integrity_flagged_turns = null;
