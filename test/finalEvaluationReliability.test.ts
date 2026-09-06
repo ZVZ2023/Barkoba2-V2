@@ -276,12 +276,24 @@ test("SOURCE: RESOLVE_CLIENT_TIMEOUT_MS was widened alongside the route's maxDur
   assert.match(TURN_REQUEST_GUARD_SRC, /export const RESOLVE_CLIENT_TIMEOUT_MS = 150_000;/);
 });
 
-test("SOURCE: RacerClient.tsx's resolveGame no longer clears `error` before the fetch, only on success or a fresh failure", () => {
+// V2.8.8.4 SUPERSEDES this test's original shape. RacerClient.tsx's
+// resolveGame() no longer contains an inline `fetch(...)`/`setError(null)`
+// pair at all -- V2.8.8.4 routed it through the SAME runOwnedResolveRequest
+// mechanism GameClient.tsx already used, which owns the error-clearing
+// behavior itself (see runOwnedResolveRequest's own "DELIBERATELY does NOT
+// clear the error here" test just above, and test/racerClientResolveParity
+// .test.ts's "EXECUTED (retry visibility)" test, which proves — by actually
+// executing the real mechanism with RacerClient's own field mapping — that
+// its setError callback never sees a null between two real failures. This
+// replacement asserts the CURRENT wiring: no inline error-clearing logic
+// was reintroduced, and the request is routed through the shared,
+// already-tested function rather than a hand-rolled fetch.
+test("SOURCE: RacerClient.tsx's resolveGame routes through runOwnedResolveRequest -- it no longer owns error-clearing logic inline at all", () => {
   const fnAt = RACER_CLIENT_SRC.indexOf("const resolveGame = useCallback(async () => {");
-  const fetchAt = RACER_CLIENT_SRC.indexOf("await fetch(`/api/game/${game.game_id}/resolve`", fnAt);
-  assert.ok(fnAt > 0 && fetchAt > fnAt);
-  const preFetch = RACER_CLIENT_SRC.slice(fnAt, fetchAt);
-  assert.doesNotMatch(preFetch, /setError\(null\)/, "no premature clear before the request is even sent");
-  const postFetch = RACER_CLIENT_SRC.slice(fetchAt, fetchAt + 500);
-  assert.match(postFetch, /else \{\s*setError\(null\);/, "cleared explicitly on success");
+  assert.ok(fnAt > 0);
+  const nextFnAt = RACER_CLIENT_SRC.indexOf("useEffect(() => {\n    if (resolveFired.current) return;", fnAt);
+  const fnBody = RACER_CLIENT_SRC.slice(fnAt, nextFnAt > fnAt ? nextFnAt : fnAt + 3000);
+  assert.match(fnBody, /await runOwnedResolveRequest\(/, "must be routed through the shared mechanism");
+  assert.doesNotMatch(fnBody, /setError\(null\)/, "no inline error-clearing logic of its own -- runOwnedResolveRequest owns that behavior");
+  assert.doesNotMatch(fnBody, /await fetch\(`\/api\/game\/\$\{game\.game_id\}\/resolve`/, "the old unguarded inline fetch must be gone");
 });
