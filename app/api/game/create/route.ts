@@ -6,7 +6,8 @@ import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
 import { createJoinCode } from "@/lib/joinCode";
-import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
+import { reconcileOpportunistically, recentAiComposerTargets } from "@/lib/corpus/gameCorpus";
+import { MAX_TARGET_NOVELTY_ATTEMPTS, RECENT_AI_TARGET_LIMIT, isExactNormalizedRepeat } from "@/lib/targetNovelty";
 import {
   canStartGame,
   consumeForGame,
@@ -481,32 +482,96 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // V2.8.7 — minted first so the model call below is attributable (cost).
-    const aiGameId = randomUUID();
-    const targetObserved: { value: SeatCallObservation | null } = { value: null };
-    const targetStartedAt = Date.now();
-    let chosen;
-    try {
-      chosen = await chooseComposerTarget({
-        difficulty,
-        // The V1 interface is Hungarian, so the game is played in Hungarian.
-        // This used to be hardcoded "en", which is why AI questions, guesses
-        // and adjudication all came back in English under a Hungarian UI.
-        gameLanguage: aiGameLanguage,
-        maxQuestions: budgetChoice,
-        onCallObserved: (o) => {
-          targetObserved.value = o;
-        },
-      });
-      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "accepted", targetStartedAt);
-    } catch (err) {
-      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "provider_error", targetStartedAt);
-      // eslint-disable-next-line no-console
-      console.error("[barkoba] Composer target selection failed:", err);
+    // -------------------------------------------------------------------------
+    // V2.8.8 — per-player AI-target novelty. A DB read, not a model call, so
+    // it costs nothing against the model budget checked above; placed before
+    // minting aiGameId so a refusal here wastes nothing.
+    //
+    // "Corpus not configured" and "corpus configured but the query failed"
+    // are DIFFERENT outcomes (see recentAiComposerTargets's own doc): only
+    // the latter refuses game creation. A null playerId (identity could not
+    // be resolved) has nothing to look up against and is treated the same
+    // as "no history" — there is no stable identity to protect novelty for.
+    // -------------------------------------------------------------------------
+    const noveltyLookup = playerId
+      ? await recentAiComposerTargets(playerId, RECENT_AI_TARGET_LIMIT)
+      : { ok: true, targets: [] as string[] };
+    if (!noveltyLookup.ok) {
       return NextResponse.json(
         {
-          error: "composer_unavailable",
-          message: "Most nem sikerült elindítani a játékot. Próbáld újra.",
+          error: "novelty_history_unavailable",
+          message: "Most nem tudjuk ellenőrizni a korábbi célpontjaidat. Próbáld újra hamarosan.",
+        },
+        { status: 503 }
+      );
+    }
+    const excludedTargets = noveltyLookup.targets;
+
+    // V2.8.7 — minted first so the model call below is attributable (cost).
+    const aiGameId = randomUUID();
+
+    // V2.8.8 — bounded regeneration on an EXACT normalized repeat (never a
+    // fixed fallback like "dog" — see lib/targetNovelty.ts's own doc for
+    // exactly what this mechanical check does and does not catch). Each
+    // rejected candidate is added to the NEXT attempt's own exclusion list,
+    // so a retry cannot repeat the SAME rejected candidate twice; neither
+    // the rejected candidate NOR the reason is ever returned to the client
+    // — only server-side logging, matching how a rejected question is
+    // handled in lib/duplicateQuestionGuard.ts.
+    let chosen: Awaited<ReturnType<typeof chooseComposerTarget>> | null = null;
+    let attemptExclusions = excludedTargets;
+    for (let attempt = 1; attempt <= MAX_TARGET_NOVELTY_ATTEMPTS; attempt++) {
+      const targetObserved: { value: SeatCallObservation | null } = { value: null };
+      const targetStartedAt = Date.now();
+      let candidate;
+      try {
+        candidate = await chooseComposerTarget({
+          difficulty,
+          // The V1 interface is Hungarian, so the game is played in Hungarian.
+          // This used to be hardcoded "en", which is why AI questions, guesses
+          // and adjudication all came back in English under a Hungarian UI.
+          gameLanguage: aiGameLanguage,
+          maxQuestions: budgetChoice,
+          excludedTargets: attemptExclusions,
+          onCallObserved: (o) => {
+            targetObserved.value = o;
+          },
+        });
+        await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "accepted", targetStartedAt);
+      } catch (err) {
+        await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "provider_error", targetStartedAt);
+        // eslint-disable-next-line no-console
+        console.error("[barkoba] Composer target selection failed:", err);
+        return NextResponse.json(
+          {
+            error: "composer_unavailable",
+            message: "Most nem sikerült elindítani a játékot. Próbáld újra.",
+          },
+          { status: 502 }
+        );
+      }
+
+      if (!isExactNormalizedRepeat(candidate.target, excludedTargets)) {
+        chosen = candidate;
+        break;
+      }
+
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] AI-target novelty: candidate repeated a recent target for player on attempt ${attempt} (game ${aiGameId})`
+      );
+      attemptExclusions = [...attemptExclusions, candidate.target];
+    }
+
+    if (!chosen) {
+      // Exhausted the bounded retry and every candidate repeated. Fail
+      // explicitly — never fall back to accepting the repeat or to a fixed
+      // example. Matches this codebase's "refuse rather than substitute"
+      // convention everywhere else (providers, seats, migrations).
+      return NextResponse.json(
+        {
+          error: "composer_target_repeated",
+          message: "Most nem sikerült új célpontot választani. Próbáld újra.",
         },
         { status: 502 }
       );

@@ -250,6 +250,19 @@ export interface ComposerTargetResult {
   /** Qualifiers that narrow the target, or null if it is unqualified. */
   modifiers: string | null;
   reasoning: string;
+  /**
+   * V2.8.8 — the model's own, SELF-REPORTED confirmation that it checked the
+   * chosen target against the excluded-targets list (see
+   * lib/prompts/composerTarget.ts's own doc). Model-enforced, never
+   * mechanically verified — the honest limitation lib/targetNovelty.ts's own
+   * doc states plainly. Always present (the schema requires it), even when
+   * the exclusion list was empty (nothing to have avoided). Named to match
+   * the tool schema's own property exactly (snake_case), like every other
+   * multi-word field on a model result in this codebase (e.g.
+   * ComposerAnswerResult.ambiguous_explanation) — no renaming mapping to get
+   * subtly out of sync with the schema.
+   */
+  avoided_recent_targets: boolean;
 }
 
 /** One answer from the AI Composer. */

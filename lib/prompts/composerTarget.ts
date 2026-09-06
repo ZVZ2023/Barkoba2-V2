@@ -50,9 +50,14 @@ If you choose specific_instance, list the modifiers that narrow it ("red, belong
 The definition is never shown to the player.`;
 
 const DIFFICULTY_GUIDANCE: Record<Difficulty, string> = {
+  // V2.8.8 — "a dog" removed. Field evidence: with an unbounded exclusion
+  // history, the model repeatedly chose "dog" specifically — a likely
+  // direct anchor from this literal example appearing in every single EASY
+  // call. Replaced with a different everyday object rather than merely
+  // deleted, to keep the list's illustrative range intact.
   easy: `EASY — child-friendly.
 
-Play as you would with a friendly eight-year-old. Pick a familiar, concrete, everyday thing named in ordinary vocabulary: a ball, a window, a dog, a bicycle, a spoon, the moon. The child should be able to get there with straightforward questions and feel clever for doing so.
+Play as you would with a friendly eight-year-old. Pick a familiar, concrete, everyday thing named in ordinary vocabulary: a ball, a window, a kite, a bicycle, a spoon, the moon. The child should be able to get there with straightforward questions and feel clever for doing so.
 
 Nothing abstract, nothing requiring reading, nothing a young child would not have handled or seen.`,
 
@@ -106,18 +111,37 @@ const INPUT_SCHEMA: Record<string, unknown> = {
       description:
         "One or two sentences fixing exactly what the target means, including which sense is intended and what is excluded. The reference every answer is checked against.",
     },
+    avoided_recent_targets: {
+      type: "boolean",
+      description:
+        "True only if you deliberately checked your chosen target against the EXCLUDED TARGETS list (if one was given) and confirmed it is not one of them, and not an obvious equivalent of one (a direct translation, a trivial singular/plural or spelling variant). True with no meaningful exclusion list to check against.",
+    },
   },
-  required: ["reasoning", "target", "definition", "granularity", "modifiers"],
+  required: ["reasoning", "target", "definition", "granularity", "modifiers", "avoided_recent_targets"],
 };
 
 export async function chooseComposerTarget(params: {
   difficulty: Difficulty;
   gameLanguage: GameLanguage;
   maxQuestions: number;
+  /**
+   * V2.8.8 — this player's recent, previously REVEALED AI-generated targets
+   * (lib/corpus/gameCorpus.ts's recentAiComposerTargets — a target can never
+   * appear here before its game is over, by construction). Empty for a
+   * fresh player, or when the exclusion history could not be read at all
+   * (the caller decides what THAT means — see app/api/game/create/route.ts;
+   * this function has no opinion on it and simply gets a shorter or empty
+   * list). Instructs the model to avoid these AND their obvious equivalents;
+   * lib/targetNovelty.ts's own mechanical check only catches an EXACT
+   * repeat, never a translation or trivial variant — that half is entirely
+   * this instruction, honestly reported as such.
+   */
+  excludedTargets?: readonly string[];
   /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
   onCallObserved?: (observation: AnthropicCallObservation) => void;
 }): Promise<ComposerTargetResult> {
   const language = params.gameLanguage === "hu" ? "Hungarian (magyar)" : "English";
+  const excludedTargets = params.excludedTargets ?? [];
 
   const result = await callAnthropicTool<ComposerTargetResult>({
     model: env.modelStrong(),
@@ -130,6 +154,13 @@ export async function chooseComposerTarget(params: {
           DIFFICULTY_GUIDANCE[params.difficulty],
           "",
           `The player has ${params.maxQuestions} questions. Choose something reachable within that budget — a target needing far more narrowing than the player can afford is not hard, it is unfair.`,
+          ...(excludedTargets.length > 0
+            ? [
+                "",
+                "EXCLUDED TARGETS — this player has recently played these AI-chosen targets. Do not choose any of them, and do not choose an obvious equivalent of one (a direct translation, a trivial singular/plural or spelling variant, or the same thing under a different common name):",
+                excludedTargets.map((t) => `- ${t}`).join("\n"),
+              ]
+            : []),
           "",
           `Write the target and the definition in ${language}.`,
           "",
@@ -155,5 +186,6 @@ export async function chooseComposerTarget(params: {
     modifiers:
       granularity === "specific_instance" ? (result.modifiers || "").trim() || null : null,
     reasoning: result.reasoning ?? "",
+    avoided_recent_targets: result.avoided_recent_targets === true,
   };
 }
