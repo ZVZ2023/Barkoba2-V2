@@ -66,5 +66,8 @@ export function toRacerPublicState(game: GameRecord): RacerPublicState {
     // V2.8.5 — same pattern: the turn route populates this once
     // lib/layerTwo.ts's replay has run.
     layer_two: null,
+    // V2.8.8 COMPLETION — presentation tone only. Carries no target
+    // information: it is the player's own setup choice, already public.
+    experience_mode: game.experience_mode,
   };
 }

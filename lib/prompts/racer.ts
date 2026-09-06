@@ -3,6 +3,7 @@ import { env } from "../env";
 import type { ModelProviderId, ToolCallObservation, ToolCallResult } from "../providers/types";
 import { validateCandidateMove, type LayerTwoCandidate, type LayerTwoState } from "../layerTwo";
 import type {
+  ExperienceMode,
   GuessIntentResolution,
   ModelProvenance,
   RacerPublicState,
@@ -648,6 +649,52 @@ function renderLanguage(state: RacerPublicState): string {
   return `Language of this game: ${name}. Write your question, guess, and rationale in ${name}.`;
 }
 
+// ---------------------------------------------------------------------------
+// V2.8.8 COMPLETION — presentation tone for the Racer's OWN question wording.
+//
+// FIELD FINDING THIS ADDRESSES: the V2.8.8 report shipped mode framing on
+// exactly one call site (requestClueFromComposer, lib/prompts/composerAnswer
+// .ts). In the direction where the AI plays Racer (human Composer, GameClient
+// .tsx), that left every player-visible AI-authored string — every question
+// it asks — completely untouched by mode: a Humorous game could contain no
+// humor at all unless a hint happened to be requested. This closes that gap
+// at the one place the AI Racer authors player-visible text.
+//
+// SAME SAFE-PRESENTATION BOUNDARY AS CLUE_MODE_FRAMING: wording only, never
+// what the question is ABOUT. It does not touch CORE_RACER_RULES (the
+// byte-verified strategy block — assertGuidanceApplied still checks it
+// verbatim, unaffected by this addition), does not touch which dimension is
+// selected, does not ask for extra private reasoning, and adds no model
+// call — it rides in the SAME per-turn message the Racer already receives,
+// exactly like renderBudget/renderClues/renderPhaseOne above.
+//
+// COMPETITIVE GETS AN EXPLICIT ENTRY, not an absence of one: "concise,
+// neutral presentation" is itself the approved Competitive behavior, not
+// merely nothing-to-say, so it is stated rather than left implicit.
+//
+// NO VERSION BUMP. RACER_PROMPT_VERSION's own doc ties it to
+// RACER_SYSTEM_PROMPT and to the CORE_RACER_RULES guarantee; neither changes
+// here. This is a new per-turn context line, exactly like renderBudget or
+// renderClues already are — those vary every turn without ever bumping the
+// version, because the database claim RACER_PROMPT_VERSION makes is about
+// the strategy block, not about every sentence in the assembled message.
+// ---------------------------------------------------------------------------
+const RACER_MODE_TONE: Record<ExperienceMode, string> = {
+  competitive:
+    "TONE: Neutral and concise. State your question plainly, with no embellishment.",
+  friendly:
+    "TONE: Friendly. Phrase your question warmly and approachably. This changes wording only — never what the question actually asks, and never your strategy.",
+  teaching:
+    'TONE: Teaching. Ordinary phrasing is fine. If one short added clause fits naturally, you may briefly note what you\'re narrowing down as you ask (e.g. "still narrowing down what kind of X this is, so:"). Never reveal your private reasoning or working notes, never turn one question into two, and never change what is actually being asked.',
+  humorous:
+    "TONE: Humorous. You may phrase your question with light wit or playfulness. The literal yes/no meaning must stay exactly as clear and precise as an ordinary phrasing — a joke must never blur, hedge, or change what is actually being asked.",
+};
+
+function renderModeTone(state: RacerPublicState): string {
+  if (!state.experience_mode) return "";
+  return RACER_MODE_TONE[state.experience_mode];
+}
+
 function renderClues(state: RacerPublicState): string {
   if (state.clues.length === 0) return "Clues given so far: none.";
   const rows = state.clues.map((c) => `Clue (after turn ${c.turn_index}): ${c.clue}`);
@@ -817,6 +864,8 @@ export function buildRacerTurnMessage(
   return [
     renderLanguage(state),
     "",
+    renderModeTone(state),
+    "",
     renderBudget(state, forceFinal),
     "",
     renderPhaseOne(state),
@@ -855,6 +904,15 @@ export function buildRacerTurnMessage(
  * SINGLE-SOURCED. It reuses CORE_RACER_RULES rather than restating it. A second
  * literal would drift, and two divergent "canonical" blocks under one version
  * string would make the audit claim unfalsifiable.
+ *
+ * DISCLOSED LIMITATION — does NOT carry renderModeTone(). This is the rare
+ * internal disambiguation path (an automated check flagged a question as a
+ * possible disguised guess), not the ordinary turn path; its
+ * `revised_question` output can occasionally become player-visible, so a
+ * tone mismatch is possible on that one narrow path. Left out deliberately
+ * to keep this pass's change surface to the one path that authors player-
+ * visible text on every ordinary turn, rather than touching a second,
+ * rarely-exercised prompt for the same benefit.
  */
 export function buildGuessIntentMessage(
   state: RacerPublicState,

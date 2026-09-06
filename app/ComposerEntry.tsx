@@ -8,7 +8,24 @@ import AccountControl from "./components/AccountControl";
 import GameShell from "./components/GameShell";
 import BudgetPicker, { pickedBudget } from "./components/BudgetPicker";
 import { CreditGateway, useEntitlement } from "./components/Entitlement";
-import type { Difficulty } from "@/lib/types";
+import {
+  DEFAULT_EXPERIENCE_MODE,
+  EXPERIENCE_MODES,
+  EXPERIENCE_MODE_DESCRIPTION_HU,
+  EXPERIENCE_MODE_LABEL_HU,
+} from "@/lib/experienceMode";
+import type { Difficulty, ExperienceMode } from "@/lib/types";
+
+// V2.8.8 — this screen never had an assistance ("Segítség") selector at
+// all (clue_mode was always null here — see the V2.8.8 report's own
+// finding that this left the AI Racer's clue-request path structurally
+// unreachable). The experience mode is new here, not a replacement.
+const EXPERIENCE_MODE_OPTIONS: { value: ExperienceMode; label: string; blurb: string }[] =
+  EXPERIENCE_MODES.map((value) => ({
+    value,
+    label: EXPERIENCE_MODE_LABEL_HU[value],
+    blurb: EXPERIENCE_MODE_DESCRIPTION_HU[value],
+  }));
 
 type ViewState =
   | { step: "entry" }
@@ -61,6 +78,8 @@ export default function ComposerEntry({
   const [target, setTarget] = useState("");
   const [clarification, setClarification] = useState("");
   const [difficulty, setDifficulty] = useState<Difficulty>("easy");
+  // V2.8.8 — visibly defaults to Friendly, never Competitive (decision #3).
+  const [experienceMode, setExperienceMode] = useState<ExperienceMode>(DEFAULT_EXPERIENCE_MODE);
   const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
   // V2.5 — the language of PLAY, not of this screen. "auto" lets Barkóba read
   // it from how the target was written; the explicit options exist because a
@@ -88,6 +107,10 @@ export default function ComposerEntry({
           // V2.3 — the Composer's chosen allowance. The server re-resolves it;
           // this only proposes.
           difficulty,
+          // V2.8.8 — a NEW client always submits its visible selection; the
+          // server derives clue_mode from it (see resolveExperienceAndClueMode
+          // in app/api/game/create/route.ts).
+          experience_mode: experienceMode,
           max_questions: pickedBudget(difficulty, budgetOverride),
           // V2.8.0 — the ordinary public client no longer proposes an
           // opponent at all. The server picks it (one "Barkóba AI",
@@ -212,6 +235,36 @@ export default function ComposerEntry({
                 </button>
               ))}
             </div>
+          </div>
+
+          {/*
+            V2.8.8 — new selector: this screen never had an assistance
+            picker before, so nothing is replaced here (unlike RacerSetup.tsx).
+            Governs GameClient.tsx's own AI-Racer clue-request path, which
+            was structurally unreachable before this (clue_mode was always
+            null on this creation branch).
+          */}
+          <div className="flex flex-col gap-2">
+            <span className="text-sm text-[var(--ink)]">Élmény</span>
+            <div className="flex flex-wrap gap-2">
+              {EXPERIENCE_MODE_OPTIONS.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setExperienceMode(m.value)}
+                  className={`min-h-11 flex-1 rounded-md border px-3 py-2.5 text-sm font-medium ${
+                    experienceMode === m.value
+                      ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+                      : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-[var(--ink-soft)]">
+              {EXPERIENCE_MODE_OPTIONS.find((m) => m.value === experienceMode)?.blurb}
+            </p>
           </div>
 
           {/* V2.3 — shared with the two-player setup screen: one rule for

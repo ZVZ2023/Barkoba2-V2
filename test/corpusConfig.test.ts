@@ -171,6 +171,7 @@ function game(qa: QuestionLogEntry[]): GameRecord {
     racer_provider: null,
     difficulty: "easy",
     clue_mode: "none",
+    experience_mode: null,
     question_count: qa.length,
     question_count_high_water_mark: qa.length,
     ambiguous_count: 0,

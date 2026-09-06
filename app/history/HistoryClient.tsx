@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { EXPERIENCE_MODE_LABEL_HU, isExperienceMode } from "@/lib/experienceMode";
 
 interface Props {
   versionLabel: string;
@@ -21,6 +22,11 @@ interface HistoryEntry {
   lifecycle_state: string;
   outcome: string | null;
   role: "composer" | "racer" | null;
+  /**
+   * V2.8.8 — NULL for every game recorded before this field existed, never
+   * "competitive" (see lib/experienceMode.ts's own doc on this convention).
+   */
+  experience_mode: string | null;
 }
 
 type LoadState =
@@ -170,6 +176,12 @@ export default function HistoryClient({ versionLabel }: Props) {
                   <span className="text-sm text-[var(--ink)]">{formatWhen(entry.created_at)}</span>
                   <span className="text-xs text-[var(--ink-soft)]">
                     {entry.role ? ROLE_HU[entry.role] : "szerep ismeretlen"}
+                    {/* V2.8.8 — absent for a legacy game (no experience_mode
+                        recorded), exactly like every other field here that
+                        predates its own arrival. */}
+                    {isExperienceMode(entry.experience_mode)
+                      ? ` · ${EXPERIENCE_MODE_LABEL_HU[entry.experience_mode]}`
+                      : ""}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">

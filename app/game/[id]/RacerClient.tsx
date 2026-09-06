@@ -3,6 +3,7 @@
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
+import { EXPERIENCE_MODE_LABEL_HU, EXPERIENCE_MODE_STRATEGY_TIP_HU } from "@/lib/experienceMode";
 import { completedHistoryForDisplay } from "@/lib/gameHistoryOrder";
 import { questionNumbers } from "@/lib/questionNumbers";
 import type { GameView } from "@/lib/gameView";
@@ -54,6 +55,36 @@ const RESULT_HEADLINE: Record<string, string> = {
   composer_win_integrity_upheld: "Feladtad.",
   racer_win_integrity_violation: "Neked ítélve — integritás-ellenőrzés.",
 };
+
+// ---------------------------------------------------------------------------
+// V2.8.8 COMPLETION — terminal presentation copy, by mode. Wording only —
+// see ResultPanel.tsx's identical-purpose HEADLINE_FRIENDLY/HEADLINE_HUMOROUS
+// for the full reasoning (Competitive and legacy share RESULT_HEADLINE
+// unchanged; the integrity-violation outcome keeps its neutral wording in
+// every mode, since making light of an integrity finding is not what
+// "playful" or "supportive" should mean here; Teaching has no separate
+// headline — its differentiator for THIS direction is the in-play strategy
+// tip below and the AI Composer's own tone-framed clues, already present).
+// ---------------------------------------------------------------------------
+const RESULT_HEADLINE_FRIENDLY: Partial<Record<string, string>> = {
+  racer_correct: "Eltaláltad! Szoros volt.",
+  racer_incorrect: "Nem talált — szép próbálkozás volt.",
+  composer_win_integrity_upheld: "Feladtad — semmi baj, lesz még meccs.",
+};
+const RESULT_HEADLINE_HUMOROUS: Partial<Record<string, string>> = {
+  racer_correct: "Eltaláltad! Na tessék.",
+  racer_incorrect: "Nem talált. A titok győzött.",
+  composer_win_integrity_upheld: "Feladtad — a titok jól bujkált.",
+};
+
+function resultHeadlineFor(game: GameRecord): string {
+  const key = game.result ?? "";
+  if (game.experience_mode === "friendly")
+    return RESULT_HEADLINE_FRIENDLY[key] ?? RESULT_HEADLINE[key] ?? "A játék véget ért.";
+  if (game.experience_mode === "humorous")
+    return RESULT_HEADLINE_HUMOROUS[key] ?? RESULT_HEADLINE[key] ?? "A játék véget ért.";
+  return RESULT_HEADLINE[key] ?? "A játék véget ért.";
+}
 
 function clueTurns(game: GameRecord): QuestionLogEntry[] {
   return game.qa_log.filter((e) => e.turn_type === "clue" && e.clue_text);
@@ -412,9 +443,17 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       <p className="-mt-2 text-sm text-[var(--ink-soft)]">
         <span className="font-medium text-[var(--ink)]">Az AI gondolt valamire. Te kérdezel.</span>
         {game.difficulty ? ` · ${DIFFICULTY_HU[game.difficulty] ?? game.difficulty}` : ""}
-        {game.clue_mode && game.clue_mode !== "none"
-          ? ` · ${CLUE_HU[game.clue_mode] ?? game.clue_mode} segítség`
-          : ""}
+        {/*
+          V2.8.8 — a mode-bearing game shows its mode instead of the raw
+          clue_mode suffix (clue_mode is now DERIVED from the mode — showing
+          both would just repeat the same fact in two vocabularies). A
+          legacy game (no experience_mode) keeps the exact original suffix.
+        */}
+        {game.experience_mode
+          ? ` · ${EXPERIENCE_MODE_LABEL_HU[game.experience_mode]}`
+          : game.clue_mode && game.clue_mode !== "none"
+            ? ` · ${CLUE_HU[game.clue_mode] ?? game.clue_mode} segítség`
+            : ""}
       </p>
 
       {/*
@@ -443,7 +482,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
             tabIndex={-1}
             className="text-lg font-semibold text-[var(--ink)] outline-none"
           >
-            {RESULT_HEADLINE[game.result] ?? "A játék véget ért."}
+            {resultHeadlineFor(game)}
           </h2>
           <dl className="mt-4 flex flex-col gap-3 border-t border-[var(--ink)]/15 pt-4 text-sm">
             <div>
@@ -511,6 +550,18 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           false once the game is complete, so none of this renders in a
           terminal state — no active submission controls, per spec.
         */}
+        {/*
+          V2.8.8 COMPLETION — Teaching's in-play strategy tip: this is the
+          seat that actually asks questions, so "how to ask good questions"
+          has an applicable reader here (unlike GameClient.tsx's Composer
+          seat). Deterministic, generic, no model call — see
+          lib/experienceMode.ts's own doc on why only Teaching has an entry.
+        */}
+        {live && !guessMode && game.experience_mode && EXPERIENCE_MODE_STRATEGY_TIP_HU[game.experience_mode] && (
+          <p className="text-xs text-[var(--ink-soft)]">
+            {EXPERIENCE_MODE_STRATEGY_TIP_HU[game.experience_mode]}
+          </p>
+        )}
         {live && !guessMode && (
           <div className="flex flex-col gap-2">
             {remaining > 0 ? (

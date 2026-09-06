@@ -70,6 +70,7 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     racer_provider: null,
     difficulty: "easy",
     clue_mode: "none",
+    experience_mode: null,
     question_count: 0,
     question_count_high_water_mark: 0,
     ambiguous_count: 0,

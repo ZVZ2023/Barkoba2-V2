@@ -55,7 +55,10 @@ test("RacerClient.tsx: the ask/hint/guess controls precede the history render ca
 
 test("HumanClient.tsx: the Composer's answer controls, the hint control, and the Racer's ask/guess controls all precede the <ol> transcript", () => {
   const answerBlockAt = HUMAN_CLIENT.indexOf('{live && iAmComposer && view.your_turn && (');
-  const hintBlockAt = HUMAN_CLIENT.indexOf("{live && iAmComposer && (");
+  // V2.8.8 — the hint block gained a hintAvailable gate (mode/credit-aware);
+  // the literal condition text changed, but its POSITION relative to the
+  // other blocks did not.
+  const hintBlockAt = HUMAN_CLIENT.indexOf("{live && iAmComposer && hintAvailable && (");
   const racerBlockAt = HUMAN_CLIENT.indexOf('{live && !iAmComposer && view.your_turn && (');
   const olAt = HUMAN_CLIENT.indexOf('<ol className="flex flex-col gap-2">');
   assert.ok(answerBlockAt > 0);
@@ -104,7 +107,7 @@ test("HumanClient.tsx: every active-area control is gated on `live` (questioning
   assert.match(HUMAN_CLIENT, /const over = view\.phase === "complete"/);
   assert.match(HUMAN_CLIENT, /const live = view\.phase === "questioning" && !view\.awaiting_racer/);
   assert.match(HUMAN_CLIENT, /\{live && iAmComposer && view\.your_turn && \(/);
-  assert.match(HUMAN_CLIENT, /\{live && iAmComposer && \(/);
+  assert.match(HUMAN_CLIENT, /\{live && iAmComposer && hintAvailable && \(/);
   assert.match(HUMAN_CLIENT, /\{live && !iAmComposer && view\.your_turn && \(/);
 });
 
@@ -124,7 +127,7 @@ test("no active-area block or history call was duplicated by the restructuring",
   assert.equal(count(RACER_CLIENT, "{live && error && ("), 1);
 
   assert.equal(count(HUMAN_CLIENT, '{live && iAmComposer && view.your_turn && ('), 1);
-  assert.equal(count(HUMAN_CLIENT, "{live && iAmComposer && ("), 1);
+  assert.equal(count(HUMAN_CLIENT, "{live && iAmComposer && hintAvailable && ("), 1);
   assert.equal(count(HUMAN_CLIENT, '{live && !iAmComposer && view.your_turn && ('), 1);
   assert.equal(count(HUMAN_CLIENT, 'completedHistoryForDisplay(view.turns).map('), 1);
   assert.equal(count(HUMAN_CLIENT, "{over && ("), 1);

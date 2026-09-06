@@ -3,6 +3,7 @@ import { scrubClue, scrubExplanation } from "../disclosureGuard";
 import { env } from "../env";
 import type {
   ClueMode,
+  ExperienceMode,
   TargetGranularity,
   ComposerAnswerResult,
   GameLanguage,
@@ -144,6 +145,25 @@ const CLUE_GUIDANCE: Record<ClueMode, string> = {
 Early on, keep clues faint — a hint about the kind of territory to explore. Around the midpoint, be more directional about what is worth ruling out. As the budget nears its end, be substantially more helpful, up to naming the category the target sits in.
 
 Even at the very end, do not name the target or give a clue that leaves only one word to say. The player should reach it themselves. A clue that removes the deduction removes the game.`,
+};
+
+// ---------------------------------------------------------------------------
+// V2.8.8 — mode framing for a REQUESTED clue only (never for the ordinary
+// YES/NO/AMBIGUOUS answer call — see §7 of the V2.8.8 report: threading mode
+// into the SAME prompt that decides the truthful answer risks
+// prompt-contract stability for a benefit far smaller than the risk;
+// answerAsComposer above takes no experienceMode parameter and never will).
+// Presentation only — CLUE_GUIDANCE above still governs how MUCH help a
+// clue gives; this only governs the TONE of the words used to give it.
+// Competitive never reaches this function at all (cluesEnabled() is false
+// for it), so it has no entry here.
+// ---------------------------------------------------------------------------
+const CLUE_MODE_FRAMING: Partial<Record<ExperienceMode, string>> = {
+  friendly: "TONE: Friendly. Be warm and encouraging in how you phrase the clue.",
+  teaching:
+    "TONE: Teaching. Where natural, briefly note WHY this direction is worth exploring, not only what to explore — help the player build a better question strategy, not only answer this one turn.",
+  humorous:
+    "TONE: Humorous. Be playful and light in how you phrase the clue, while staying completely truthful and just as careful never to name the target.",
 };
 
 const INPUT_SCHEMA: Record<string, unknown> = {
@@ -325,6 +345,13 @@ export async function requestClueFromComposer(params: {
   maxQuestions: number;
   clueMode: ClueMode;
   gameLanguage: GameLanguage;
+  /**
+   * V2.8.8 — presentation tone only (see CLUE_MODE_FRAMING's own doc).
+   * Optional so an existing/legacy caller (a game with no experience_mode)
+   * needs no change: undefined and null both add no framing text at all,
+   * identical to pre-V2.8.8 behavior.
+   */
+  experienceMode?: ExperienceMode | null;
   /** V2.8.7 — receives the call's resolved model, stop reason and usage for cost accounting. */
   onCallObserved?: (observation: AnthropicCallObservation) => void;
   // V2.5: `provenance` is ADDITIVE on the existing return shape rather than a
@@ -365,6 +392,9 @@ export async function requestClueFromComposer(params: {
           GRANULARITY_RULE[params.granularity],
           "",
           CLUE_GUIDANCE[params.clueMode],
+          ...(params.experienceMode && CLUE_MODE_FRAMING[params.experienceMode]
+            ? ["", CLUE_MODE_FRAMING[params.experienceMode] as string]
+            : []),
           "",
           `Questions used: ${params.questionsAsked} of ${params.maxQuestions}. Remaining: ${remaining}.`,
           "",

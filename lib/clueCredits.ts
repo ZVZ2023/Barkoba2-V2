@@ -1,3 +1,4 @@
+import { isExperienceMode } from "./experienceMode";
 import type { GameRecord, QuestionLogEntry } from "./types";
 
 /**
@@ -31,8 +32,27 @@ export function clueCreditsUsed(qaLog: readonly QuestionLogEntry[]): number {
 /**
  * Clues exist only on Hard, and only when a clue mode was chosen. Easy and
  * Medium are untouched by this feature, as is "none".
+ *
+ * V2.8.8 — a game carrying a valid experience_mode (competitive/friendly/
+ * teaching/humorous) is governed by IT instead: hint availability must not
+ * depend only on Hard difficulty once modes govern it (Competitive+Easy
+ * must hide hints; Friendly+Hard must show them). A game with NO
+ * experience_mode (NULL — created before V2.8.8, or any other non-mode
+ * value) keeps the EXACT original difficulty-gated formula, unchanged, so
+ * no in-flight or historical game silently loses or gains a capability it
+ * was never configured for. Checked via isExperienceMode() rather than a
+ * bare `!== null`, so an absent field (undefined, e.g. an older in-memory
+ * fixture or a KV record read before a backfill runs) falls back to the
+ * legacy branch exactly like null does, never the mode-aware one.
  */
 export function cluesEnabled(game: GameRecord): boolean {
+  if (isExperienceMode(game.experience_mode)) {
+    return (
+      game.experience_mode !== "competitive" &&
+      game.clue_mode !== null &&
+      game.clue_mode !== "none"
+    );
+  }
   return game.difficulty === "hard" && game.clue_mode !== null && game.clue_mode !== "none";
 }
 

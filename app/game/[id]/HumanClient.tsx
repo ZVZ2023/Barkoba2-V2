@@ -15,7 +15,25 @@ import {
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import { useResultReveal } from "@/app/components/useResultReveal";
-import type { ComposerAnswer, GamePhase } from "@/lib/types";
+import { EXPERIENCE_MODE_LABEL_HU, EXPERIENCE_MODE_STRATEGY_TIP_HU } from "@/lib/experienceMode";
+import type { ComposerAnswer, ExperienceMode, GamePhase } from "@/lib/types";
+
+// ---------------------------------------------------------------------------
+// V2.8.8 — mode-specific hint guidance. Setup/in-play chrome, Hungarian-only
+// like every other control on this screen (the hint itself is human-typed,
+// never AI-generated, so there is no game_language-dependent content here at
+// all). Competitive has no entry: the hint block is hidden outright for it
+// (see the render site's own comment).
+// ---------------------------------------------------------------------------
+const HINT_GUIDANCE: Partial<Record<ExperienceMode, string>> = {
+  friendly: "Adj hasznos segítséget, de a választ ne áruld el.",
+  teaching:
+    "Magyarázz el egy hasznos különbséget vagy gondolkodásmódot — ne csak magát a választ áruld el.",
+  humorous: "Legyél játékos, de igaz — a lényeget így se áruld el.",
+};
+/** A legacy game (no experience_mode) keeps the exact original wording. */
+const HINT_GUIDANCE_LEGACY =
+  "Pl. „rossz irányba indultál”. Nem kerül kérdésbe. Ügyelj rá, hogy ne írd le magát a megfejtést.";
 
 // ---------------------------------------------------------------------------
 // V2.3 — the Human↔Human screen. One component, both seats.
@@ -255,7 +273,19 @@ export default function HumanClient({
   const over = view.phase === "complete";
   const live = view.phase === "questioning" && !view.awaiting_racer;
   const iAmComposer = view.seat === "composer";
-  const outcome = resultCopy(view.result, view.seat);
+  const outcome = resultCopy(view.result, view.seat, view.experience_mode);
+  // V2.8.8 — a LEGACY game (no experience_mode) keeps the hint exactly as
+  // unconditionally available as it always was. A game carrying a valid
+  // experience_mode is brought under the SAME derived-credit mechanism
+  // every other direction already uses (view.hint_credits_available, a
+  // COMPUTED field — see lib/gameView.ts's own doc); Competitive reports
+  // zero credits by construction, so it is refused the same way any other
+  // exhausted-credit game would be, in addition to hiding the entry point
+  // outright below.
+  const hintAvailable =
+    view.experience_mode === null
+      ? true
+      : view.experience_mode !== "competitive" && view.hint_credits_available > 0;
 
   return (
     <div className="mx-auto flex w-full max-w-2xl flex-col gap-4 px-4 py-6">
@@ -275,6 +305,9 @@ export default function HumanClient({
       <div className="flex items-center justify-between text-sm text-neutral-700">
         <span>
           {view.question_count} / {view.max_questions} kérdés
+          {/* V2.8.8 — shown only for a mode-bearing game; a legacy game (no
+              experience_mode) shows nothing here, exactly as before. */}
+          {view.experience_mode ? ` · ${EXPERIENCE_MODE_LABEL_HU[view.experience_mode]}` : ""}
         </span>
         {!over && !view.awaiting_racer && (
           <span className={view.your_turn ? "font-semibold text-[#1e3a24]" : "text-neutral-500"}>
@@ -451,8 +484,14 @@ export default function HumanClient({
       {/* V2.3.1 — voluntary hint. Available to the Composer whenever the game
           is live, not only on their turn: the moment worth intervening is
           usually just after an answer, when the other player is heading
-          somewhere irrelevant. It costs no question and no credit. */}
-      {live && iAmComposer && (
+          somewhere irrelevant. It costs no question, and (V2.8.8) no
+          hint credit either where the legacy unconditional behavior still
+          applies.
+
+          V2.8.8 — hintAvailable hides this outright for Competitive and for
+          a mode-bearing game with no hint credit left; a legacy game (no
+          experience_mode) is completely unaffected. */}
+      {live && iAmComposer && hintAvailable && (
         <div className="flex flex-col gap-2 rounded-md border border-neutral-900/15 bg-white/50 p-3">
           {!hinting ? (
             <button
@@ -466,8 +505,7 @@ export default function HumanClient({
             <>
               <p className="text-sm font-medium">Súgás a másik játékosnak</p>
               <p className="text-sm text-neutral-600">
-                Pl. „rossz irányba indultál”. Nem kerül kérdésbe. Ügyelj rá,
-                hogy ne írd le magát a megfejtést.
+                {(view.experience_mode && HINT_GUIDANCE[view.experience_mode]) ?? HINT_GUIDANCE_LEGACY}
               </p>
               <textarea
                 autoFocus
@@ -503,6 +541,19 @@ export default function HumanClient({
             </>
           )}
         </div>
+      )}
+
+      {/*
+        V2.8.8 COMPLETION — Teaching's in-play strategy tip: this is the
+        seat that actually asks questions, so "how to ask good questions"
+        has an applicable reader here. See lib/experienceMode.ts's own doc
+        on why only Teaching has an entry and why GameClient.tsx (no human
+        Racer seat) does not show this.
+      */}
+      {live && !iAmComposer && view.experience_mode && EXPERIENCE_MODE_STRATEGY_TIP_HU[view.experience_mode] && (
+        <p className="text-xs text-neutral-500">
+          {EXPERIENCE_MODE_STRATEGY_TIP_HU[view.experience_mode]}
+        </p>
       )}
 
       {/* Racer's controls: ask, guess or concede. */}

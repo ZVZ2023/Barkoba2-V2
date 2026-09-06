@@ -48,6 +48,24 @@ export type Difficulty = "easy" | "medium" | "hard";
 export type ClueMode = "none" | "minimal" | "progressive";
 
 /**
+ * V2.8.8 — the player-facing experience preset. Deliberately NOT named
+ * "mode": that bare word already means two other things in this codebase —
+ * POST /api/game/create's `body.mode` (which of the three creation paths:
+ * "ai_composer" / "human_composer" / "human_human", i.e. WHO plays which
+ * seat) and the "game-mode" migration 0003 explicitly refused to add as a
+ * corpus column (composer_kind/racer_kind already encode direction). This
+ * is a third, independent axis: a tone/assistance preset a player chooses,
+ * orthogonal to both direction and difficulty.
+ *
+ * Set once at creation (see lib/experienceMode.ts's clueModeForExperienceMode
+ * for how it derives the internal clue_mode preset) and never renegotiated —
+ * same discipline as `difficulty`. NULL means "created before experience
+ * modes existed", not "competitive" — see lib/gameStore.ts's getGame()
+ * backfill and lib/clueCredits.ts's cluesEnabled() for what NULL preserves.
+ */
+export type ExperienceMode = "competitive" | "friendly" | "teaching" | "humorous";
+
+/**
  * The semantic level of the locked target. Fixed at lock time and never
  * renegotiated, because the failure it prevents is the Composer sliding
  * between readings mid-game — answering one question about the category and
@@ -232,6 +250,19 @@ export interface ComposerTargetResult {
   /** Qualifiers that narrow the target, or null if it is unqualified. */
   modifiers: string | null;
   reasoning: string;
+  /**
+   * V2.8.8 — the model's own, SELF-REPORTED confirmation that it checked the
+   * chosen target against the excluded-targets list (see
+   * lib/prompts/composerTarget.ts's own doc). Model-enforced, never
+   * mechanically verified — the honest limitation lib/targetNovelty.ts's own
+   * doc states plainly. Always present (the schema requires it), even when
+   * the exclusion list was empty (nothing to have avoided). Named to match
+   * the tool schema's own property exactly (snake_case), like every other
+   * multi-word field on a model result in this codebase (e.g.
+   * ComposerAnswerResult.ambiguous_explanation) — no renaming mapping to get
+   * subtly out of sync with the schema.
+   */
+  avoided_recent_targets: boolean;
 }
 
 /** One answer from the AI Composer. */
@@ -395,6 +426,14 @@ export interface GameRecord {
   difficulty: Difficulty | null;
   /** Only ever non-"none" on Hard. Null in 0.3.x games. */
   clue_mode: ClueMode | null;
+  /**
+   * V2.8.8 — the player-facing experience preset (see ExperienceMode's own
+   * doc for why this is not called "mode"). Set once at creation, in EVERY
+   * direction (human Setter/AI Racer, AI Setter/human Racer, human/human),
+   * never renegotiated. NULL for every game created before V2.8.8 — a
+   * historical absence of a choice, not a value of "competitive".
+   */
+  experience_mode: ExperienceMode | null;
   question_count: number;
   /**
    * V2.8.4.2 — CORRECTION-BUDGET INTEGRITY. The highest `question_count`
@@ -594,6 +633,22 @@ export interface RacerPublicState {
    * handed off. Null before that point, exactly like phase_one above.
    */
   layer_two: RacerLayerTwoSummary | null;
+  /**
+   * V2.8.8 COMPLETION — presentation tone only (see lib/prompts/racer.ts's
+   * RACER_MODE_TONE doc). Carries no target information — it is copied
+   * straight from GameRecord.experience_mode, which is itself set only from
+   * the player's own setup choice.
+   *
+   * OPTIONAL, unlike GameRecord.experience_mode (which is required and
+   * backfilled to null for every legacy record): this field did not exist
+   * before this completion pass, and every hand-built RacerPublicState
+   * fixture across the test suite (racerGuidance.test.ts,
+   * layerTwoIntegration.test.ts, and others) predates it. Making it optional
+   * means every one of those fixtures keeps compiling unchanged; undefined
+   * is treated identically to null by renderModeTone (no tone framing,
+   * legacy behavior) — there is no third state to distinguish.
+   */
+  experience_mode?: ExperienceMode | null;
 }
 
 /**

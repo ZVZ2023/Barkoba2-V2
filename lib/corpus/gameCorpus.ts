@@ -310,7 +310,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
     INSERT INTO corpus.games (
       operational_game_id, player_id, composer_player_id, racer_player_id,
       app_version, commit_sha,
-      composer_kind, racer_kind, difficulty, clue_mode, game_language,
+      composer_kind, racer_kind, difficulty, clue_mode, experience_mode, game_language,
       max_questions, private_target,
       lifecycle_state, outcome, termination_reason, last_phase,
       question_count, ambiguous_count,
@@ -321,6 +321,7 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       ${game.composer_player_id}, ${game.racer_player_id},
       ${version.version}, ${version.commit},
       ${game.composer_kind}, ${game.racer_kind}, ${game.difficulty}, ${game.clue_mode},
+      ${game.experience_mode},
       ${game.game_language}, ${game.max_questions}, ${game.private_target},
       ${life.lifecycle_state}, ${life.outcome}, ${life.termination_reason}, ${game.phase},
       ${game.question_count}, ${game.ambiguous_count},
@@ -328,10 +329,11 @@ async function syncGame(sql: SqlClient, game: GameRecord): Promise<void> {
       ${env.collectionContext()},
       ${game.benchmark_case_id}, ${game.benchmark_run_id}
     )
-    -- V2.5: the two benchmark columns are ABSENT from this set-list on purpose.
-    -- They are settled at creation and never change, and corpus.games is
-    -- immutable once finalized — a re-sync that tried to rewrite them would
-    -- raise and roll back the whole transaction, taking the repair pass with it.
+    -- V2.5: the two benchmark columns, and (V2.8.8) experience_mode, are
+    -- ABSENT from this set-list on purpose. They are settled at creation and
+    -- never change, and corpus.games is immutable once finalized — a
+    -- re-sync that tried to rewrite them would raise and roll back the
+    -- whole transaction, taking the repair pass with it.
     ON CONFLICT (operational_game_id) DO UPDATE SET
       player_id          = EXCLUDED.player_id,
       composer_player_id = EXCLUDED.composer_player_id,
@@ -701,6 +703,12 @@ export interface PlayerHistoryEntry {
    * existed). Null only if neither can determine it.
    */
   role: "composer" | "racer" | null;
+  /**
+   * V2.8.8 — NULL for every game recorded before this field existed (a
+   * historical absence of choice, never "competitive" — same convention as
+   * GameRecord.experience_mode itself). See lib/experienceMode.ts.
+   */
+  experience_mode: string | null;
 }
 
 export async function listPlayerHistory(playerId: string): Promise<PlayerHistoryEntry[] | null> {
@@ -711,7 +719,8 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
   try {
     const rows = await sql`
       SELECT operational_game_id, created_at, lifecycle_state, outcome,
-             composer_player_id, racer_player_id, composer_kind, racer_kind
+             composer_player_id, racer_player_id, composer_kind, racer_kind,
+             experience_mode
         FROM corpus.games
        WHERE player_id = ${playerId}
        ORDER BY created_at DESC
@@ -733,12 +742,65 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
         lifecycle_state: String(row.lifecycle_state),
         outcome: typeof row.outcome === "string" ? row.outcome : null,
         role,
+        experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
       };
     });
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[barkoba] corpus: player history read failed for ${playerId}:`, err);
     return null;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// V2.8.8 — per-player AI-generated target novelty (lib/targetNovelty.ts's
+// own module doc has the full design; this is its one durable-data read).
+//
+// game_targets is joined to games.player_id/composer_kind='ai' — this can
+// NEVER return an unrevealed secret: game_targets is only ever populated at
+// the single declassification point in /resolve (see migrations/0001's own
+// schema comment on that table), so a row existing at all already means the
+// game it belongs to is over and its target is public knowledge.
+//
+// THE ok/targets SPLIT IS LOAD-BEARING, unlike listPlayerHistory's own
+// null-for-everything shape: "corpus intentionally not configured" (no
+// CORPUS_ENABLED / no DATABASE_URL — the shipped default, e.g. local dev)
+// is NOT a failure, it is genuinely "no history exists to exclude" — the
+// same fact as a brand-new player, and returned the same way: ok:true,
+// targets: []. Only a CONFIGURED corpus whose query then throws is a
+// failure — ok:false — and the caller (app/api/game/create/route.ts) must
+// refuse creation with a retryable error rather than silently proceeding as
+// though the player had no history, which would silently re-risk repeating
+// a recent target with no way for the player to know why.
+// ---------------------------------------------------------------------------
+
+export interface RecentTargetsLookup {
+  ok: boolean;
+  targets: string[];
+}
+
+export async function recentAiComposerTargets(
+  playerId: string,
+  limit: number
+): Promise<RecentTargetsLookup> {
+  if (!isCorpusConfigured()) return { ok: true, targets: [] };
+  const sql = getSql();
+  if (!sql) return { ok: true, targets: [] };
+
+  try {
+    const rows = await sql`
+      SELECT gt.target
+        FROM corpus.game_targets gt
+        JOIN corpus.games g ON g.corpus_game_id = gt.corpus_game_id
+       WHERE g.player_id = ${playerId} AND g.composer_kind = 'ai'
+       ORDER BY gt.revealed_at DESC
+       LIMIT ${limit}
+    `;
+    return { ok: true, targets: rows.map((row) => String(row.target)) };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] corpus: recent AI-composer targets read failed for ${playerId}:`, err);
+    return { ok: false, targets: [] };
   }
 }
 

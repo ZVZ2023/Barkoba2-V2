@@ -1,4 +1,5 @@
-import type { ComposerAnswer, GameRecord, GameResult, RacerAction } from "./types";
+import { clueCreditsAvailable } from "./clueCredits";
+import type { ComposerAnswer, ExperienceMode, GameRecord, GameResult, RacerAction } from "./types";
 import { awaitingRacer, type Seat } from "./seats";
 
 // ---------------------------------------------------------------------------
@@ -76,6 +77,24 @@ export interface GameView {
    * target, only how many times the record has been written.
    */
   record_revision: number;
+  /**
+   * V2.8.8 — the experience preset (see ExperienceMode's own doc). NULL for
+   * every game predating V2.8.8. Safe to share with both seats: it carries
+   * no target information, the same class of fact as `difficulty` already
+   * was on GameRecord (never itself exposed here, only its derived effects).
+   */
+  experience_mode: ExperienceMode | null;
+  /**
+   * V2.8.8 — a COMPUTED fact, not a raw `clue_mode`/`difficulty` passthrough:
+   * how many hint credits this seat's Composer may still spend, per
+   * lib/clueCredits.ts's existing derived-credit formula (0 whenever
+   * cluesEnabled() is false, including every Competitive game). Exposing
+   * the computed number rather than the raw clue_mode keeps this view's own
+   * narrowing discipline — the client learns exactly what it needs
+   * (can a hint be given right now, and how many) without also having to
+   * separately know difficulty/clue_mode to derive that itself.
+   */
+  hint_credits_available: number;
 }
 
 /**
@@ -180,6 +199,8 @@ export function buildGameView(game: GameRecord, seat: Seat): GameView {
     revealed_target: game.revealed_target,
     revision: revisionOf(game),
     record_revision: game.revision,
+    experience_mode: game.experience_mode,
+    hint_credits_available: clueCreditsAvailable(game),
   };
 }
 

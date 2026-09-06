@@ -334,7 +334,11 @@ const CREATE_ROUTE_SRC = readFileSync("app/api/game/create/route.ts", "utf8");
 test("SOURCE: the ai_composer creation branch records racer_player_id from the resolved caller", () => {
   const aiComposerBranchStart = CREATE_ROUTE_SRC.indexOf('body.mode === "ai_composer"');
   assert.ok(aiComposerBranchStart >= 0, "could not locate the ai_composer branch");
-  const aiComposerBranch = CREATE_ROUTE_SRC.slice(aiComposerBranchStart, aiComposerBranchStart + 4000);
+  // V2.8.8 — widened from 4000, then again from 5000: the mode-resolution
+  // block (slice 2) and the target-novelty lookup/retry loop (slice 4) both
+  // added code ahead of racer_player_id in this branch, each pushing it
+  // further past the previous fixed window.
+  const aiComposerBranch = CREATE_ROUTE_SRC.slice(aiComposerBranchStart, aiComposerBranchStart + 9000);
   assert.match(
     aiComposerBranch,
     /racer_player_id:\s*playerId,/,

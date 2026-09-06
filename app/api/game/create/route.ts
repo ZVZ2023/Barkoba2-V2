@@ -6,7 +6,8 @@ import { runValidator } from "@/lib/prompts/validator";
 import { createSecret, lockSecret } from "@/lib/secretStore";
 import { createGame, getGame, saveGame } from "@/lib/gameStore";
 import { createJoinCode } from "@/lib/joinCode";
-import { reconcileOpportunistically } from "@/lib/corpus/gameCorpus";
+import { reconcileOpportunistically, recentAiComposerTargets } from "@/lib/corpus/gameCorpus";
+import { MAX_TARGET_NOVELTY_ATTEMPTS, RECENT_AI_TARGET_LIMIT, isExactNormalizedRepeat } from "@/lib/targetNovelty";
 import {
   canStartGame,
   consumeForGame,
@@ -48,7 +49,8 @@ import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
 import { consumeModelCall } from "@/lib/callBudget";
-import type { ClueMode, Difficulty } from "@/lib/types";
+import { clueModeForExperienceMode, isExperienceMode } from "@/lib/experienceMode";
+import type { ClueMode, Difficulty, ExperienceMode } from "@/lib/types";
 import { resolveQuestionBudget } from "@/lib/questionBudget";
 import { resolveGameLanguage } from "@/lib/gameLanguage";
 import {
@@ -201,6 +203,16 @@ interface CreateGameBody {
   force?: boolean;
   difficulty?: Difficulty;
   clue_mode?: ClueMode;
+  /**
+   * V2.8.8 — the player-facing experience preset. OPTIONAL so an older
+   * client that never sends it (predating this field) preserves its exact
+   * current behavior, including whatever clue_mode it submits — see
+   * resolveModeAndClueMode's own doc below. A NEW client always sends this
+   * (the setup UI has no "no choice" state; it defaults visibly to
+   * Friendly), so omission is a legacy-client signal, not a valid "no
+   * preference" choice from a current one.
+   */
+  experience_mode?: string;
   max_questions?: number;
   /**
    * V2.5-B3 — which AI should race. A NAME only: "anthropic" or "xai". The
@@ -227,6 +239,51 @@ const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 // QUESTION_BUDGETS moved to lib/questionBudget.ts in 2.3.0.0 so the server that
 // validates a budget and the screens that offer it share one definition.
+
+/**
+ * V2.8.8 — resolves BOTH experience_mode and the internal clue_mode
+ * together, since the whole point of a mode (decision #2) is to REPLACE the
+ * separate assistance selector for a NEW game — a client that sends a valid
+ * experience_mode gets its clue_mode DERIVED from the preset mapping, never
+ * from whatever (if anything) it also submitted.
+ *
+ * An OLDER client that omits experience_mode entirely is a DIFFERENT,
+ * explicitly preserved case (decision #3): "a request from an older client
+ * that omits experience_mode must preserve current legacy behavior,
+ * including its submitted clue_mode" — so `legacyClueMode` (whatever each
+ * creation branch already computed under its OWN pre-V2.8.8 rule) passes
+ * through completely unchanged, and experience_mode stays NULL — a
+ * historical absence of choice, never "competitive".
+ *
+ * An experience_mode present but not one of the four known values is
+ * rejected outright (400), never silently ignored or coerced.
+ */
+function resolveExperienceAndClueMode(
+  rawExperienceMode: string | undefined,
+  legacyClueMode: ClueMode | null
+): { ok: true; experienceMode: ExperienceMode | null; clueMode: ClueMode | null } | { ok: false } {
+  if (rawExperienceMode === undefined) {
+    return { ok: true, experienceMode: null, clueMode: legacyClueMode };
+  }
+  if (!isExperienceMode(rawExperienceMode)) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    experienceMode: rawExperienceMode,
+    clueMode: clueModeForExperienceMode(rawExperienceMode),
+  };
+}
+
+function invalidExperienceModeResponse() {
+  return NextResponse.json(
+    {
+      error: "invalid_experience_mode",
+      message: "Ismeretlen élményszint. Válassz a felkínált lehetőségek közül.",
+    },
+    { status: 400 }
+  );
+}
 
 /**
  * V2.8.7 — one terminal telemetry row for a creation-time Anthropic seat call
@@ -384,11 +441,22 @@ export async function POST(req: NextRequest) {
       : "medium";
 
     // The clue selector is only offered on Hard; anything else is forced to
-    // "none" here rather than trusted from the client.
-    const clueMode: ClueMode =
+    // "none" here rather than trusted from the client. This is the LEGACY
+    // fallback resolveExperienceAndClueMode below preserves verbatim for a
+    // client that omits experience_mode.
+    const legacyClueMode: ClueMode =
       difficulty === "hard" && CLUE_MODES.includes(body.clue_mode as ClueMode)
         ? (body.clue_mode as ClueMode)
         : "none";
+
+    const modeResolution = resolveExperienceAndClueMode(body.experience_mode, legacyClueMode);
+    if (!modeResolution.ok) return invalidExperienceModeResponse();
+    const { experienceMode, clueMode: resolvedClueMode } = modeResolution;
+    // ai_composer's clue_mode has never been nullable (always resolved to a
+    // concrete ClueMode above); resolveExperienceAndClueMode's own null case
+    // only ever applies via a legacyClueMode of null, which this branch never
+    // passes in.
+    const clueMode: ClueMode = resolvedClueMode ?? "none";
 
     // Unchanged behaviour: an unrecognised value falls back. The AI-Composer
     // screen has always defaulted to 20 regardless of difficulty, so it passes
@@ -414,32 +482,96 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // V2.8.7 — minted first so the model call below is attributable (cost).
-    const aiGameId = randomUUID();
-    const targetObserved: { value: SeatCallObservation | null } = { value: null };
-    const targetStartedAt = Date.now();
-    let chosen;
-    try {
-      chosen = await chooseComposerTarget({
-        difficulty,
-        // The V1 interface is Hungarian, so the game is played in Hungarian.
-        // This used to be hardcoded "en", which is why AI questions, guesses
-        // and adjudication all came back in English under a Hungarian UI.
-        gameLanguage: aiGameLanguage,
-        maxQuestions: budgetChoice,
-        onCallObserved: (o) => {
-          targetObserved.value = o;
-        },
-      });
-      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "accepted", targetStartedAt);
-    } catch (err) {
-      await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "provider_error", targetStartedAt);
-      // eslint-disable-next-line no-console
-      console.error("[barkoba] Composer target selection failed:", err);
+    // -------------------------------------------------------------------------
+    // V2.8.8 — per-player AI-target novelty. A DB read, not a model call, so
+    // it costs nothing against the model budget checked above; placed before
+    // minting aiGameId so a refusal here wastes nothing.
+    //
+    // "Corpus not configured" and "corpus configured but the query failed"
+    // are DIFFERENT outcomes (see recentAiComposerTargets's own doc): only
+    // the latter refuses game creation. A null playerId (identity could not
+    // be resolved) has nothing to look up against and is treated the same
+    // as "no history" — there is no stable identity to protect novelty for.
+    // -------------------------------------------------------------------------
+    const noveltyLookup = playerId
+      ? await recentAiComposerTargets(playerId, RECENT_AI_TARGET_LIMIT)
+      : { ok: true, targets: [] as string[] };
+    if (!noveltyLookup.ok) {
       return NextResponse.json(
         {
-          error: "composer_unavailable",
-          message: "Most nem sikerült elindítani a játékot. Próbáld újra.",
+          error: "novelty_history_unavailable",
+          message: "Most nem tudjuk ellenőrizni a korábbi célpontjaidat. Próbáld újra hamarosan.",
+        },
+        { status: 503 }
+      );
+    }
+    const excludedTargets = noveltyLookup.targets;
+
+    // V2.8.7 — minted first so the model call below is attributable (cost).
+    const aiGameId = randomUUID();
+
+    // V2.8.8 — bounded regeneration on an EXACT normalized repeat (never a
+    // fixed fallback like "dog" — see lib/targetNovelty.ts's own doc for
+    // exactly what this mechanical check does and does not catch). Each
+    // rejected candidate is added to the NEXT attempt's own exclusion list,
+    // so a retry cannot repeat the SAME rejected candidate twice; neither
+    // the rejected candidate NOR the reason is ever returned to the client
+    // — only server-side logging, matching how a rejected question is
+    // handled in lib/duplicateQuestionGuard.ts.
+    let chosen: Awaited<ReturnType<typeof chooseComposerTarget>> | null = null;
+    let attemptExclusions = excludedTargets;
+    for (let attempt = 1; attempt <= MAX_TARGET_NOVELTY_ATTEMPTS; attempt++) {
+      const targetObserved: { value: SeatCallObservation | null } = { value: null };
+      const targetStartedAt = Date.now();
+      let candidate;
+      try {
+        candidate = await chooseComposerTarget({
+          difficulty,
+          // The V1 interface is Hungarian, so the game is played in Hungarian.
+          // This used to be hardcoded "en", which is why AI questions, guesses
+          // and adjudication all came back in English under a Hungarian UI.
+          gameLanguage: aiGameLanguage,
+          maxQuestions: budgetChoice,
+          excludedTargets: attemptExclusions,
+          onCallObserved: (o) => {
+            targetObserved.value = o;
+          },
+        });
+        await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "accepted", targetStartedAt);
+      } catch (err) {
+        await recordCreateSeatCall(aiGameId, "composer_choice", targetObserved.value, "provider_error", targetStartedAt);
+        // eslint-disable-next-line no-console
+        console.error("[barkoba] Composer target selection failed:", err);
+        return NextResponse.json(
+          {
+            error: "composer_unavailable",
+            message: "Most nem sikerült elindítani a játékot. Próbáld újra.",
+          },
+          { status: 502 }
+        );
+      }
+
+      if (!isExactNormalizedRepeat(candidate.target, excludedTargets)) {
+        chosen = candidate;
+        break;
+      }
+
+      // eslint-disable-next-line no-console
+      console.warn(
+        `[barkoba] AI-target novelty: candidate repeated a recent target for player on attempt ${attempt} (game ${aiGameId})`
+      );
+      attemptExclusions = [...attemptExclusions, candidate.target];
+    }
+
+    if (!chosen) {
+      // Exhausted the bounded retry and every candidate repeated. Fail
+      // explicitly — never fall back to accepting the repeat or to a fixed
+      // example. Matches this codebase's "refuse rather than substitute"
+      // convention everywhere else (providers, seats, model budget).
+      return NextResponse.json(
+        {
+          error: "composer_target_repeated",
+          message: "Most nem sikerült új célpontot választani. Próbáld újra.",
         },
         { status: 502 }
       );
@@ -480,6 +612,7 @@ export async function POST(req: NextRequest) {
       racer_kind: "human",
       difficulty,
       clue_mode: clueMode,
+      experience_mode: experienceMode,
       ...benchmark,
     });
 
@@ -506,6 +639,7 @@ export async function POST(req: NextRequest) {
       max_questions: aiGame.max_questions,
       difficulty,
       clue_mode: clueMode,
+      experience_mode: experienceMode,
     });
   }
 
@@ -550,6 +684,18 @@ export async function POST(req: NextRequest) {
   const maxQuestions = composerChoseBudget
     ? resolveQuestionBudget(humanDifficulty, body.max_questions)
     : env.maxQuestions();
+
+  // V2.8.8 — applies to BOTH human-Composer flows, the same way difficulty
+  // above does: whether the Racer is the AI (GameClient.tsx) or another
+  // person (HumanClient.tsx), a human owns the target and the SAME mode
+  // resolution applies. The legacy fallback here is `null` (never a
+  // ClueMode value): this branch never set clue_mode at all before V2.8.8
+  // — createGame()'s own default already leaves it null for a game that
+  // made no choice — so an older client omitting experience_mode gets
+  // EXACTLY that same absence preserved, not a newly-invented "none".
+  const humanModeResolution = resolveExperienceAndClueMode(body.experience_mode, null);
+  if (!humanModeResolution.ok) return invalidExperienceModeResponse();
+  const { experienceMode: humanExperienceMode, clueMode: humanClueMode } = humanModeResolution;
 
   // V2.5-B3 — resolved BEFORE the Validator runs, so a refusal costs no model
   // call. Only meaningful when the AI races; a Human↔Human game has no provider
@@ -642,6 +788,14 @@ export async function POST(req: NextRequest) {
     // null when no choice was made, so games that never had a difficulty are
     // not retroactively given one.
     difficulty: composerChoseBudget ? humanDifficulty : null,
+    // V2.8.8 — unlocks GameClient.tsx's AI-Racer clue-request path and
+    // HumanClient.tsx's Composer hint for the first time: clue_mode was
+    // NEVER set on this branch before, so cluesEnabled() was structurally
+    // always false here regardless of difficulty (see the V2.8.8 report's
+    // own finding on this). Null exactly when experience_mode is also null
+    // (an older client), preserving that same always-false state.
+    clue_mode: humanClueMode,
+    experience_mode: humanExperienceMode,
     // Left null until someone joins. awaitingRacer() reads exactly this.
     racer_player_id: null,
     phase: "questioning",

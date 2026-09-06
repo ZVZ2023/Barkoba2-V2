@@ -372,6 +372,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
         questionsAsked: game.question_count,
         maxQuestions: game.max_questions,
         clueMode: game.clue_mode ?? "none",
+        experienceMode: game.experience_mode,
         gameLanguage: game.game_language,
         onCallObserved: (o) => {
           clueObserved.value = o;
