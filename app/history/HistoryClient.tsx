@@ -30,17 +30,23 @@ interface HistoryEntry {
   /**
    * V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS. game_language drives the
    * bilingual "not retained" copy below; NOT NULL at the schema level.
-   * target/final_guess_text are populated ONLY for a completed game (see
+   * target is populated ONLY for a completed game (see
    * lib/corpus/gameCorpus.ts's listPlayerHistory doc for the two
    * independent gates that make this true) — always null for anything
    * in_progress/abandoned/stalled/unresolved, by construction on the
    * server, never filtered here.
+   *
+   * V2.8.8.6 — the final guess was deliberately REMOVED from this list's
+   * shape. A production data audit confirmed the server was never sending
+   * the wrong value; showing both the target and the guess side by side on
+   * a selection list was itself the ambiguity. The guess still exists on
+   * the opened game's own detail view (ArchivedGameView.tsx), which is
+   * where a specific answer belongs, not the list used to pick a game.
    */
   game_language: string;
   max_questions: number;
   question_count: number;
   target: string | null;
-  final_guess_text: string | null;
 }
 
 type LoadState =
@@ -95,32 +101,33 @@ function statusOf(entry: HistoryEntry): { text: string; className: string } {
 //
 // Scoped to COMPLETED games only, matching this ticket's own scope: a
 // non-completed card's existing, unchanged layout (role/mode badge/status/
-// date/link) is untouched. The enriched fields below (target, guess,
+// date/link) is untouched. The enriched fields below (target,
 // questions-used) exist ONLY on a completed card, and their own "not
 // retained" copy follows the SAME bilingual-by-game_language precedent
 // ArchivedGameView.tsx already established for identical narrative
 // copy — role and experience-mode LABELS still stay Hungarian everywhere,
 // matching that same file's documented, already-approved reasoning.
+//
+// V2.8.8.6 — the final guess no longer renders on this card at all (see
+// HistoryEntry's own doc): it belongs on the opened game's detail view,
+// not the selection list.
 // ---------------------------------------------------------------------------
 
 interface CompletedCardCopy {
   targetLabel: string;
   targetNotRetained: string;
-  guessLabel: string;
   questionsLabel: string;
 }
 
 const COMPLETED_CARD_COPY: Record<"hu" | "en", CompletedCardCopy> = {
   hu: {
     targetLabel: "Cél",
-    targetNotRetained: "A cél nincs megőrizve ehhez a játékhoz.",
-    guessLabel: "Tipp",
+    targetNotRetained: "A cél nem maradt meg.",
     questionsLabel: "kérdés",
   },
   en: {
     targetLabel: "Target",
-    targetNotRetained: "The target was not retained for this game.",
-    guessLabel: "Guess",
+    targetNotRetained: "Target not retained.",
     questionsLabel: "questions",
   },
 };
@@ -239,13 +246,17 @@ export default function HistoryClient({ versionLabel }: Props) {
 
             if (entry.lifecycle_state === "completed") {
               // V2.8.8.5 — the enriched, completed-game card. Scoped to
-              // 'completed' only: the target/final_guess_text fields the
-              // server sends are ALREADY null for anything else (see
-              // lib/corpus/gameCorpus.ts's own two independent gates), so
-              // this branch adds no security decision of its own — it is
-              // presentation-only, choosing to make target the most
-              // prominent text on a card whose target the server has
-              // already decided is safe to show.
+              // 'completed' only: the target field the server sends is
+              // ALREADY null for anything else (see lib/corpus/gameCorpus.ts's
+              // own two independent gates), so this branch adds no security
+              // decision of its own — it is presentation-only, choosing to
+              // make target the most prominent text on a card whose target
+              // the server has already decided is safe to show.
+              //
+              // V2.8.8.6 — the final guess deliberately never renders here
+              // (the server no longer even sends it to this list — see
+              // listPlayerHistory). It belongs on the opened game's own
+              // detail view, not the card used to pick a game.
               const c = completedCopyFor(entry.game_language);
               return (
                 <li
@@ -258,11 +269,6 @@ export default function HistoryClient({ versionLabel }: Props) {
                   >
                     {entry.target ?? c.targetNotRetained}
                   </p>
-                  {entry.final_guess_text && (
-                    <p className="text-sm text-[var(--ink-soft)]" lang={entry.game_language}>
-                      {c.guessLabel}: {entry.final_guess_text}
-                    </p>
-                  )}
                   <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--ink-soft)]">
                     <span>{entry.role ? ROLE_HU[entry.role] : "szerep ismeretlen"}</span>
                     {isExperienceMode(entry.experience_mode) && (

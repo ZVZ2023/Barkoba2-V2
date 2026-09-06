@@ -25,12 +25,11 @@ interface GameRow {
   racer_player_id: string | null;
   composer_kind: string;
   racer_kind: string;
-  /** V2.8.8.5 — added by the LEFT JOIN to game_targets/game_resolutions. */
+  /** V2.8.8.5 — added by the LEFT JOIN to game_targets. */
   game_language: string;
   max_questions: number;
   question_count: number;
   target: string | null;
-  final_guess_text: string | null;
 }
 
 let games: GameRow[];
@@ -81,7 +80,6 @@ function row(overrides: Partial<GameRow>): GameRow {
     max_questions: 20,
     question_count: 12,
     target: "bicikli",
-    final_guess_text: "bicikli",
     ...overrides,
   };
 }
@@ -178,7 +176,7 @@ test("outcome and lifecycle_state pass through honestly for an unfinished game",
 // V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS.
 // ---------------------------------------------------------------------------
 
-test("completed-target visibility: a completed, owned game's target and final guess are returned", async () => {
+test("completed-target visibility: a completed, owned game's target is returned", async () => {
   const playerId = "7".repeat(32);
   games.push(
     row({
@@ -186,7 +184,6 @@ test("completed-target visibility: a completed, owned game's target and final gu
       player_id: playerId,
       lifecycle_state: "completed",
       target: "bicikli",
-      final_guess_text: "kerékpár",
       max_questions: 20,
       question_count: 14,
     })
@@ -194,12 +191,58 @@ test("completed-target visibility: a completed, owned game's target and final gu
   const history = await listPlayerHistory(playerId);
   const [entry] = history.games;
   assert.equal(entry!.target, "bicikli");
-  assert.equal(entry!.final_guess_text, "kerékpár");
   assert.equal(entry!.max_questions, 20);
   assert.equal(entry!.question_count, 14);
 });
 
-test("incomplete-target secrecy: an in_progress game's target/guess are NEVER returned, even though the row carries them (defense in depth against the join alone)", async () => {
+// ---------------------------------------------------------------------------
+// V2.8.8.6 — HISTORY TARGET/GUESS CORRECTION.
+//
+// A production data audit (see the ticket) confirmed target/final_guess_text
+// were stored and mapped correctly all along -- there was never a reversal.
+// The actual fix is presentation-level: the final guess is REMOVED from this
+// list entirely (it still exists on the opened game's detail view, via
+// getArchivedGameForOwner) so a completed card can never show two candidate
+// "answers" side by side. These tests prove the guess is gone from the
+// returned shape, not merely gone from the rendering.
+// ---------------------------------------------------------------------------
+
+test("V2.8.8.6 — the returned history entry never carries a final guess field at all", async () => {
+  const playerId = "t".repeat(32);
+  games.push(
+    row({
+      operational_game_id: "remote",
+      player_id: playerId,
+      lifecycle_state: "completed",
+      target: "television remote control",
+    })
+  );
+  const history = await listPlayerHistory(playerId);
+  const [entry] = history.games;
+  assert.equal(entry!.target, "television remote control", "the target must still be returned correctly");
+  assert.equal(
+    Object.prototype.hasOwnProperty.call(entry, "final_guess_text"),
+    false,
+    "the history list must not carry a guess field at all -- it belongs only on the opened game's detail view"
+  );
+});
+
+test("V2.8.8.6 — an empty-string target is treated as absent, not rendered as a blank line or a false value", async () => {
+  const playerId = "u".repeat(32);
+  games.push(
+    row({
+      operational_game_id: "blank-target",
+      player_id: playerId,
+      lifecycle_state: "completed",
+      target: "",
+    })
+  );
+  const history = await listPlayerHistory(playerId);
+  const [entry] = history.games;
+  assert.equal(entry!.target, null, "an empty-string target must normalize to null, never to the boolean false or a blank string");
+});
+
+test("incomplete-target secrecy: an in_progress game's target is NEVER returned, even though the row carries one (defense in depth against the join alone)", async () => {
   const playerId = "8".repeat(32);
   games.push(
     row({
@@ -211,22 +254,19 @@ test("incomplete-target secrecy: an in_progress game's target/guess are NEVER re
       // written at declassification) -- proving the EXPLICIT lifecycle
       // re-check, not just trust in the join's natural behavior.
       target: "titkos cél",
-      final_guess_text: "próbálkozás",
     })
   );
   const history = await listPlayerHistory(playerId);
   const [entry] = history.games;
   assert.equal(entry!.target, null, "target must never leak for a non-completed game, even if the join somehow returned one");
-  assert.equal(entry!.final_guess_text, null);
 });
 
-test("incomplete-target secrecy: abandoned_inferred and stalled_resolving also never expose target/guess", async () => {
+test("incomplete-target secrecy: abandoned_inferred and stalled_resolving also never expose target", async () => {
   const playerId = "9".repeat(32);
   for (const lifecycle_state of ["abandoned_inferred", "stalled_resolving", "expired_unresolved"]) {
-    games = [row({ operational_game_id: "g", player_id: playerId, lifecycle_state, target: "x", final_guess_text: "y" })];
+    games = [row({ operational_game_id: "g", player_id: playerId, lifecycle_state, target: "x" })];
     const history = await listPlayerHistory(playerId);
     assert.equal(history.games[0]!.target, null, `${lifecycle_state} must never expose target`);
-    assert.equal(history.games[0]!.final_guess_text, null, `${lifecycle_state} must never expose final_guess_text`);
   }
 });
 
@@ -243,7 +283,7 @@ test("non-owner isolation: the WHERE clause itself, not application filtering, k
   assert.doesNotMatch(JSON.stringify(history.games), /másé/);
 });
 
-test("missing historical fields: a completed game whose target/resolution row is itself anomalously absent reports null, not a fabricated value", async () => {
+test("missing historical fields: a completed game whose target row is itself anomalously absent reports null, not a fabricated value", async () => {
   const playerId = "5".repeat(32);
   games.push(
     row({
@@ -251,12 +291,10 @@ test("missing historical fields: a completed game whose target/resolution row is
       player_id: playerId,
       lifecycle_state: "completed",
       target: null,
-      final_guess_text: null,
     })
   );
   const history = await listPlayerHistory(playerId);
   assert.equal(history.games[0]!.target, null);
-  assert.equal(history.games[0]!.final_guess_text, null);
 });
 
 test("query efficiency: a list of many games costs exactly ONE query, never one per card", async () => {

@@ -705,6 +705,20 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
 const PLAYER_HISTORY_LIMIT = 100;
 
 /**
+ * V2.8.8.6 — a string value, treating both NULL and an empty/whitespace-only
+ * string as "nothing here" rather than a real value. Shared by
+ * listPlayerHistory and getArchivedGameForOwner so target/final_guess_text
+ * are never silently rendered as a blank line (and never mistaken for one
+ * another) on the ONE theoretical edge a bare `typeof x === "string"` check
+ * misses: a NOT NULL column can still legitimately hold "".
+ */
+function nonBlankString(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? value : null;
+}
+
+/**
  * Which seat `playerId` occupied in a corpus.games row. Shared by
  * listPlayerHistory and getArchivedGameForOwner (V2.8.8.3) so the two never
  * drift into subtly different seat-derivation logic for the same columns.
@@ -753,22 +767,28 @@ export interface PlayerHistoryEntry {
   question_count: number;
   /**
    * V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS. Populated by the SAME single
-   * query as every other field here (a LEFT JOIN to game_targets/
-   * game_resolutions, never a second per-card query — see the module doc
-   * below the query itself). NEVER populated for anything but a
-   * lifecycle_state==='completed' row: game_targets is only ever written at
-   * the single declassification point in /resolve (migration 0001's own
-   * schema comment), so a non-completed row structurally has no target row
-   * to join at all — and the mapping below ALSO explicitly re-checks
-   * lifecycle_state as a second, independent gate rather than relying on
-   * the join's natural behavior alone. Null for a completed game whose
-   * target/resolution row is itself anomalously missing (see
-   * getArchivedGameForOwner's identical target_retained/resolution_retained
-   * doc) -- the caller renders a "not retained" label for that case, never
-   * a blank.
+   * query as every other field here (a LEFT JOIN to game_targets, never a
+   * second per-card query — see the module doc below the query itself).
+   * NEVER populated for anything but a lifecycle_state==='completed' row:
+   * game_targets is only ever written at the single declassification point
+   * in /resolve (migration 0001's own schema comment), so a non-completed
+   * row structurally has no target row to join at all — and the mapping
+   * below ALSO explicitly re-checks lifecycle_state as a second,
+   * independent gate rather than relying on the join's natural behavior
+   * alone. Null for a completed game whose target row is itself anomalously
+   * missing (see getArchivedGameForOwner's identical target_retained doc) --
+   * the caller renders a "not retained" label for that case, never a blank.
+   *
+   * V2.8.8.6 — a production data audit confirmed target/final_guess_text
+   * were being stored and mapped correctly all along; the reported "guess
+   * shown as the target" defect was a LIST-VIEW PRESENTATION choice, not a
+   * data or mapping bug. The fix is to stop showing the guess on this list
+   * at all (it belongs on the opened game's detail view, via
+   * getArchivedGameForOwner, which still carries it) rather than to further
+   * harden a mapping that was never broken. final_guess_text was removed
+   * from this type and from the query below accordingly.
    */
   target: string | null;
-  final_guess_text: string | null;
 }
 
 /** V2.8.8.2 — see listPlayerHistory's own doc for why this split exists. */
@@ -786,18 +806,29 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
   if (!sql) return { ok: true, games: [] };
 
   try {
-    // V2.8.8.5 — ONE query for the whole list, not one per card. The two
-    // LEFT JOINs add target/final_guess_text alongside every other column
-    // already being read; PLAYER_HISTORY_LIMIT still bounds it to a single
-    // round trip regardless of how many games a player has.
+    // V2.8.8.5 — ONE query for the whole list, not one per card. The LEFT
+    // JOIN adds target alongside every other column already being read;
+    // PLAYER_HISTORY_LIMIT still bounds it to a single round trip
+    // regardless of how many games a player has.
+    //
+    // V2.8.8.6 — explicit `AS target` alias, even though it was already
+    // unambiguous (game_targets.target is the ONLY column of that exact
+    // name anywhere in the schema — checked against every migration file).
+    // Written out anyway so a future reader or refactor can see the mapping
+    // at a glance rather than trust it implicitly. The game_resolutions
+    // join and final_guess_text were REMOVED here (not merely hardened): a
+    // production data audit confirmed the underlying data was never wrong,
+    // and the guess has no place on the selection list — it belongs on the
+    // opened game's detail view (getArchivedGameForOwner), which still
+    // reads it. Dropping the join here also means this query never
+    // retrieves data it doesn't use.
     const rows = await sql`
       SELECT g.operational_game_id, g.created_at, g.lifecycle_state, g.outcome,
              g.composer_player_id, g.racer_player_id, g.composer_kind, g.racer_kind,
              g.experience_mode, g.game_language, g.max_questions, g.question_count,
-             t.target, r.final_guess_text
+             t.target AS target
         FROM corpus.games g
         LEFT JOIN corpus.game_targets t ON t.corpus_game_id = g.corpus_game_id
-        LEFT JOIN corpus.game_resolutions r ON r.corpus_game_id = g.corpus_game_id
        WHERE g.player_id = ${playerId}
        ORDER BY g.created_at DESC
        LIMIT ${PLAYER_HISTORY_LIMIT}
@@ -818,10 +849,11 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
         question_count: Number(row.question_count),
         // The explicit isCompleted re-check is the second, independent gate
         // — see PlayerHistoryEntry's own doc on why this is defense in
-        // depth rather than trusting the join alone.
-        target: isCompleted && typeof row.target === "string" ? row.target : null,
-        final_guess_text:
-          isCompleted && typeof row.final_guess_text === "string" ? row.final_guess_text : null,
+        // depth rather than trusting the join alone. V2.8.8.6 — an
+        // empty/whitespace-only string is ALSO treated as absent (never
+        // rendered, never confused with a real value): NOT NULL at the
+        // schema level does not rule out "" the way it rules out NULL.
+        target: isCompleted ? nonBlankString(row.target) : null,
       };
     });
     return { ok: true, games };
@@ -924,8 +956,8 @@ export async function getArchivedGameForOwner(
              g.composer_kind, g.racer_kind, g.experience_mode, g.game_language,
              g.max_questions, g.question_count, g.ambiguous_count, g.outcome,
              g.player_id, g.composer_player_id, g.racer_player_id,
-             t.target,
-             r.final_action, r.final_guess_text, r.adjudicator_verdict,
+             t.target AS target,
+             r.final_action, r.final_guess_text AS final_guess_text, r.adjudicator_verdict,
              r.adjudication_notes, r.integrity_verdict, r.integrity_notes,
              r.integrity_flagged_turns
         FROM corpus.games g
@@ -964,7 +996,7 @@ export async function getArchivedGameForOwner(
       ambiguous_count: Number(row.ambiguous_count),
       outcome: typeof row.outcome === "string" ? row.outcome : null,
       final_action: typeof row.final_action === "string" ? row.final_action : null,
-      final_guess_text: typeof row.final_guess_text === "string" ? row.final_guess_text : null,
+      final_guess_text: nonBlankString(row.final_guess_text),
       adjudicator_verdict: typeof row.adjudicator_verdict === "string" ? row.adjudicator_verdict : null,
       adjudication_notes: typeof row.adjudication_notes === "string" ? row.adjudication_notes : null,
       integrity_verdict: typeof row.integrity_verdict === "string" ? row.integrity_verdict : null,
@@ -972,12 +1004,12 @@ export async function getArchivedGameForOwner(
       integrity_flagged_turns: Array.isArray(row.integrity_flagged_turns)
         ? (row.integrity_flagged_turns as unknown[]).map((n) => Number(n))
         : null,
-      target: typeof row.target === "string" ? row.target : null,
+      target: nonBlankString(row.target),
       // A completed game's target/resolution rows are written in the SAME
       // atomic transaction as the games row itself (see syncGame), so their
       // absence here is genuinely anomalous, not an ordinary historical gap
       // — surfaced honestly rather than silently rendered as empty fields.
-      target_retained: typeof row.target === "string",
+      target_retained: nonBlankString(row.target) !== null,
       // final_action is populated in the SAME resolve-route call that sets
       // outcome/lifecycle_state='completed', so it is never legitimately
       // null once a resolutions row genuinely exists (see

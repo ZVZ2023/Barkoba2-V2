@@ -209,6 +209,37 @@ test("incomplete-target secrecy: abandoned_inferred and stalled_resolving are al
 // Missing optional historical fields -- labelled, not silently blank.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// V2.8.8.6 — HISTORY TARGET/GUESS CORRECTION.
+// ---------------------------------------------------------------------------
+
+test("V2.8.8.6 — target and final guess are never reversed, using deliberately distinct values", async () => {
+  games.push(
+    game({
+      player_id: PLAYER,
+      target: "television remote control",
+      final_guess_text: "remote control",
+    })
+  );
+  const result = await getArchivedGameForOwner(GAME_ID, PLAYER);
+  assert.equal(result.status, "found");
+  if (result.status === "found") {
+    assert.equal(result.record.target, "television remote control");
+    assert.equal(result.record.final_guess_text, "remote control");
+    assert.notEqual(result.record.target, result.record.final_guess_text);
+  }
+});
+
+test("V2.8.8.6 — an empty-string target is treated as not retained, never as a false-but-truthy value", async () => {
+  games.push(game({ player_id: PLAYER, target: "" }));
+  const result = await getArchivedGameForOwner(GAME_ID, PLAYER);
+  assert.equal(result.status, "found");
+  if (result.status === "found") {
+    assert.equal(result.record.target, null);
+    assert.equal(result.record.target_retained, false);
+  }
+});
+
 test("missing optional historical fields: no game_targets/game_resolutions row -> target_retained/resolution_retained are false, not silently blank", async () => {
   games.push(
     game({
