@@ -15,7 +15,7 @@ import {
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import { useResultReveal } from "@/app/components/useResultReveal";
-import { EXPERIENCE_MODE_LABEL_HU } from "@/lib/experienceMode";
+import { EXPERIENCE_MODE_LABEL_HU, EXPERIENCE_MODE_STRATEGY_TIP_HU } from "@/lib/experienceMode";
 import type { ComposerAnswer, ExperienceMode, GamePhase } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -273,7 +273,7 @@ export default function HumanClient({
   const over = view.phase === "complete";
   const live = view.phase === "questioning" && !view.awaiting_racer;
   const iAmComposer = view.seat === "composer";
-  const outcome = resultCopy(view.result, view.seat);
+  const outcome = resultCopy(view.result, view.seat, view.experience_mode);
   // V2.8.8 — a LEGACY game (no experience_mode) keeps the hint exactly as
   // unconditionally available as it always was. A game carrying a valid
   // experience_mode is brought under the SAME derived-credit mechanism
@@ -541,6 +541,19 @@ export default function HumanClient({
             </>
           )}
         </div>
+      )}
+
+      {/*
+        V2.8.8 COMPLETION — Teaching's in-play strategy tip: this is the
+        seat that actually asks questions, so "how to ask good questions"
+        has an applicable reader here. See lib/experienceMode.ts's own doc
+        on why only Teaching has an entry and why GameClient.tsx (no human
+        Racer seat) does not show this.
+      */}
+      {live && !iAmComposer && view.experience_mode && EXPERIENCE_MODE_STRATEGY_TIP_HU[view.experience_mode] && (
+        <p className="text-xs text-neutral-500">
+          {EXPERIENCE_MODE_STRATEGY_TIP_HU[view.experience_mode]}
+        </p>
       )}
 
       {/* Racer's controls: ask, guess or concede. */}

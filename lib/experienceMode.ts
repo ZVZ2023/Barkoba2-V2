@@ -67,3 +67,27 @@ export const EXPERIENCE_MODE_DESCRIPTION_HU: Record<ExperienceMode, string> = {
 
 /** The visible default for every new-game setup screen (decision: Friendly, never Competitive). */
 export const DEFAULT_EXPERIENCE_MODE: ExperienceMode = "friendly";
+
+/**
+ * V2.8.8 COMPLETION — Teaching's in-play strategy guidance, for whichever
+ * seat is actually ASKING questions (the human Racer, in the two directions
+ * that have one: RacerClient.tsx and HumanClient.tsx's racer seat).
+ * Deliberately NOT shown in GameClient.tsx: there the human is the Composer
+ * and never asks a question, so "how to ask good questions" has no
+ * applicable reader — see that direction's own Teaching differentiation
+ * instead (lib/prompts/racer.ts's RACER_MODE_TONE lets the AI Racer's own
+ * Teaching-mode questions briefly surface what they're narrowing down,
+ * which is the analogous, applicable expression for that direction).
+ *
+ * Generic and domain-general on purpose — advice about HOW to ask
+ * questions, never about the current game's actual secret, so it is safe,
+ * free (deterministic UI copy, no model call) and reusable across every
+ * game rather than needing per-target generation.
+ *
+ * Only Teaching has an entry; every other mode (and legacy null) shows
+ * nothing, matching every other mode-specific map in this module.
+ */
+export const EXPERIENCE_MODE_STRATEGY_TIP_HU: Partial<Record<ExperienceMode, string>> = {
+  teaching:
+    "Tipp: kezdj tág, sokat kizáró kérdésekkel, és csak utána szűkíts egy-egy tulajdonságra.",
+};

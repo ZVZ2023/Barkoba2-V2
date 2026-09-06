@@ -5,7 +5,12 @@ import { NextRequest } from "next/server";
 import { POST as createPOST } from "../app/api/game/create/route";
 import { getGame } from "../lib/gameStore";
 import { recentAiComposerTargets } from "../lib/corpus/gameCorpus";
-import { isExactNormalizedRepeat, MAX_TARGET_NOVELTY_ATTEMPTS, RECENT_AI_TARGET_LIMIT } from "../lib/targetNovelty";
+import {
+  isExactNormalizedRepeat,
+  normalizeTargetForNoveltyCheck,
+  MAX_TARGET_NOVELTY_ATTEMPTS,
+  RECENT_AI_TARGET_LIMIT,
+} from "../lib/targetNovelty";
 import { __setSqlClientForTests, type SqlClient } from "../lib/corpus/db";
 import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
 
@@ -50,6 +55,63 @@ test("isExactNormalizedRepeat: an empty exclusion list never matches anything", 
 test("constants match the approved decisions: latest 15, at most one retry (two attempts total)", () => {
   assert.equal(RECENT_AI_TARGET_LIMIT, 15);
   assert.equal(MAX_TARGET_NOVELTY_ATTEMPTS, 2);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.8 COMPLETION — normalization strengthened beyond case/whitespace.
+// The approved requirement: trivial FORMATTING variants must collide
+// mechanically. Every example from the completion ticket, checked directly
+// against the normalizer and end-to-end through isExactNormalizedRepeat.
+// ---------------------------------------------------------------------------
+
+test("normalizeTargetForNoveltyCheck: case folding", () => {
+  assert.equal(normalizeTargetForNoveltyCheck("Dog"), normalizeTargetForNoveltyCheck("dog"));
+  assert.equal(normalizeTargetForNoveltyCheck("DOG"), normalizeTargetForNoveltyCheck("dog"));
+});
+
+test("normalizeTargetForNoveltyCheck: trailing/leading punctuation does not defeat the match", () => {
+  assert.equal(normalizeTargetForNoveltyCheck("dog."), normalizeTargetForNoveltyCheck("dog"));
+  assert.equal(normalizeTargetForNoveltyCheck("dog!"), normalizeTargetForNoveltyCheck("dog"));
+  assert.equal(normalizeTargetForNoveltyCheck("\"dog\""), normalizeTargetForNoveltyCheck("dog"));
+});
+
+test("normalizeTargetForNoveltyCheck: leading/trailing and repeated internal whitespace", () => {
+  assert.equal(normalizeTargetForNoveltyCheck("  dog  "), normalizeTargetForNoveltyCheck("dog"));
+  assert.equal(normalizeTargetForNoveltyCheck("a   dog"), normalizeTargetForNoveltyCheck("a dog"));
+});
+
+test("normalizeTargetForNoveltyCheck: combined capitalization AND punctuation variant", () => {
+  assert.equal(normalizeTargetForNoveltyCheck("  DOG!  "), normalizeTargetForNoveltyCheck("dog"));
+});
+
+test("normalizeTargetForNoveltyCheck: Unicode-normalized diacritic variants collide (combining marks stripped)", () => {
+  assert.equal(normalizeTargetForNoveltyCheck("kávé"), normalizeTargetForNoveltyCheck("kave"));
+  assert.equal(normalizeTargetForNoveltyCheck("Kávé."), normalizeTargetForNoveltyCheck("kave"));
+  // Hungarian's own double-acute-accent letters decompose into the same
+  // Combining Diacritical Marks block (U+0300-U+036F) as an ordinary acute
+  // accent, so this is not a Latin-only special case.
+  assert.equal(normalizeTargetForNoveltyCheck("őz"), normalizeTargetForNoveltyCheck("oz"));
+});
+
+test("normalizeTargetForNoveltyCheck: still never folds a genuinely different word into another", () => {
+  assert.notEqual(normalizeTargetForNoveltyCheck("dog"), normalizeTargetForNoveltyCheck("cat"));
+  // Cross-language and synonym equivalence remain OUT of scope for this
+  // mechanical function -- model-enforced only, per composerTarget.ts.
+  assert.notEqual(normalizeTargetForNoveltyCheck("dog"), normalizeTargetForNoveltyCheck("kutya"));
+});
+
+test("isExactNormalizedRepeat: end-to-end with the strengthened normalizer -- every required example collides", () => {
+  assert.equal(isExactNormalizedRepeat("Dog", ["dog"]), true);
+  assert.equal(isExactNormalizedRepeat("dog", ["dog."]), true);
+  assert.equal(isExactNormalizedRepeat("  dog  ", ["dog"]), true);
+  assert.equal(isExactNormalizedRepeat("DOG!", ["dog"]), true);
+  assert.equal(isExactNormalizedRepeat("kávé", ["kave"]), true);
+  assert.equal(isExactNormalizedRepeat("Kávé.", ["  kave  "]), true);
+});
+
+test("isExactNormalizedRepeat: semantic equivalence is still honestly NOT caught -- unchanged limitation", () => {
+  assert.equal(isExactNormalizedRepeat("kutya", ["dog"]), false, "cross-language is model-enforced only");
+  assert.equal(isExactNormalizedRepeat("puppy", ["dog"]), false, "a near-synonym is model-enforced only");
 });
 
 // ---------------------------------------------------------------------------

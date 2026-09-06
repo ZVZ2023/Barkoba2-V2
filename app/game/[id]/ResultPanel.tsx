@@ -42,6 +42,38 @@ const HEADLINE: Record<string, string> = {
   racer_win_integrity_violation: "Az AI-nak ítélve — integritás-ellenőrzés.",
 };
 
+// ---------------------------------------------------------------------------
+// V2.8.8 COMPLETION — terminal presentation copy, by mode. Wording only: the
+// underlying result/won/lost fact these describe is decided entirely
+// upstream (the adjudicator), never here. HEADLINE above still serves as
+// BOTH the Competitive AND the legacy (no experience_mode) copy, unchanged —
+// "concise, neutral presentation" is exactly what it already is, so
+// Competitive gets no separate entry.
+//
+// Teaching also has no separate entry here: this direction's human never
+// asks a question (they are the Composer), so the differentiator Teaching
+// mode offers them is the AI Racer's own briefly-narrated question style
+// (lib/prompts/racer.ts's RACER_MODE_TONE), not a different closing
+// headline — see this game's REPORT for the fuller reasoning.
+// ---------------------------------------------------------------------------
+const HEADLINE_FRIENDLY: Partial<Record<string, string>> = {
+  racer_correct: "Az AI eltalálta — szoros volt!",
+  racer_incorrect: "Az AI nem talált. Szép játék, nyertél!",
+  composer_win_integrity_upheld: "Az AI feladta. Nyertél!",
+};
+const HEADLINE_HUMOROUS: Partial<Record<string, string>> = {
+  racer_correct: "Az AI eltalálta. Ezúttal neki jött be.",
+  racer_incorrect: "Az AI üres kézzel távozott. Nyertél!",
+  composer_win_integrity_upheld: "Az AI feladta a küzdelmet. Nyertél!",
+};
+
+function headlineFor(game: GameRecord): string {
+  const key = game.result ?? "";
+  if (game.experience_mode === "friendly") return HEADLINE_FRIENDLY[key] ?? HEADLINE[key] ?? "A játék véget ért.";
+  if (game.experience_mode === "humorous") return HEADLINE_HUMOROUS[key] ?? HEADLINE[key] ?? "A játék véget ért.";
+  return HEADLINE[key] ?? "A játék véget ért.";
+}
+
 const SUBHEAD: Record<string, string> = {
   racer_correct: "A kérdéskereten belül megnevezte a titkod.",
   racer_incorrect: "A válaszaid kiállták az ellenőrzést.",
@@ -114,7 +146,7 @@ export default function ResultPanel({ game, resolving, error, onRetry, headingRe
         tabIndex={-1}
         className="text-lg font-semibold text-[var(--ink)] outline-none"
       >
-        {HEADLINE[game.result] ?? "A játék véget ért."}
+        {headlineFor(game)}
       </h2>
       <p className="mt-1 text-sm text-[var(--ink-soft)]">{SUBHEAD[game.result] ?? ""}</p>
 

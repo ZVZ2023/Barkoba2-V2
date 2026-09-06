@@ -331,9 +331,35 @@ test("answerAsComposer (the truthful YES/NO/AMBIGUOUS classification) never acce
   assert.match(clueFn, /experienceMode/, "only the hint path carries mode framing");
 });
 
-test("lib/prompts/racer.ts (the AI Racer's own question-generation prompt) never accepts an experienceMode parameter -- excluded per the V2.8.8 report's own boundary", () => {
+// ---------------------------------------------------------------------------
+// V2.8.8 COMPLETION SUPERSEDES this test's original claim. The original
+// V2.8.8 report excluded lib/prompts/racer.ts entirely, which the follow-up
+// "mode cannot be only a hint label" instruction identified as the actual
+// defect: in the direction where the AI plays Racer, that left every
+// player-visible AI-authored string (every question it asks) completely
+// untouched by mode. The fix is presentation-ONLY tone (RACER_MODE_TONE /
+// renderModeTone in buildRacerTurnMessage), so the safe-presentation
+// boundary now applies at a NARROWER grain here: the byte-verified
+// CORE_RACER_RULES decision block, and the guess-intent disambiguation
+// path, must still never see experienceMode -- but the message-assembly
+// layer legitimately does now.
+// ---------------------------------------------------------------------------
+test("lib/prompts/racer.ts: CORE_RACER_RULES (the decision block) and the guess-intent disambiguation path stay mode-independent", () => {
   const src = readFileSync("lib/prompts/racer.ts", "utf8");
-  assert.doesNotMatch(src, /experienceMode|ExperienceMode/);
+  const rulesAt = src.indexOf("export const CORE_RACER_RULES");
+  const rulesBlock = src.slice(rulesAt, src.indexOf("export const LAYER_TWO_SHARED_RULES"));
+  assert.doesNotMatch(rulesBlock, /experienceMode|ExperienceMode/, "the byte-verified decision block must stay mode-independent");
+
+  const intentAt = src.indexOf("export function buildGuessIntentMessage");
+  const intentFn = src.slice(intentAt, intentAt + 1200);
+  assert.doesNotMatch(intentFn, /experienceMode|ExperienceMode/, "the guess-intent disambiguation path carries no tone framing");
+});
+
+test("lib/prompts/racer.ts: mode tone is confined to buildRacerTurnMessage's message assembly, never inside turnInputSchema (the model's move contract)", () => {
+  const src = readFileSync("lib/prompts/racer.ts", "utf8");
+  const schemaAt = src.indexOf("function turnInputSchema");
+  const schemaFn = src.slice(schemaAt, schemaAt + 4000);
+  assert.doesNotMatch(schemaFn, /experienceMode|ExperienceMode/, "the schema the model must satisfy stays mode-independent");
 });
 
 test("lib/prompts/composerTarget.ts (target choice) never accepts an experienceMode parameter -- target selection is unrelated to tone", () => {

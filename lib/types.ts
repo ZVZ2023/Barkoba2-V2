@@ -633,6 +633,22 @@ export interface RacerPublicState {
    * handed off. Null before that point, exactly like phase_one above.
    */
   layer_two: RacerLayerTwoSummary | null;
+  /**
+   * V2.8.8 COMPLETION — presentation tone only (see lib/prompts/racer.ts's
+   * RACER_MODE_TONE doc). Carries no target information — it is copied
+   * straight from GameRecord.experience_mode, which is itself set only from
+   * the player's own setup choice.
+   *
+   * OPTIONAL, unlike GameRecord.experience_mode (which is required and
+   * backfilled to null for every legacy record): this field did not exist
+   * before this completion pass, and every hand-built RacerPublicState
+   * fixture across the test suite (racerGuidance.test.ts,
+   * layerTwoIntegration.test.ts, and others) predates it. Making it optional
+   * means every one of those fixtures keeps compiling unchanged; undefined
+   * is treated identically to null by renderModeTone (no tone framing,
+   * legacy behavior) — there is no third state to distinguish.
+   */
+  experience_mode?: ExperienceMode | null;
 }
 
 /**
