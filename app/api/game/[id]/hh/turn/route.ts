@@ -10,6 +10,8 @@ import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { awaitingRacer, isHumanVsHuman, requireSeat } from "@/lib/seats";
 import { pendingQuestionIndex } from "@/lib/gameView";
 import { checkQuestionPolicy, QUESTION_POLICY_REJECTION_MESSAGE } from "@/lib/questionPolicy";
+import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
+import { isExperienceMode } from "@/lib/experienceMode";
 import type { ComposerAnswer, QuestionLogEntry } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -304,10 +306,48 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     //
     // NOT gated on your_turn. The moment worth intervening is usually just after
     // an answer, when the other player has started down an irrelevant branch.
-    // It spends no question and no clue credit, and changes nobody's turn.
+    // It never spends a question and never changes whose turn it is.
+    //
+    // V2.8.8 — this WAS unconditionally available (no credit check at all,
+    // unlike every other direction's clue mechanism) purely because nothing
+    // here ever called cluesEnabled()/clueCreditsAvailable(), not because
+    // human/human hints were deliberately designed to be unlimited. That
+    // silent asymmetry is what the ticket named directly: "it must not
+    // remain accidentally unlimited merely because the UI changes."
+    //
+    // A LEGACY game (experience_mode NULL — created before V2.8.8) keeps
+    // that EXACT prior behavior: no gate, no credit check, unchanged. A
+    // game carrying a valid experience_mode is brought under the SAME
+    // derived-credit mechanism every other direction already uses
+    // (cluesEnabled/clueCreditsAvailable, from lib/clueCredits.ts) — no new
+    // cadence invented, the existing one is simply reused here too.
+    // Competitive therefore also blocks hint ENTRY here, not only hint
+    // generation (there is nothing to generate on this direction — the
+    // Composer writes it themselves — so entry IS the whole gate).
     // -------------------------------------------------------------------------
     if (body.action === "hint") {
       // Seat already checked pre-lock (see requiredSeat above).
+      if (isExperienceMode(game.experience_mode)) {
+        if (!cluesEnabled(game)) {
+          return NextResponse.json(
+            {
+              error: "hint_disabled",
+              message:
+                game.experience_mode === "competitive"
+                  ? "Versenymódban nincs súgás."
+                  : "Ebben a játékban nincs súgás.",
+            },
+            { status: 409 }
+          );
+        }
+        if (clueCreditsAvailable(game) < 1) {
+          return NextResponse.json(
+            { error: "no_hint_credit", message: "Most nincs elérhető súgód." },
+            { status: 409 }
+          );
+        }
+      }
+
       const text = (body.hint || "").trim().slice(0, MAX_TEXT);
       if (!text) return NextResponse.json({ error: "missing_hint" }, { status: 400 });
 

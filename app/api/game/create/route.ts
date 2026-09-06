@@ -48,7 +48,8 @@ import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
 import { consumeModelCall } from "@/lib/callBudget";
-import type { ClueMode, Difficulty } from "@/lib/types";
+import { clueModeForExperienceMode, isExperienceMode } from "@/lib/experienceMode";
+import type { ClueMode, Difficulty, ExperienceMode } from "@/lib/types";
 import { resolveQuestionBudget } from "@/lib/questionBudget";
 import { resolveGameLanguage } from "@/lib/gameLanguage";
 import {
@@ -201,6 +202,16 @@ interface CreateGameBody {
   force?: boolean;
   difficulty?: Difficulty;
   clue_mode?: ClueMode;
+  /**
+   * V2.8.8 — the player-facing experience preset. OPTIONAL so an older
+   * client that never sends it (predating this field) preserves its exact
+   * current behavior, including whatever clue_mode it submits — see
+   * resolveModeAndClueMode's own doc below. A NEW client always sends this
+   * (the setup UI has no "no choice" state; it defaults visibly to
+   * Friendly), so omission is a legacy-client signal, not a valid "no
+   * preference" choice from a current one.
+   */
+  experience_mode?: string;
   max_questions?: number;
   /**
    * V2.5-B3 — which AI should race. A NAME only: "anthropic" or "xai". The
@@ -227,6 +238,51 @@ const DIFFICULTIES: Difficulty[] = ["easy", "medium", "hard"];
 const CLUE_MODES: ClueMode[] = ["none", "minimal", "progressive"];
 // QUESTION_BUDGETS moved to lib/questionBudget.ts in 2.3.0.0 so the server that
 // validates a budget and the screens that offer it share one definition.
+
+/**
+ * V2.8.8 — resolves BOTH experience_mode and the internal clue_mode
+ * together, since the whole point of a mode (decision #2) is to REPLACE the
+ * separate assistance selector for a NEW game — a client that sends a valid
+ * experience_mode gets its clue_mode DERIVED from the preset mapping, never
+ * from whatever (if anything) it also submitted.
+ *
+ * An OLDER client that omits experience_mode entirely is a DIFFERENT,
+ * explicitly preserved case (decision #3): "a request from an older client
+ * that omits experience_mode must preserve current legacy behavior,
+ * including its submitted clue_mode" — so `legacyClueMode` (whatever each
+ * creation branch already computed under its OWN pre-V2.8.8 rule) passes
+ * through completely unchanged, and experience_mode stays NULL — a
+ * historical absence of choice, never "competitive".
+ *
+ * An experience_mode present but not one of the four known values is
+ * rejected outright (400), never silently ignored or coerced.
+ */
+function resolveExperienceAndClueMode(
+  rawExperienceMode: string | undefined,
+  legacyClueMode: ClueMode | null
+): { ok: true; experienceMode: ExperienceMode | null; clueMode: ClueMode | null } | { ok: false } {
+  if (rawExperienceMode === undefined) {
+    return { ok: true, experienceMode: null, clueMode: legacyClueMode };
+  }
+  if (!isExperienceMode(rawExperienceMode)) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    experienceMode: rawExperienceMode,
+    clueMode: clueModeForExperienceMode(rawExperienceMode),
+  };
+}
+
+function invalidExperienceModeResponse() {
+  return NextResponse.json(
+    {
+      error: "invalid_experience_mode",
+      message: "Ismeretlen élményszint. Válassz a felkínált lehetőségek közül.",
+    },
+    { status: 400 }
+  );
+}
 
 /**
  * V2.8.7 — one terminal telemetry row for a creation-time Anthropic seat call
@@ -384,11 +440,22 @@ export async function POST(req: NextRequest) {
       : "medium";
 
     // The clue selector is only offered on Hard; anything else is forced to
-    // "none" here rather than trusted from the client.
-    const clueMode: ClueMode =
+    // "none" here rather than trusted from the client. This is the LEGACY
+    // fallback resolveExperienceAndClueMode below preserves verbatim for a
+    // client that omits experience_mode.
+    const legacyClueMode: ClueMode =
       difficulty === "hard" && CLUE_MODES.includes(body.clue_mode as ClueMode)
         ? (body.clue_mode as ClueMode)
         : "none";
+
+    const modeResolution = resolveExperienceAndClueMode(body.experience_mode, legacyClueMode);
+    if (!modeResolution.ok) return invalidExperienceModeResponse();
+    const { experienceMode, clueMode: resolvedClueMode } = modeResolution;
+    // ai_composer's clue_mode has never been nullable (always resolved to a
+    // concrete ClueMode above); resolveExperienceAndClueMode's own null case
+    // only ever applies via a legacyClueMode of null, which this branch never
+    // passes in.
+    const clueMode: ClueMode = resolvedClueMode ?? "none";
 
     // Unchanged behaviour: an unrecognised value falls back. The AI-Composer
     // screen has always defaulted to 20 regardless of difficulty, so it passes
@@ -480,6 +547,7 @@ export async function POST(req: NextRequest) {
       racer_kind: "human",
       difficulty,
       clue_mode: clueMode,
+      experience_mode: experienceMode,
       ...benchmark,
     });
 
@@ -506,6 +574,7 @@ export async function POST(req: NextRequest) {
       max_questions: aiGame.max_questions,
       difficulty,
       clue_mode: clueMode,
+      experience_mode: experienceMode,
     });
   }
 
@@ -550,6 +619,18 @@ export async function POST(req: NextRequest) {
   const maxQuestions = composerChoseBudget
     ? resolveQuestionBudget(humanDifficulty, body.max_questions)
     : env.maxQuestions();
+
+  // V2.8.8 — applies to BOTH human-Composer flows, the same way difficulty
+  // above does: whether the Racer is the AI (GameClient.tsx) or another
+  // person (HumanClient.tsx), a human owns the target and the SAME mode
+  // resolution applies. The legacy fallback here is `null` (never a
+  // ClueMode value): this branch never set clue_mode at all before V2.8.8
+  // — createGame()'s own default already leaves it null for a game that
+  // made no choice — so an older client omitting experience_mode gets
+  // EXACTLY that same absence preserved, not a newly-invented "none".
+  const humanModeResolution = resolveExperienceAndClueMode(body.experience_mode, null);
+  if (!humanModeResolution.ok) return invalidExperienceModeResponse();
+  const { experienceMode: humanExperienceMode, clueMode: humanClueMode } = humanModeResolution;
 
   // V2.5-B3 — resolved BEFORE the Validator runs, so a refusal costs no model
   // call. Only meaningful when the AI races; a Human↔Human game has no provider
@@ -642,6 +723,14 @@ export async function POST(req: NextRequest) {
     // null when no choice was made, so games that never had a difficulty are
     // not retroactively given one.
     difficulty: composerChoseBudget ? humanDifficulty : null,
+    // V2.8.8 — unlocks GameClient.tsx's AI-Racer clue-request path and
+    // HumanClient.tsx's Composer hint for the first time: clue_mode was
+    // NEVER set on this branch before, so cluesEnabled() was structurally
+    // always false here regardless of difficulty (see the V2.8.8 report's
+    // own finding on this). Null exactly when experience_mode is also null
+    // (an older client), preserving that same always-false state.
+    clue_mode: humanClueMode,
+    experience_mode: humanExperienceMode,
     // Left null until someone joins. awaitingRacer() reads exactly this.
     racer_player_id: null,
     phase: "questioning",

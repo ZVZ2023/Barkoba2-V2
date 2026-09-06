@@ -23,7 +23,7 @@ import {
   type TurnResponseBody,
 } from "@/lib/turnRequestGuard";
 import type { GameView } from "@/lib/gameView";
-import type { ComposerAnswer, GameLanguage, GameRecord, QuestionLogEntry } from "@/lib/types";
+import type { ComposerAnswer, ExperienceMode, GameLanguage, GameRecord, QuestionLogEntry } from "@/lib/types";
 import ResultPanel from "./ResultPanel";
 import AccountControl from "@/app/components/AccountControl";
 import EvaluationState from "@/app/components/EvaluationState";
@@ -50,6 +50,24 @@ const ANSWER_HU: Record<string, string> = {
   NO: "NEM",
   AMBIGUOUS: "IS-IS",
 };
+
+/**
+ * V2.8.8 — mode-specific guidance for the AI Racer's clue request. Setup
+ * chrome, not AI-generated content, so Hungarian-only like every other
+ * control on this screen (decision: setup/in-play chrome stays Hungarian
+ * regardless of game_language). Competitive has no entry here: `cluesEnabled`
+ * (lib/clueCredits.ts) already keeps the AI Racer from ever accumulating a
+ * clue credit in Competitive, so `clueWanted` structurally can never become
+ * true for it — this map simply has nothing to say for that case.
+ */
+const CLUE_REQUEST_GUIDANCE: Partial<Record<ExperienceMode, string>> = {
+  friendly: "Az AI súgót kért. Adj hasznos, de a választ el nem áruló segítséget.",
+  teaching:
+    "Az AI súgót kért. Magyarázz el egy hasznos gondolkodásmódot vagy irányt — ne csak magát a választ áruld el.",
+  humorous: "Az AI súgót kért. Legyél játékos, de igaz — a lényeget így se áruld el.",
+};
+/** A legacy game (no experience_mode) keeps the exact original, mode-independent wording. */
+const CLUE_REQUEST_GUIDANCE_LEGACY = "Az AI súgót kért. Segíts neki — ez nem számít bele a kérdéseibe.";
 
 /**
  * V2.8.5 FINAL ENGINE-CONTRACT CORRECTION (localization) — the "+1"
@@ -785,10 +803,19 @@ export default function GameClient({
           exclusive by construction (each checks the qa_log's single LAST
           entry's turn_type).
         */}
-        {clueWanted && (
+        {/*
+          V2.8.8 — defensive: `cluesEnabled()` already keeps the AI Racer
+          from ever accumulating a clue credit in Competitive, so this can
+          never structurally be true there — but "Competitive: hint entry
+          and hint request are unavailable" is stated as an explicit
+          requirement, not merely an emergent property, so it is checked
+          here too.
+        */}
+        {clueWanted && game.experience_mode !== "competitive" && (
           <div className="flex flex-col gap-3 rounded-md border border-[var(--blue)]/35 bg-[var(--blue)]/6 p-4">
             <p className="text-sm text-[var(--blue)]">
-              Az AI súgót kért. Segíts neki — ez nem számít bele a kérdéseibe.
+              {(game.experience_mode && CLUE_REQUEST_GUIDANCE[game.experience_mode]) ??
+                CLUE_REQUEST_GUIDANCE_LEGACY}
             </p>
             <textarea
               spellCheck
