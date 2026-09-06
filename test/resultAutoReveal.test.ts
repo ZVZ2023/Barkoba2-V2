@@ -145,16 +145,30 @@ test("ResultPanel.tsx: the result heading is a valid, ring-free PROGRAMMATIC foc
   assert.match(heading, /tabIndex=\{-1\}/, "not in the Tab order -- only the auto-reveal effect ever focuses it");
   assert.match(heading, /outline-none/, "no visible input-style focus ring on a heading that accepts no input");
   // The heading text is unconditional on which outcome produced it -- both a
-  // correct and an incorrect AI guess reach this exact element.
-  assert.match(heading, /HEADLINE\[game\.result\]/);
+  // correct and an incorrect AI guess reach this exact element. V2.8.8
+  // COMPLETION replaced the direct HEADLINE[game.result] lookup with
+  // headlineFor(game), which ALSO varies by experience_mode (Friendly/
+  // Humorous headline variants) -- but the wiring this test exists to
+  // protect (ref/tabIndex/outline-none, unconditional on outcome OR mode)
+  // is unchanged: headlineFor always returns a string, so the heading is
+  // never empty for any outcome/mode combination.
+  assert.match(heading, /\{headlineFor\(game\)\}/);
 });
 
-test("ResultPanel.tsx: HEADLINE covers a correct AI guess and an incorrect one, both reaching the same focus-ready heading", () => {
-  assert.match(RESULT_PANEL, /racer_correct: "Az AI eltalálta\."/, "the AI's guess was correct");
-  assert.match(RESULT_PANEL, /racer_incorrect: "Az AI nem talált\. Nyertél\."/, "the AI's guess was incorrect");
-  // Neither result value gates the heading's ref/tabIndex/outline-none wiring
-  // above -- confirmed once here rather than duplicated per outcome, since
-  // the wiring itself never reads game.result.
+test("ResultPanel.tsx: headlineFor covers a correct AI guess and an incorrect one, for every mode, all reaching the same focus-ready heading", () => {
+  assert.match(RESULT_PANEL, /racer_correct: "Az AI eltalálta\."/, "the AI's guess was correct (baseline/legacy/Competitive/Teaching)");
+  assert.match(RESULT_PANEL, /racer_incorrect: "Az AI nem talált\. Nyertél\."/, "the AI's guess was incorrect (baseline/legacy/Competitive/Teaching)");
+  // Friendly and Humorous get their own headline text for the same two
+  // outcomes -- confirming headlineFor() has a real per-mode branch, not a
+  // no-op wrapper around HEADLINE.
+  assert.match(RESULT_PANEL, /const HEADLINE_FRIENDLY: Partial<Record<string, string>> = \{/);
+  assert.match(RESULT_PANEL, /const HEADLINE_HUMOROUS: Partial<Record<string, string>> = \{/);
+  assert.match(RESULT_PANEL, /function headlineFor\(game: GameRecord\): string \{/);
+  // Neither result value nor experience_mode gates the heading's
+  // ref/tabIndex/outline-none wiring above -- confirmed once here rather
+  // than duplicated per outcome/mode, since that wiring never reads
+  // game.result or game.experience_mode; headlineFor is only ever
+  // interpolated as the heading's TEXT CONTENT.
 });
 
 test("ResultPanel.tsx: V2.8.7.3 -- the result now renders BEFORE the transcript section, not after it (the old V2.8.7.2 behavior)", () => {
