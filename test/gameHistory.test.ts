@@ -108,7 +108,7 @@ test("SOURCE: the completed-game link reuses /game/[id] as-is -- no new detail-v
 // ---------------------------------------------------------------------------
 // V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS.
 //
-// Executable proof that the SERVER never returns target/guess for anything
+// Executable proof that the SERVER never returns target for anything
 // but a completed, owned game lives in test/playerHistory.test.ts
 // (completed-target visibility, incomplete-target secrecy, non-owner
 // isolation, missing historical fields, query efficiency). These are the
@@ -121,15 +121,24 @@ test("SOURCE: target is the completed card's most prominent identifying text -- 
   assert.ok(completedAt > 0);
   const block = CLIENT.slice(completedAt, completedAt + 2500);
   const targetAt = block.indexOf("entry.target ?? c.targetNotRetained");
-  const guessAt = block.indexOf("c.guessLabel");
-  assert.ok(targetAt > 0 && (guessAt < 0 || targetAt < guessAt), "target must render before the guess line");
+  assert.ok(targetAt > 0, "target must be rendered");
   assert.match(block, /text-base font-semibold/, "target uses the card's largest, boldest text treatment");
 });
 
-test("SOURCE: the final guess renders beneath the target, only when retained -- no placeholder when absent", () => {
-  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
-  const block = CLIENT.slice(completedAt, completedAt + 1200);
-  assert.match(block, /\{entry\.final_guess_text && \(/, "the guess line is conditional on being present, never a forced placeholder");
+// ---------------------------------------------------------------------------
+// V2.8.8.6 — HISTORY TARGET/GUESS CORRECTION.
+//
+// A production data audit confirmed target/final_guess_text were stored and
+// mapped correctly all along -- the reported "guess shown as the target"
+// defect was a list-view PRESENTATION choice, not a data bug. The fix is to
+// remove the guess from this list entirely (it now lives only on the opened
+// game's detail view), so a completed card cannot present two candidate
+// "answers" side by side.
+// ---------------------------------------------------------------------------
+
+test("SOURCE: the final guess is never read or rendered anywhere on the history card -- it belongs on the opened game's detail view, not the selection list", () => {
+  assert.doesNotMatch(CLIENT, /final_guess_text/, "the field must not even be part of this client's shape anymore");
+  assert.doesNotMatch(CLIENT, /guessLabel/, "no guess label/copy may remain either");
 });
 
 test("SOURCE: questions-used/limit is displayed on the completed card", () => {
@@ -138,7 +147,7 @@ test("SOURCE: questions-used/limit is displayed on the completed card", () => {
   assert.match(block, /entry\.question_count\} \/ \{entry\.max_questions\}/);
 });
 
-test("SOURCE: date/time is secondary metadata on the completed card -- rendered after target/guess/mode/questions/outcome, not first", () => {
+test("SOURCE: date/time is secondary metadata on the completed card -- rendered after target/mode/questions/outcome, not first", () => {
   const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
   const block = CLIENT.slice(completedAt, completedAt + 2500);
   const targetAt = block.indexOf("entry.target ?? c.targetNotRetained");
@@ -155,8 +164,8 @@ test("SOURCE: role, experience mode, and final outcome are all present on the co
 });
 
 test("SOURCE: the completed card carries an explicit, localized 'not retained' label for a missing target -- never a blank or raw null", () => {
-  assert.match(CLIENT, /targetNotRetained: "A cél nincs megőrizve ehhez a játékhoz\."/);
-  assert.match(CLIENT, /targetNotRetained: "The target was not retained for this game\."/);
+  assert.match(CLIENT, /targetNotRetained: "A cél nem maradt meg\."/);
+  assert.match(CLIENT, /targetNotRetained: "Target not retained\."/);
 });
 
 test("SOURCE: the Megnyitás link is preserved unchanged for completed cards too -- reused, not reimplemented", () => {
