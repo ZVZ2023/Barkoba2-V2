@@ -972,6 +972,55 @@ export default function GameClient({
         )}
 
         {/*
+          V2.8.7.4 — the "+1" corridor's truthful terminal state and a
+          failed-turn error both belong to the ACTIVE interaction area, not
+          the historical transcript below: each reports on the player's most
+          recent action and (for the error) offers the way back. Moved here
+          from below the transcript, where they used to require a scroll
+          past the whole (already newest-first) history to see — the same
+          "player must scroll to find active state" defect Defect 1 fixes
+          for the ask/answer controls. Presentation position only; neither
+          block's own condition or content changed.
+        */}
+        {sandboxClarificationFailed && (
+          <section className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-4">
+            <h2 className="text-base font-semibold text-[var(--ink)]">
+              {SANDBOX_CLARIFICATION_FAILURE_HEADING[game.game_language]}
+            </h2>
+            <p className="mt-2 text-sm text-[var(--ink-soft)]">
+              {SANDBOX_CLARIFICATION_FAILURE_BODY[game.game_language]}
+            </p>
+            <a
+              href="/"
+              className="mt-4 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
+            >
+              {SANDBOX_CLARIFICATION_NEW_GAME_LABEL[game.game_language]}
+            </a>
+          </section>
+        )}
+
+        {error && (
+          <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
+            <p className="text-sm text-[var(--red)]">{error}</p>
+
+            {/* V2.5-B4 — the way back.
+                Before this, a failed turn was a dead end: the message said "try
+                again" and nothing on the page could. Your answers and any
+                correction are already saved on the server, so this asks for the
+                next question again and loses nothing. */}
+            {offerTurnRetry && (
+              <button
+                type="button"
+                onClick={retryTurn}
+                className="mt-3 min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
+              >
+                Kérdés újrakérése
+              </button>
+            )}
+          </div>
+        )}
+
+        {/*
           V2.8.4.2 — completed history renders NEWEST-first, below the active
           area above. `completedHistoryForDisplay` returns a new, reversed
           array for THIS rendering only — `turns` itself (chronological) is
@@ -1173,52 +1222,6 @@ export default function GameClient({
       */}
       {game.phase === "resolving" && !guessRevealPending && (
         <EvaluationState error={resolveError} busy={resolving} onRetry={() => void resolveGame()} />
-      )}
-
-      {/*
-        V2.8.5 ENGINE-CONTRACT CORRECTION (defect 5) — the "+1" corridor's
-        truthful terminal state. Not a retryable failure (no retry button —
-        there is nothing left to retry), and not the generic red error
-        banner: an honest explanation plus the existing New Game navigation,
-        matching the requirement that this never surface as a raw/generic
-        409 error.
-      */}
-      {sandboxClarificationFailed && (
-        <section className="rounded-md border border-[var(--ink)]/25 bg-white/70 p-4">
-          <h2 className="text-base font-semibold text-[var(--ink)]">
-            {SANDBOX_CLARIFICATION_FAILURE_HEADING[game.game_language]}
-          </h2>
-          <p className="mt-2 text-sm text-[var(--ink-soft)]">
-            {SANDBOX_CLARIFICATION_FAILURE_BODY[game.game_language]}
-          </p>
-          <a
-            href="/"
-            className="mt-4 inline-block min-h-11 rounded-md bg-[var(--green)] px-5 py-3 text-sm font-medium text-[var(--parchment)]"
-          >
-            {SANDBOX_CLARIFICATION_NEW_GAME_LABEL[game.game_language]}
-          </a>
-        </section>
-      )}
-
-      {error && (
-        <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
-          <p className="text-sm text-[var(--red)]">{error}</p>
-
-          {/* V2.5-B4 — the way back.
-              Before this, a failed turn was a dead end: the message said "try
-              again" and nothing on the page could. Your answers and any
-              correction are already saved on the server, so this asks for the
-              next question again and loses nothing. */}
-          {offerTurnRetry && (
-            <button
-              type="button"
-              onClick={retryTurn}
-              className="mt-3 min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)]"
-            >
-              Kérdés újrakérése
-            </button>
-          )}
-        </div>
       )}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">

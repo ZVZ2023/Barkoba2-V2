@@ -27,13 +27,30 @@ SAME INTENT (accept) — the proposition is unchanged:
 - Autocorrect damage: "The weeks have spikes?" -> "Do the wheels have spokes?"
 - Grammar repair, or rephrasing that asks the same thing more clearly.
 - Adding a missing word that was obviously intended.
+- Removing a stray inserted word (voice-to-text or autocorrect noise) that
+  has no coherent role of its own in the sentence, leaving the single
+  obvious intended question. This is the mirror case of "adding a missing
+  word" above — noise can arrive as an extra word just as easily as a
+  missing one. Example: "Is it related to a land decking creature?" -> "Is
+  it related to a land creature?" — "decking" names no real, distinguishing
+  category here; it is noise, not a qualifier the player chose to add or
+  remove.
 
 DIFFERENT INTENT (reject) — the question now probes something else:
 - A different property, category, or candidate.
-- Narrowing or broadening what is being asked.
-- "Does it have spokes?" -> "Is it a mountain bike?" is a new strategic question.
+- Narrowing or broadening what is being asked BY A REAL, MEANING-BEARING
+  WORD — one that names an actual distinguishing property, not noise.
+  "Does it have spokes?" -> "Is it a mountain bike?" is a new strategic
+  question. So is removing a real qualifier: "Is it a LARGE land creature?"
+  -> "Is it a land creature?" genuinely broadens what is asked, because
+  "large" was a real, meaningful distinction.
 
-The test: would a truthful answerer, knowing the secret, be able to give a different answer to the two versions? If yes, the intent changed.
+The test: strip away words that are pure noise (no independent, coherent
+meaning in context) from BOTH versions, then compare what remains. Would a
+truthful answerer, knowing the secret, give a different answer to the two
+CLEANED versions? If yes, the intent changed. If a word's only effect on the
+literal text was to make the ORIGINAL harder to parse, without adding a real
+distinguishing property, its removal is a repair, not a narrowing.
 
 WHEN GENUINELY UNSURE, ANSWER FALSE. A wrongly rejected edit costs the player one question. A wrongly accepted edit hands out a free question on every turn, which breaks the budget the whole game rests on.
 

@@ -1,3 +1,4 @@
+import { checkQuestionPolicy } from "./questionPolicy";
 import type { QuestionLogEntry } from "./types";
 
 // ---------------------------------------------------------------------------
@@ -94,6 +95,41 @@ export type QuestionGuardResult<T, F> =
   | { status: "exhausted"; attemptsMade: number; blockedQuestions: string[] };
 
 /**
+ * The generic bounded-retry core shared by every "reject and regenerate"
+ * guard in this module. `isRejected` decides, given ONLY the candidate's
+ * question text, whether it must never reach emission. Extracted so a new
+ * rejection reason (see runWithDuplicateAndPolicyQuestionGuard below) reuses
+ * this exact loop rather than a second, hand-copied one — there is one
+ * retry-loop implementation, not one per rejection reason.
+ */
+async function runWithRejectionGuard<T, F>(
+  maxAttempts: number,
+  produceCandidate: () => Promise<QuestionGuardAttempt<T, F>>,
+  extractQuestion: (candidate: T) => { action: string; question_text: string | null },
+  isRejected: (questionText: string) => boolean
+): Promise<QuestionGuardResult<T, F>> {
+  const blockedQuestions: string[] = [];
+
+  for (let attemptsMade = 1; attemptsMade <= maxAttempts; attemptsMade += 1) {
+    const attempt = await produceCandidate();
+    if (!attempt.ok) {
+      return { status: "attempt_failed", failure: attempt.failure, attemptsMade, blockedQuestions };
+    }
+
+    const { action, question_text } = extractQuestion(attempt.candidate);
+    const rejected = action === "question" && !!question_text && isRejected(question_text);
+
+    if (!rejected) {
+      return { status: "accepted", candidate: attempt.candidate, attemptsMade, blockedQuestions };
+    }
+
+    blockedQuestions.push(question_text as string);
+  }
+
+  return { status: "exhausted", attemptsMade: maxAttempts, blockedQuestions };
+}
+
+/**
  * Call `produceCandidate` up to `maxAttempts` times. A candidate whose
  * question (per `extractQuestion`) is an exact normalized duplicate of
  * `priorQuestions` is rejected and a fresh candidate is requested — the
@@ -114,24 +150,45 @@ export async function runWithDuplicateQuestionGuard<T, F>(
   produceCandidate: () => Promise<QuestionGuardAttempt<T, F>>,
   extractQuestion: (candidate: T) => { action: string; question_text: string | null }
 ): Promise<QuestionGuardResult<T, F>> {
-  const blockedQuestions: string[] = [];
+  return runWithRejectionGuard(maxAttempts, produceCandidate, extractQuestion, (questionText) =>
+    isDuplicateQuestion(questionText, priorQuestions)
+  );
+}
 
-  for (let attemptsMade = 1; attemptsMade <= maxAttempts; attemptsMade += 1) {
-    const attempt = await produceCandidate();
-    if (!attempt.ok) {
-      return { status: "attempt_failed", failure: attempt.failure, attemptsMade, blockedQuestions };
-    }
+// ---------------------------------------------------------------------------
+// V2.8.7.4 — DEFECT 3: the universal no-spelling rule, enforced on the AI
+// Racer's OWN generated questions too (the only direction where a human
+// never gets a chance to type — and therefore never gets a chance to
+// self-correct — so mechanical enforcement here has to be the whole
+// safety net, not a backstop behind a human's own judgment).
+//
+// Combined with the exact-duplicate check in ONE retry loop rather than two
+// nested ones: both are cheap, deterministic, in-memory checks against a
+// single candidate's text, so checking both per attempt costs nothing extra
+// and avoids compounding retry budgets (two independent maxAttempts=3 loops
+// could otherwise cost up to 9 model calls where this costs at most 3).
+// ---------------------------------------------------------------------------
 
-    const { action, question_text } = extractQuestion(attempt.candidate);
-    const isDuplicate =
-      action === "question" && !!question_text && isDuplicateQuestion(question_text, priorQuestions);
-
-    if (!isDuplicate) {
-      return { status: "accepted", candidate: attempt.candidate, attemptsMade, blockedQuestions };
-    }
-
-    blockedQuestions.push(question_text as string);
-  }
-
-  return { status: "exhausted", attemptsMade: maxAttempts, blockedQuestions };
+/**
+ * The SAME contract as runWithDuplicateQuestionGuard, but a candidate is also
+ * rejected when lib/questionPolicy.ts's checkQuestionPolicy finds it probes
+ * the target's written/spoken name. `blockedQuestions` does not distinguish
+ * WHY a given candidate was blocked (duplicate vs. policy) — callers that
+ * need that distinction (e.g. for telemetry) should recompute it themselves,
+ * exactly as app/api/game/[id]/turn/route.ts already does for the plain
+ * duplicate check via isDuplicateQuestion.
+ */
+export async function runWithDuplicateAndPolicyQuestionGuard<T, F>(
+  priorQuestions: readonly string[],
+  maxAttempts: number,
+  produceCandidate: () => Promise<QuestionGuardAttempt<T, F>>,
+  extractQuestion: (candidate: T) => { action: string; question_text: string | null }
+): Promise<QuestionGuardResult<T, F>> {
+  return runWithRejectionGuard(
+    maxAttempts,
+    produceCandidate,
+    extractQuestion,
+    (questionText) =>
+      isDuplicateQuestion(questionText, priorQuestions) || !checkQuestionPolicy(questionText).allowed
+  );
 }

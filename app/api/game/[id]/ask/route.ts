@@ -11,11 +11,12 @@ import { requireSeatStrict } from "@/lib/seats";
 import { getSecretForAnswering } from "@/lib/secretStore";
 import { answerAsComposer } from "@/lib/prompts/composerAnswer";
 import { judgeQuestionEdit } from "@/lib/prompts/questionEdit";
+import { checkQuestionPolicy, QUESTION_POLICY_REJECTION_MESSAGE } from "@/lib/questionPolicy";
 import { consumeModelCall } from "@/lib/callBudget";
 import { decideAttemptBudget } from "@/lib/turnBudget";
 import { recordAnthropicSeatCall, type SeatCallObservation } from "@/lib/corpus/turnTelemetry";
 import { env } from "@/lib/env";
-import type { GameRecord, QuestionLogEntry } from "@/lib/types";
+import type { GameLanguage, GameRecord, QuestionLogEntry } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // 0.6.x — the human Racer's turn. The inverse of /turn.
@@ -77,6 +78,22 @@ const EDIT_SECOND_CALL_MIN_REMAINING_MS = 15_000;
 const EDIT_SECOND_CALL_MAX_MS = 30_000;
 
 const EDIT_BUDGET_EXHAUSTED_MESSAGE = "A szerkesztés most nem végezhető el. Próbáld újra.";
+
+/**
+ * V2.8.7.4 — DEFECT 2 field report: this was a single hardcoded ENGLISH
+ * string, the one message in this entire route not localized to
+ * game_language — every other message here is Hungarian (this route's
+ * default), matching the app's Hungarian-only-interface convention
+ * documented elsewhere (see app/ComposerEntry.tsx's own note). A Hungarian
+ * player rejected here saw raw English, which reads as a technical error
+ * rather than an actionable answer. Also expanded to be actionable per the
+ * field report: it now tells the player their original stands AND that they
+ * may ask the corrected wording as a fresh question if they still want to.
+ */
+const EDIT_CHANGES_INTENT_MESSAGE: Record<GameLanguage, string> = {
+  hu: "Ez más kérdésnek számít, mert megváltoztatja, mire kérdezel rá. Az eredeti kérdésed és a rá adott válasz megmarad. Ha ezt szeretnéd megkérdezni, tedd fel új kérdésként.",
+  en: "That asks something different, so it counts as a new question. Your original question and its answer stand. Ask it as a new question if you'd still like to.",
+};
 
 /**
  * V2.8.6 R2 — a LOCAL wait bound only, exactly like lib/turnBudget.ts's own
@@ -426,6 +443,25 @@ export async function POST(
 
       const original = last.question_text;
 
+      // V2.8.7.4 — DEFECT 3: the universal no-spelling rule applies to a
+      // corrected question exactly as it does to a fresh one. Checked
+      // before any model call (the SAME reason it is checked before the
+      // fresh-question path's own budget/model calls below) — a corrected
+      // wording that itself violates the rule must never reach the judge or
+      // the Composer, and must not cost the player their one correction
+      // attempt on a call that could never have been accepted anyway.
+      const editPolicyCheck = checkQuestionPolicy(edited);
+      if (!editPolicyCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: "question_policy_violation",
+            message: QUESTION_POLICY_REJECTION_MESSAGE[game.game_language],
+            game,
+          },
+          { status: 422 }
+        );
+      }
+
       // V2.8.6 R2 — the shared local time-budget for this branch's two
       // sequential provider calls, fixed once at branch entry. Distinct from
       // the GLOBAL daily spend ceiling below (consumeModelCall) — this bounds
@@ -512,8 +548,7 @@ export async function POST(
         return NextResponse.json(
           {
             error: "edit_changes_intent",
-            message:
-              "That asks something different, so it counts as a new question. Your original question and answer stand.",
+            message: EDIT_CHANGES_INTENT_MESSAGE[game.game_language],
             game,
           },
           { status: 409 }
@@ -651,6 +686,24 @@ export async function POST(
       return NextResponse.json(
         { error: "missing_question", message: "Tegyél fel egy kérdést, tippelj, vagy add fel." },
         { status: 400 }
+      );
+    }
+
+    // V2.8.7.4 — DEFECT 3: the universal no-spelling rule. Rejected BEFORE
+    // the question budget is touched (this return is above the
+    // question_count check below) and before any model call, so a
+    // prohibited question never costs the player anything and never
+    // reaches the Composer. See lib/questionPolicy.ts's own module doc for
+    // exactly what this catches and its one honestly-disclosed gap.
+    const policyCheck = checkQuestionPolicy(question);
+    if (!policyCheck.allowed) {
+      return NextResponse.json(
+        {
+          error: "question_policy_violation",
+          message: QUESTION_POLICY_REJECTION_MESSAGE[game.game_language],
+          game,
+        },
+        { status: 422 }
       );
     }
 

@@ -304,9 +304,15 @@ test("racer/4.0.0: a named sibling question is rejected while its parent level h
 
 test("the block forbids spelling/alphabet extraction and disguised identity questions", () => {
   const content = promptFor([]);
+  // V2.8.7.4 — DEFECT 3: reworded (same word count — RG #4's word budget was
+  // already fully spent) to name syllables/pronunciation explicitly. The
+  // authoritative, mechanical enforcement of the full no-spelling rule now
+  // lives in lib/questionPolicy.ts, applied via
+  // runWithDuplicateAndPolicyQuestionGuard in app/api/game/[id]/turn/
+  // route.ts — see test/questionPolicy.test.ts.
   assert.match(
     content,
-    /Investigates spelling, letters, or name structure instead of meaning and properties/
+    /Investigates spelling, letters, syllables, or pronunciation instead of meaning and properties/
   );
   assert.match(
     content,
