@@ -1113,6 +1113,84 @@ test("V2.8.5.2 (C) REQUIRED TEST — recovery through a timeout never issues a s
 });
 
 // ---------------------------------------------------------------------------
+// V2.8.8.1 (E) — RETRY VISIBILITY. Field report: a manual retry tap "felt
+// like it did nothing." The bug: runOwnedResolveRequest cleared the error
+// to null at the START of every attempt, including a manual retry, before
+// the retry's own outcome was known — which made EvaluationState's
+// busy-labeled retry button (rendered only while `error` is truthy)
+// unreachable for the ENTIRE duration of a retry. These are EXECUTED
+// assertions against the real function, not source-contract ones: they
+// prove the exact ORDER of setResolveError calls, which a source read
+// alone cannot.
+// ---------------------------------------------------------------------------
+
+test("V2.8.8.1 (E) REQUIRED TEST — a retry that also fails NEVER clears the error in between; the prior message stays visible until replaced", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls } = resolveRecordingState(g0);
+
+  // A CLEAN business-error response (e.g. adjudicator_unavailable) always
+  // carries `game` unchanged -- see the real route's own error responses.
+  // Omitting it here would (correctly) be classified as a transport
+  // failure instead, which is a different code path than this test targets.
+  const firstIo: ResolveRequestIO = {
+    requestResolve: async () => ({ ok: false, data: { message: "first failure", game: g0 } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedResolveRequest(ownership, firstIo, state, 100_000);
+
+  const secondIo: ResolveRequestIO = {
+    requestResolve: async () => ({ ok: false, data: { message: "second failure", game: g0 } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedResolveRequest(ownership, secondIo, state, 100_000);
+
+  // The FULL sequence across both attempts: never a null between the two
+  // real error messages -- proving the retry never pre-emptively blanked
+  // the screen before its own outcome was known.
+  const allErrorArgs = calls.filter((c) => c.fn === "setResolveError").map((c) => c.arg);
+  assert.deepEqual(
+    allErrorArgs,
+    ["first failure", "second failure"],
+    "the retry must set its OWN outcome directly -- it must never first clear to null and only then set the new error"
+  );
+});
+
+test("V2.8.8.1 (E) REQUIRED TEST — a retry that SUCCEEDS clears the error only via the success path, never pre-emptively at the start", async () => {
+  const ownership = createRequestOwnership();
+  const g0 = game({ phase: "resolving" });
+  const { state, calls } = resolveRecordingState(g0);
+
+  const firstIo: ResolveRequestIO = {
+    requestResolve: async () => ({ ok: false, data: { message: "first failure", game: g0 } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedResolveRequest(ownership, firstIo, state, 100_000);
+  assert.equal(lastValueOf(calls, "setResolveError"), "first failure");
+
+  const successGame = game({ phase: "complete", result: "racer_incorrect" });
+  const secondIo: ResolveRequestIO = {
+    requestResolve: async () => ({ ok: true, data: { game: successGame } }),
+    requestView: async () => {
+      throw new Error("unused");
+    },
+  };
+  await runOwnedResolveRequest(ownership, secondIo, state, 100_000);
+
+  // The ONLY setResolveError calls across the whole retry are: the first
+  // failure, then null on success -- never a null in between (i.e. never
+  // BEFORE the retry's own outcome was known).
+  const allErrorArgs = calls.filter((c) => c.fn === "setResolveError").map((c) => c.arg);
+  assert.deepEqual(allErrorArgs, ["first failure", null]);
+});
+
+// ---------------------------------------------------------------------------
 // V2.8.6 R1 COMMIT 2 — the client application-error contract.
 //
 // /turn's new identity/seat responses (401 unauthenticated, 403

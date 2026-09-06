@@ -7,45 +7,24 @@
 // Pure — no React, no DOM, no model call, no import of lib/secretStore.ts.
 // ---------------------------------------------------------------------------
 
+import { normalizeForConservativeIdentityMatch } from "./textIdentity";
+
 /**
- * V2.8.8 COMPLETION — target-specific normalization, deliberately STRONGER
- * than lib/duplicateQuestionGuard.ts's own normalizeQuestionForDuplicateCheck
- * (which stays exactly as it was — lowercase/trim/whitespace-collapse only,
- * diacritics preserved — for QUESTION-text duplicate detection, where a
- * different accented word can be a genuinely different question). A secret
- * TARGET is a different problem: the approved requirement is that a trivial
- * FORMATTING variant of the identical target ("Dog" vs "dog.") must collide
- * mechanically, not merely an identical byte string.
- *
- * Handles, in this order:
- *   1. Unicode normalization (NFKD) — decomposes an accented character into
- *      its base letter plus a separate combining mark, e.g. "á" -> "a" +
- *      U+0301.
- *   2. Diacritic/combining-mark removal — strips the marks NFKD just split
- *      off (U+0300-U+036F, the Combining Diacritical Marks block covers
- *      Hungarian's "ő"/"ű" too), so "kávé"/"kave" and "őz"/"oz" collide.
- *   3. Case folding (toLowerCase).
- *   4. Punctuation removal — a trailing period, an exclamation mark, etc.
- *      no longer defeats the match.
- *   5. Whitespace collapse — leading, trailing, and repeated internal
- *      whitespace.
+ * V2.8.8.1 — this is now a thin re-export of lib/textIdentity.ts's shared
+ * conservative identity normalizer (extracted there once a second,
+ * independent call site needed the identical algorithm — see
+ * lib/exactGuessMatch.ts). The exported NAME stays exactly as it was so
+ * every existing caller and test (this module's own, and
+ * test/targetNovelty.test.ts) continues to compile and pass unchanged; only
+ * the implementation is now sourced from one shared place instead of two
+ * copies that could drift.
  *
  * STILL NEVER catches: a translation ("dog"/"kutya"), a synonym, or any
  * other semantic equivalence — those remain model-enforced only, exactly as
  * disclosed in lib/prompts/composerTarget.ts's own EXCLUDED TARGETS
- * instruction and its avoided_recent_targets schema field. This function's
- * only job is to make a trivial FORMATTING variant of the SAME string
- * collide; it has no notion of meaning.
+ * instruction and its avoided_recent_targets schema field.
  */
-export function normalizeTargetForNoveltyCheck(value: string): string {
-  return value
-    .normalize("NFKD")
-    .replace(/[̀-ͯ]/g, "")
-    .toLowerCase()
-    .replace(/[^\p{L}\p{N}\s]/gu, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
+export const normalizeTargetForNoveltyCheck = normalizeForConservativeIdentityMatch;
 
 /**
  * True only if `candidate` exactly matches (after normalization) one of

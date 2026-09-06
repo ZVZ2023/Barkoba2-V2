@@ -1252,7 +1252,14 @@ export default function GameClient({
         nothing has actually started resolving yet.
       */}
       {game.phase === "resolving" && !guessRevealPending && (
-        <EvaluationState error={resolveError} busy={resolving} onRetry={() => void resolveGame()} />
+        <EvaluationState
+          error={resolveError}
+          busy={resolving}
+          onRetry={() => void resolveGame()}
+          finalGuessText={game.final_guess_text}
+          finalAction={game.final_action}
+          experienceMode={game.experience_mode}
+        />
       )}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
