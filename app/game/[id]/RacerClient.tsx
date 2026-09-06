@@ -17,8 +17,10 @@ import {
   mergeViewIntoGame,
   reconciliationShowsProgress,
   runOwnedTurnRequest,
+  runOwnedResolveRequest,
   type ActiveRequestHandle,
   type RequestOwnership,
+  type ResolveResponseBody,
   type TurnResponseBody,
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
@@ -111,6 +113,17 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   // could issue two concurrent POST /resolve calls before React re-rendered
   // `busy` into the disabled attribute.
   const resolveInFlightRef = useRef(false);
+  // V2.8.8.4 — /resolve's own request-ownership tracker, independent of
+  // requestOwnershipRef below (a separate request stream — the SAME
+  // separation GameClient.tsx's own resolveOwnershipRef doc explains).
+  // This is what gives resolveGame() the AbortController-based timeout and
+  // canonical-view reconciliation GameClient.tsx already had — see
+  // lib/turnRequestGuard.ts's runOwnedResolveRequest.
+  const resolveOwnershipRef = useRef<RequestOwnership | null>(null);
+  if (!resolveOwnershipRef.current) {
+    resolveOwnershipRef.current = createRequestOwnership();
+  }
+  const activeResolveRequestRef = useRef<ActiveRequestHandle | null>(null);
   // V2.8.7.3 — auto-reveal the terminal result on this screen too: the SAME
   // shared hook GameClient.tsx and HumanClient.tsx call (see
   // app/components/useResultReveal.ts). Before this, this screen had no
@@ -372,39 +385,76 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
     return () => document.removeEventListener("visibilitychange", handleVisibility);
   }, [busy]);
 
+  // V2.8.8.4 — RACERCLIENT REQUEST-RECOVERY PARITY. Previously a plain fetch
+  // with no AbortController and no reconciliation — exactly the "Hálózati
+  // hiba a lezárásnál" defect GameClient.tsx's own resolveGame already
+  // fixed in V2.8.5.2 (production forensic game
+  // a0b7743b-5599-45ac-9909-e1dd23a6316c: a client-perceived failure at a
+  // moment the server had actually finished). Now routed through the exact
+  // same runOwnedResolveRequest GameClient.tsx uses: a bounded
+  // AbortController timeout (RESOLVE_CLIENT_TIMEOUT_MS), and on timeout or
+  // transport failure, ONE canonical GET /view read to check whether the
+  // server actually finished before ever showing an error — never a second
+  // POST /resolve, so adjudication is never double-spent by the client's
+  // own recovery path.
   const resolveGame = useCallback(async () => {
-    // V2.8.8.1 (E) — synchronous guard, claimed before any await/state
-    // update: see resolveInFlightRef's own doc above.
+    // (E) synchronous guard, claimed before any await/state update — see
+    // resolveInFlightRef's own doc above. Preserved unchanged: a rapid
+    // second tap (or an overlapping auto-fire racing a manual Retry)
+    // returns immediately rather than issuing a second POST /resolve.
     if (resolveInFlightRef.current) return;
     resolveInFlightRef.current = true;
-    setBusy(true);
-    // V2.8.8.1 (E) — DELIBERATELY does NOT clear `error` here. See
-    // runOwnedResolveRequest's identical fix (lib/turnRequestGuard.ts) for
-    // the full reasoning: clearing it at the start of every attempt,
-    // including a manual retry, made EvaluationState's busy-labeled retry
-    // button unreachable (its branch only renders while `error` is
-    // truthy), so a retry looked indistinguishable from a no-op tap. The
-    // stale message now stays visible (with the button disabled and
-    // relabeled "ÚJRAPRÓBÁLKOZÁS…" via `busy`) until this attempt succeeds
-    // or a fresh error replaces it below.
     try {
-      const res = await fetch(`/api/game/${game.game_id}/resolve`, { method: "POST" });
-      const data = await res.json();
-      if (data.game) setGame(data.game as GameRecord);
-      if (!res.ok) {
-        setError(data.message || "Nem sikerült lezárni a játékot.");
-        resolveFired.current = false;
-      } else {
-        setError(null);
-      }
-    } catch {
-      setError("Hálózati hiba a lezárásnál — próbáld újra.");
-      resolveFired.current = false;
+      await runOwnedResolveRequest(
+        resolveOwnershipRef.current as RequestOwnership,
+        {
+          requestResolve: async (signal) => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/resolve`, {
+              method: "POST",
+              signal,
+            });
+            const data = (await res.json()) as ResolveResponseBody;
+            return { ok: res.ok, data };
+          },
+          requestView: async () => {
+            const res = await fetch(`/api/game/${gameRef.current.game_id}/view`);
+            const body = (await res.json()) as { view?: GameView };
+            return { ok: res.ok, view: body.view ?? null };
+          },
+        },
+        {
+          getGame: () => gameRef.current,
+          setGame: (next) => setGame(next),
+          // (E) DELIBERATELY does NOT clear `error` on its own — see
+          // runOwnedResolveRequest's own doc for the full reasoning:
+          // clearing it at the START of every attempt, including a manual
+          // retry, made EvaluationState's busy-labeled retry button
+          // unreachable (its branch only renders while `error` is
+          // truthy). The stale message now stays visible (button disabled,
+          // relabeled "ÚJRAPRÓBÁLKOZÁS…" via `busy`) until this attempt
+          // succeeds or a fresh error replaces it.
+          setResolveError: setError,
+          // This screen has always used ONE shared `busy` flag rather than
+          // GameClient's separate `resolving` — the ask/clue/guess controls
+          // are never rendered while game.phase === "resolving", so there is
+          // no OTHER in-flight action `busy` could be confused with here.
+          setResolving: setBusy,
+          // Allow a retry: the route is idempotent and the phase is unchanged.
+          clearResolveGuard: () => {
+            resolveFired.current = false;
+          },
+          registerActiveRequest: (handle) => {
+            activeResolveRequestRef.current = handle;
+          },
+          clearActiveRequest: () => {
+            activeResolveRequestRef.current = null;
+          },
+        }
+      );
     } finally {
-      setBusy(false);
       resolveInFlightRef.current = false;
     }
-  }, [game.game_id]);
+  }, []);
 
   useEffect(() => {
     if (resolveFired.current) return;
