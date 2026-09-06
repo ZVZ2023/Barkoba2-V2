@@ -63,6 +63,48 @@ test("an empty history is a distinct, non-error state", () => {
   assert.match(CLIENT, /Még nincs mentett játékod\./);
 });
 
+// ---------------------------------------------------------------------------
+// V2.8.8.2 — GAME-HISTORY FAILURE AND LAST-TWO-GAMES VERDICT AUDIT.
+//
+// Confirmed defect #1: listPlayerHistory (lib/corpus/gameCorpus.ts)
+// collapsed "corpus not configured" (a non-issue) and "corpus configured
+// but the query failed" (a real outage) into the same bare `null`, which
+// the route always turned into the same generic 503 history_unavailable.
+// Executed proof of the fix lives in test/playerHistory.test.ts (the two
+// new ok:true/ok:false tests); this file adds the source-contract
+// confirmation that the route was updated to match.
+//
+// Confirmed defect #2: a COMPLETED game had NO link at all from Játékaim
+// — only "in_progress" ever rendered a link to /game/[id] — so even once
+// the list itself loads, a player could never re-open a finished game's
+// full detail (target, guess, transcript, hints, adjudication/integrity
+// notes) that /game/[id] already renders correctly and securely. Fixed by
+// linking every lifecycle_state, unconditionally, to the SAME existing,
+// unchanged /game/[id] page — no new detail view was built, because one
+// already existed and already enforces ownership correctly.
+// ---------------------------------------------------------------------------
+
+test("SOURCE: the route distinguishes ok:false (history_unavailable) from ok:true, rather than a bare null check", () => {
+  assert.match(HISTORY_ROUTE, /const lookup = await listPlayerHistory\(playerId\);/);
+  assert.match(HISTORY_ROUTE, /if \(!lookup\.ok\)/);
+  assert.match(HISTORY_ROUTE, /games: lookup\.games/);
+});
+
+test("SOURCE: EVERY lifecycle_state renders a link to /game/[id], not only in_progress", () => {
+  // The old, narrower guard must be gone...
+  assert.doesNotMatch(CLIENT, /\{entry\.lifecycle_state === "in_progress" && \(/);
+  // ...replaced by an unconditional link whose LABEL still distinguishes
+  // in_progress ("continue") from every other state ("open").
+  assert.match(CLIENT, /href=\{`\/game\/\$\{entry\.game_id\}`\}/);
+  assert.match(CLIENT, /entry\.lifecycle_state === "in_progress" \? "Folytatás →" : "Megnyitás →"/);
+});
+
+test("SOURCE: the completed-game link reuses /game/[id] as-is -- no new detail-view route or component was introduced for this", () => {
+  // A single href pattern for every state, not a second code path per state.
+  const hrefOccurrences = CLIENT.match(/href=\{`\/game\/\$\{entry\.game_id\}`\}/g) ?? [];
+  assert.equal(hrefOccurrences.length, 1, "exactly one link site, covering every lifecycle_state uniformly");
+});
+
 test("the history link is reachable from the header's Profil menu, only when authenticated", () => {
   const authBranch = ACCOUNT_CONTROL.slice(
     ACCOUNT_CONTROL.indexOf("{authenticated ? ("),

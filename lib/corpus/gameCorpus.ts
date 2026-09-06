@@ -682,9 +682,24 @@ export async function unlinkPlayer(playerId: string): Promise<number | null> {
 // player's games. Uses games_player_history — the partial index migration
 // 0001 already built for exactly this query, unused until now.
 //
-// NEVER THROWS, matching every other function in this module. A read failure
-// returns null; the caller (the route) is the one place that turns that into
-// an HTTP response.
+// V2.8.8.2 — the ok/games SPLIT, matching recentAiComposerTargets's own
+// RecentTargetsLookup shape (see that function's doc for the full
+// reasoning). Before this, listPlayerHistory collapsed TWO structurally
+// different conditions into the same bare `null`: "corpus intentionally not
+// configured" (no CORPUS_ENABLED/DATABASE_URL — a genuine non-issue,
+// identical to a brand-new player having no history at all) and "corpus IS
+// configured but the query itself failed" (a real, investigable outage —
+// e.g. a schema/query mismatch against what production actually has). Both
+// surfaced to the player as the SAME generic history_unavailable 503,
+// destroying exactly the distinction an operator needs when diagnosing a
+// report like "Játékaim says the history is unavailable." This split does
+// not by itself fix any specific underlying query failure — it only stops
+// silently discarding the difference between "nothing to show" and
+// "something is actually broken."
+//
+// NEVER THROWS, matching every other function in this module. A read
+// failure returns ok:false; the caller (the route) is the one place that
+// turns that into an HTTP response.
 // ---------------------------------------------------------------------------
 
 const PLAYER_HISTORY_LIMIT = 100;
@@ -711,10 +726,19 @@ export interface PlayerHistoryEntry {
   experience_mode: string | null;
 }
 
-export async function listPlayerHistory(playerId: string): Promise<PlayerHistoryEntry[] | null> {
-  if (!isCorpusConfigured()) return null;
+/** V2.8.8.2 — see listPlayerHistory's own doc for why this split exists. */
+export interface PlayerHistoryLookup {
+  ok: boolean;
+  games: PlayerHistoryEntry[];
+}
+
+export async function listPlayerHistory(playerId: string): Promise<PlayerHistoryLookup> {
+  // "Not configured" is NOT a failure — it is the same fact as a brand-new
+  // player having no history yet, and must never block or scare a player in
+  // an environment (e.g. local dev) that simply has no corpus at all.
+  if (!isCorpusConfigured()) return { ok: true, games: [] };
   const sql = getSql();
-  if (!sql) return null;
+  if (!sql) return { ok: true, games: [] };
 
   try {
     const rows = await sql`
@@ -727,7 +751,7 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
        LIMIT ${PLAYER_HISTORY_LIMIT}
     `;
 
-    return rows.map((row) => {
+    const games = rows.map((row) => {
       let role: "composer" | "racer" | null = null;
       if (row.composer_player_id === playerId) role = "composer";
       else if (row.racer_player_id === playerId) role = "racer";
@@ -745,10 +769,11 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
         experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
       };
     });
+    return { ok: true, games };
   } catch (err) {
     // eslint-disable-next-line no-console
     console.error(`[barkoba] corpus: player history read failed for ${playerId}:`, err);
-    return null;
+    return { ok: false, games: [] };
   }
 }
 

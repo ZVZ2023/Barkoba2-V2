@@ -22,13 +22,13 @@ export async function GET(req: NextRequest) {
     );
   }
 
-  const games = await listPlayerHistory(playerId);
-  if (games === null) {
+  const lookup = await listPlayerHistory(playerId);
+  if (!lookup.ok) {
     return NextResponse.json(
       { error: "history_unavailable", message: "A játéktörténet most nem érhető el." },
       { status: 503 }
     );
   }
 
-  return NextResponse.json({ games });
+  return NextResponse.json({ games: lookup.games });
 }
