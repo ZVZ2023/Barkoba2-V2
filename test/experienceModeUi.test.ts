@@ -78,7 +78,7 @@ test("RacerClient.tsx: a mode-bearing game shows the MODE, not the raw clue_mode
 
 test("lib/corpus/gameCorpus.ts: listPlayerHistory's query selects experience_mode and maps it onto PlayerHistoryEntry", () => {
   const fnAt = GAME_CORPUS.indexOf("export async function listPlayerHistory");
-  const fn = GAME_CORPUS.slice(fnAt, fnAt + 2000);
+  const fn = GAME_CORPUS.slice(fnAt, fnAt + 3000);
   assert.match(fn, /SELECT[\s\S]*experience_mode/);
   assert.match(fn, /experience_mode: typeof row\.experience_mode === "string" \? row\.experience_mode : null,/);
 });
