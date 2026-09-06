@@ -567,7 +567,7 @@ export async function POST(req: NextRequest) {
       // Exhausted the bounded retry and every candidate repeated. Fail
       // explicitly — never fall back to accepting the repeat or to a fixed
       // example. Matches this codebase's "refuse rather than substitute"
-      // convention everywhere else (providers, seats, migrations).
+      // convention everywhere else (providers, seats, model budget).
       return NextResponse.json(
         {
           error: "composer_target_repeated",
