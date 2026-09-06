@@ -104,6 +104,13 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const resolveFired = useRef(false);
+  // V2.8.8.1 (E) — synchronous duplicate-submission guard for resolveGame()
+  // itself, mirroring GameClient.tsx's own resolveInFlightRef and this
+  // file's own established actionInFlightRef convention (see send()'s doc
+  // above). Previously absent here: a rapid double-tap on the retry button
+  // could issue two concurrent POST /resolve calls before React re-rendered
+  // `busy` into the disabled attribute.
+  const resolveInFlightRef = useRef(false);
   // V2.8.7.3 — auto-reveal the terminal result on this screen too: the SAME
   // shared hook GameClient.tsx and HumanClient.tsx call (see
   // app/components/useResultReveal.ts). Before this, this screen had no
@@ -366,8 +373,20 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
   }, [busy]);
 
   const resolveGame = useCallback(async () => {
+    // V2.8.8.1 (E) — synchronous guard, claimed before any await/state
+    // update: see resolveInFlightRef's own doc above.
+    if (resolveInFlightRef.current) return;
+    resolveInFlightRef.current = true;
     setBusy(true);
-    setError(null);
+    // V2.8.8.1 (E) — DELIBERATELY does NOT clear `error` here. See
+    // runOwnedResolveRequest's identical fix (lib/turnRequestGuard.ts) for
+    // the full reasoning: clearing it at the start of every attempt,
+    // including a manual retry, made EvaluationState's busy-labeled retry
+    // button unreachable (its branch only renders while `error` is
+    // truthy), so a retry looked indistinguishable from a no-op tap. The
+    // stale message now stays visible (with the button disabled and
+    // relabeled "ÚJRAPRÓBÁLKOZÁS…" via `busy`) until this attempt succeeds
+    // or a fresh error replaces it below.
     try {
       const res = await fetch(`/api/game/${game.game_id}/resolve`, { method: "POST" });
       const data = await res.json();
@@ -375,12 +394,15 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       if (!res.ok) {
         setError(data.message || "Nem sikerült lezárni a játékot.");
         resolveFired.current = false;
+      } else {
+        setError(null);
       }
     } catch {
       setError("Hálózati hiba a lezárásnál — próbáld újra.");
       resolveFired.current = false;
     } finally {
       setBusy(false);
+      resolveInFlightRef.current = false;
     }
   }, [game.game_id]);
 
@@ -869,7 +891,14 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       </section>
 
       {game.phase === "resolving" && (
-        <EvaluationState error={error} busy={busy} onRetry={() => void resolveGame()} />
+        <EvaluationState
+          error={error}
+          busy={busy}
+          onRetry={() => void resolveGame()}
+          finalGuessText={game.final_guess_text}
+          finalAction={game.final_action}
+          experienceMode={game.experience_mode}
+        />
       )}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">

@@ -17,6 +17,7 @@ import {
   needsAdjudication,
   needsIntegrityReview,
 } from "@/lib/resolveResult";
+import { isExactGuessMatch } from "@/lib/exactGuessMatch";
 import { consumeModelCall } from "@/lib/callBudget";
 import type {
   AdjudicatorVerdict,
@@ -81,9 +82,33 @@ async function recordAdjudicationCall(
 // Review is skipped entirely on that path, not run and discarded. The skip
 // decision lives in lib/resolveResult.ts so it is unit-tested rather than
 // implied by control flow here.
+//
+// V2.8.8.1 (A) — a THIRD, cheaper path: an exact-match guess (see
+// isExactGuessMatch below) costs NOTHING — no Adjudicator call, no Integrity
+// Review, no model-call budget entry.
 // ---------------------------------------------------------------------------
 
-export const maxDuration = 60;
+// V2.8.8.1 (B) — widened from 60. Field incidents (repeated "Az értékelés
+// megszakadt" on Human-Setter/AI-Racer games, requiring several retries)
+// pointed at a structural gap between this route's real worst-case latency
+// and its own execution ceiling: a guess needing Integrity Review can chain
+// up to THREE sequential strong-model calls in one invocation (Adjudicator,
+// then Integrity Review attempt 1 at 1280 tokens, then attempt 2 at 2048
+// tokens — see the "materially larger second try" comment below). At the
+// old ceiling of 60s, that sequence had no margin at all; the platform
+// could kill the function mid-call, which surfaces to the client as a bare
+// dropped connection — indistinguishable from a network failure, and
+// exactly the class of symptom reported. 60 -> 120 gives real headroom for
+// that worst case. RESOLVE_CLIENT_TIMEOUT_MS (lib/turnRequestGuard.ts) is
+// widened in the same commit to preserve its own documented "30s margin
+// beyond this platform ceiling" invariant at the new number.
+//
+// HONEST LIMITATION: this diagnosis is a CODE-LEVEL hypothesis, not
+// confirmed against the actual corpus.turn_operations telemetry rows for
+// the reported incident windows (no database credentials were available in
+// the environment this repair was written in) — see the delivery report's
+// own root-cause section.
+export const maxDuration = 120;
 
 function respond(game: GameRecord, status = 200) {
   return NextResponse.json({ game }, { status });
@@ -155,71 +180,117 @@ export async function POST(
 
   // -------------------------------------------------------------------------
   // Adjudication — only when there is a guess to judge.
+  //
+  // V2.8.8.1 (A) — CONSERVATIVE EXACT-MATCH FAST PATH, checked first. When
+  // the final guess and the locked target are unambiguously the identical
+  // string after conservative structural normalization (see
+  // isExactGuessMatch's own doc — Unicode NFKD, diacritic removal, case
+  // folding, punctuation removal, whitespace collapse; NEVER a synonym or
+  // translation match), the verdict is "correct" by construction: no
+  // Adjudicator call, no model-call budget entry, and (per
+  // needsIntegrityReview's own existing table) no Integrity Review either,
+  // since that already never runs on a correct guess. "television remote
+  // control" vs "Távirányító" is NOT an exact match under this normalizer —
+  // it still goes through the Adjudicator below, unchanged.
   // -------------------------------------------------------------------------
   if (needsAdjudication(game.final_action)) {
-    const budget = await consumeModelCall("resolve");
-    if (!budget.allowed) {
-      return NextResponse.json(
-        {
-          error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
-          message: budget.failedClosed
-            ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
-            : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
-          game,
-        },
-        { status: budget.failedClosed ? 503 : 429 }
-      );
-    }
-
-    // V2.8.7 — every adjudication call is recorded with its usage, whether
-    // it succeeded, was refused, or came back malformed (fail-open telemetry;
-    // see lib/corpus/turnTelemetry.ts). `observed` is filled by the client
-    // before any validation can throw, so a billed refusal is recorded as
-    // billed.
-    const adjudicationObserved: { value: AnthropicCallObservation | null } = { value: null };
-    const adjudicationStartedAt = Date.now();
-    try {
-      const adjudication = await runAdjudicator({
-        target: secret.target,
-        privateClarification: secret.private_clarification,
-        guess: game.final_guess_text ?? "",
-        gameLanguage: game.game_language,
-        onCallObserved: (o) => {
-          adjudicationObserved.value = o;
-        },
-      });
-      adjudicatorVerdict = adjudication.verdict;
-      adjudicationNotes = adjudication.reasoning;
-      // V2.2: the Adjudicator has always produced this and the record has
-      // always dropped it. Kept exactly as returned — it does not gate the
-      // verdict here and must not be interpreted anywhere else.
-      adjudicationConfidence =
-        typeof adjudication.confidence === "number" ? adjudication.confidence : null;
-      await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
+    const guessText = game.final_guess_text ?? "";
+    if (isExactGuessMatch(guessText, secret.target)) {
+      const fastPathStartedAt = Date.now();
+      adjudicatorVerdict = "correct";
+      adjudicationNotes = null;
+      adjudicationConfidence = null;
+      // V2.8.8.1 — deterministic-resolution provenance, using ONLY existing
+      // schema: operation_kind "adjudicator" and status "accepted" both
+      // already exist (migration 0013's CHECK constraints); `provider` is an
+      // unconstrained free-text column (migration 0012), so "deterministic"
+      // needs no migration. Distinguishable in telemetry from a real
+      // "anthropic" call by provider alone — no model id, no usage, because
+      // none was spent.
+      await recordAiCall({
+        gameId: game.game_id,
+        turnIndex: game.qa_log.length,
+        operationKind: "adjudicator",
+        provider: "deterministic",
+        requestedModelId: null,
+        resolvedModelId: null,
         status: "accepted",
+        latencyMs: Date.now() - fastPathStartedAt,
         errorClass: null,
-        latencyMs: Date.now() - adjudicationStartedAt,
+        usage: null,
+        effortSent: null,
+        requestMode: null,
       });
-    } catch (err) {
-      await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
-        ...classifyAdjudicationFailure(err),
-        latencyMs: Date.now() - adjudicationStartedAt,
-      });
-      // eslint-disable-next-line no-console
-      console.error("[barkoba] Adjudicator call failed:", err);
-      // V2.8.7 — a refusal (Claude Fable 5.1 stop_reason "refusal") lands
-      // here too: no substitute model, no automatic retry, no inferred
-      // verdict. The game stays "resolving" and the player sees the same
-      // recoverable message; the refusal is recorded above.
-      // Phase stays "resolving". A game must never be decided by an error path.
-      return NextResponse.json(
-        {
-          error: "adjudicator_unavailable",
-          message: "Most nem sikerült értékelni. A játék változatlan — próbáld újra.",
-          game,
-        },
-        { status: 502 }
-      );
+      // Falls through to the shared continuation below (Integrity Review
+      // check, deriveResult, declassification, save, respond) with
+      // adjudicatorVerdict already set to "correct" — needsIntegrityReview's
+      // own existing table already never runs a review on a correct guess,
+      // so nothing else needs to branch on how this verdict was reached.
+    } else {
+      const budget = await consumeModelCall("resolve");
+      if (!budget.allowed) {
+        return NextResponse.json(
+          {
+            error: budget.failedClosed ? "budget_unavailable" : "budget_exhausted",
+            message: budget.failedClosed
+              ? "Most nem tudjuk ellenőrizni a keretet. A játék megvan — próbáld újra hamarosan."
+              : "A Barkóba elérte az értékelésre szánt napi globális határát. A játék megvan — próbáld újra holnap.",
+            game,
+          },
+          { status: budget.failedClosed ? 503 : 429 }
+        );
+      }
+
+      // V2.8.7 — every adjudication call is recorded with its usage, whether
+      // it succeeded, was refused, or came back malformed (fail-open telemetry;
+      // see lib/corpus/turnTelemetry.ts). `observed` is filled by the client
+      // before any validation can throw, so a billed refusal is recorded as
+      // billed.
+      const adjudicationObserved: { value: AnthropicCallObservation | null } = { value: null };
+      const adjudicationStartedAt = Date.now();
+      try {
+        const adjudication = await runAdjudicator({
+          target: secret.target,
+          privateClarification: secret.private_clarification,
+          guess: guessText,
+          gameLanguage: game.game_language,
+          onCallObserved: (o) => {
+            adjudicationObserved.value = o;
+          },
+        });
+        adjudicatorVerdict = adjudication.verdict;
+        adjudicationNotes = adjudication.reasoning;
+        // V2.2: the Adjudicator has always produced this and the record has
+        // always dropped it. Kept exactly as returned — it does not gate the
+        // verdict here and must not be interpreted anywhere else.
+        adjudicationConfidence =
+          typeof adjudication.confidence === "number" ? adjudication.confidence : null;
+        await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
+          status: "accepted",
+          errorClass: null,
+          latencyMs: Date.now() - adjudicationStartedAt,
+        });
+      } catch (err) {
+        await recordAdjudicationCall(game, "adjudicator", null, adjudicationObserved.value, {
+          ...classifyAdjudicationFailure(err),
+          latencyMs: Date.now() - adjudicationStartedAt,
+        });
+        // eslint-disable-next-line no-console
+        console.error("[barkoba] Adjudicator call failed:", err);
+        // V2.8.7 — a refusal (Claude Fable 5.1 stop_reason "refusal") lands
+        // here too: no substitute model, no automatic retry, no inferred
+        // verdict. The game stays "resolving" and the player sees the same
+        // recoverable message; the refusal is recorded above.
+        // Phase stays "resolving". A game must never be decided by an error path.
+        return NextResponse.json(
+          {
+            error: "adjudicator_unavailable",
+            message: "Most nem sikerült értékelni. A játék változatlan — próbáld újra.",
+            game,
+          },
+          { status: 502 }
+        );
+      }
     }
   }
 

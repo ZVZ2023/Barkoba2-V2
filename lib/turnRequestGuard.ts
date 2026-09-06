@@ -591,17 +591,25 @@ async function reconcileAfterFailure(
 
 /**
  * V2.8.5.2 — bounds /resolve's own wait. app/api/game/[id]/resolve/route.ts
- * declares `export const maxDuration = 60` (Vercel's own execution ceiling
- * for this route — far shorter than /turn's 270s, since /resolve makes at
- * most one Adjudicator call plus up to two bounded Integrity Review
- * attempts, never an open-ended duplicate-question loop). 90_000ms gives a
- * documented 30s margin beyond that platform ceiling for network overhead —
- * the same style of margin app/api/game/[id]/turn/route.ts's own
+ * declares `export const maxDuration` (Vercel's own execution ceiling for
+ * this route — shorter than /turn's 270s, since /resolve makes at most one
+ * Adjudicator call plus up to two bounded Integrity Review attempts, never
+ * an open-ended duplicate-question loop). This constant gives a documented
+ * 30s margin beyond that platform ceiling for network overhead — the same
+ * style of margin app/api/game/[id]/turn/route.ts's own
  * maxDuration(270s) < TURN_LOCK_TTL_SECONDS(300s) documents, scaled to
  * /resolve's own (much shorter) legitimate duration rather than reused
  * verbatim from /turn's.
+ *
+ * V2.8.8.1 (B) — widened alongside the route's own maxDuration (60 -> 120):
+ * field incidents showed the OLD 60s/90s pair had no real margin for the
+ * true worst case (Adjudicator + two Integrity Review attempts chained in
+ * one invocation), so the platform could kill the function before either
+ * ceiling meant to catch a genuine hang ever fired — see that file's own
+ * doc for the full reasoning. 90_000 -> 150_000 preserves the exact same
+ * "30s beyond the platform ceiling" relationship at the new number.
  */
-export const RESOLVE_CLIENT_TIMEOUT_MS = 90_000;
+export const RESOLVE_CLIENT_TIMEOUT_MS = 150_000;
 
 /** The shape every real POST /api/game/[id]/resolve response carries. */
 export interface ResolveResponseBody {
@@ -652,7 +660,17 @@ export async function runOwnedResolveRequest(
   const token = ownership.begin();
 
   state.setResolving(true);
-  state.setResolveError(null);
+  // V2.8.8.1 (E) — DELIBERATELY does NOT clear the error here. Clearing it
+  // at the START of every attempt (including a manual retry) was the actual
+  // bug behind "the retry felt like it did nothing": EvaluationState's own
+  // render logic shows the busy-labeled retry button ONLY while `error` is
+  // truthy, so wiping it the instant a retry begins made that whole branch
+  // unreachable — the screen just reverted to the plain first-time-pending
+  // view, indistinguishable from the tap not having registered at all. The
+  // stale error message (and its retry button, now disabled + relabeled
+  // "ÚJRAPRÓBÁLKOZÁS…" via `busy`) now stays visible for the ENTIRE retry
+  // attempt, and is cleared only on genuine success (below) or replaced by
+  // a fresh error if this attempt fails too — never blanked pre-emptively.
 
   let transportFailed = false;
   let result: ResolveRequestResult | null = null;

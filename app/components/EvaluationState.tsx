@@ -1,5 +1,8 @@
 "use client";
 
+import { evaluationStatusLine, guessRevealLine } from "@/lib/evaluationCopy";
+import type { ExperienceMode, RacerAction } from "@/lib/types";
+
 // ---------------------------------------------------------------------------
 // The dominant evaluation state, shared by both game modes.
 //
@@ -11,17 +14,36 @@
 // waiting; only the message and the affordance change. Building it once means
 // the recovery path cannot be styled into invisibility separately from the
 // happy path — which is exactly how the last retry button was lost.
+//
+// V2.8.8.1 (C/D) — the AI's guess is now REVEALED here (it was previously
+// hidden behind this same blurred overlay for the entire evaluation). Both
+// callers only ever mount this component AFTER their own pre-guess
+// confirmation checkpoint has already passed (GameClient.tsx gates it on
+// `!guessRevealPending`; RacerClient.tsx's human Racer already typed their
+// own guess themselves, so there is no such checkpoint to wait for there) —
+// this component adds no reveal-timing decision of its own, it only renders
+// what its caller already decided is safe to show. The guess line sits
+// OUTSIDE the error/pending branch below so it stays visible identically
+// through the initial evaluation, any retry, and any recoverable error.
 // ---------------------------------------------------------------------------
 
 export default function EvaluationState({
   error,
   busy,
   onRetry,
+  finalGuessText,
+  finalAction,
+  experienceMode,
 }: {
   error: string | null;
   busy: boolean;
   onRetry: () => void;
+  finalGuessText: string | null;
+  finalAction: RacerAction | null;
+  experienceMode: ExperienceMode | null;
 }) {
+  const guessLine = guessRevealLine(finalGuessText);
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-[var(--parchment)]/95 p-6 backdrop-blur-sm">
       <div className="flex w-full max-w-sm flex-col items-center gap-5 text-center">
@@ -32,6 +54,10 @@ export default function EvaluationState({
           }`}
           style={{ borderRightColor: "transparent", animationDuration: "2.4s" }}
         />
+
+        {guessLine && (
+          <p className="text-base font-medium text-[var(--ink)]">{guessLine}</p>
+        )}
 
         {error ? (
           <>
@@ -65,7 +91,7 @@ export default function EvaluationState({
               FOLYAMATBAN…
             </h2>
             <p className="text-sm text-[var(--ink-soft)]">
-              Az eredmény még nem áll készen. Nincs teendőd — maradj ezen az oldalon.
+              {evaluationStatusLine(experienceMode, finalAction)}
             </p>
           </>
         )}
