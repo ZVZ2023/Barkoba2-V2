@@ -27,6 +27,20 @@ interface HistoryEntry {
    * "competitive" (see lib/experienceMode.ts's own doc on this convention).
    */
   experience_mode: string | null;
+  /**
+   * V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS. game_language drives the
+   * bilingual "not retained" copy below; NOT NULL at the schema level.
+   * target/final_guess_text are populated ONLY for a completed game (see
+   * lib/corpus/gameCorpus.ts's listPlayerHistory doc for the two
+   * independent gates that make this true) — always null for anything
+   * in_progress/abandoned/stalled/unresolved, by construction on the
+   * server, never filtered here.
+   */
+  game_language: string;
+  max_questions: number;
+  question_count: number;
+  target: string | null;
+  final_guess_text: string | null;
 }
 
 type LoadState =
@@ -76,9 +90,48 @@ function statusOf(entry: HistoryEntry): { text: string; className: string } {
     : { text: "A gondolkodó nyert", className: "text-[var(--ink-soft)]" };
 }
 
-function formatWhen(iso: string): string {
+// ---------------------------------------------------------------------------
+// V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS.
+//
+// Scoped to COMPLETED games only, matching this ticket's own scope: a
+// non-completed card's existing, unchanged layout (role/mode badge/status/
+// date/link) is untouched. The enriched fields below (target, guess,
+// questions-used) exist ONLY on a completed card, and their own "not
+// retained" copy follows the SAME bilingual-by-game_language precedent
+// ArchivedGameView.tsx already established for identical narrative
+// copy — role and experience-mode LABELS still stay Hungarian everywhere,
+// matching that same file's documented, already-approved reasoning.
+// ---------------------------------------------------------------------------
+
+interface CompletedCardCopy {
+  targetLabel: string;
+  targetNotRetained: string;
+  guessLabel: string;
+  questionsLabel: string;
+}
+
+const COMPLETED_CARD_COPY: Record<"hu" | "en", CompletedCardCopy> = {
+  hu: {
+    targetLabel: "Cél",
+    targetNotRetained: "A cél nincs megőrizve ehhez a játékhoz.",
+    guessLabel: "Tipp",
+    questionsLabel: "kérdés",
+  },
+  en: {
+    targetLabel: "Target",
+    targetNotRetained: "The target was not retained for this game.",
+    guessLabel: "Guess",
+    questionsLabel: "questions",
+  },
+};
+
+function completedCopyFor(gameLanguage: string): CompletedCardCopy {
+  return gameLanguage === "en" ? COMPLETED_CARD_COPY.en : COMPLETED_CARD_COPY.hu;
+}
+
+function formatWhen(iso: string, gameLanguage: string = "hu"): string {
   try {
-    return new Date(iso).toLocaleString("hu-HU", {
+    return new Date(iso).toLocaleString(gameLanguage === "en" ? "en-US" : "hu-HU", {
       year: "numeric",
       month: "short",
       day: "numeric",
@@ -167,6 +220,72 @@ export default function HistoryClient({ versionLabel }: Props) {
         <ul className="flex flex-col gap-3">
           {state.games.map((entry) => {
             const status = statusOf(entry);
+            const megnyitas = (
+              // V2.8.7.1 — an owned, still-live game must actually open from
+              // here. V2.8.8.2 widened this from "in_progress" only, so
+              // every lifecycle_state gets a link: /game/[id]'s OWN existing,
+              // unchanged access control (decideGamePageAccess) still
+              // enforces strict per-game ownership, and its OWN existing
+              // not_found path still handles an expired live record — this
+              // page never guesses at or fabricates the game's state, it
+              // only always OFFERS to check.
+              <a
+                href={`/game/${entry.game_id}`}
+                className="min-h-11 rounded-md border border-[var(--ink)]/25 px-3 py-2 text-sm text-[var(--ink)] underline-offset-2 hover:underline"
+              >
+                {entry.lifecycle_state === "in_progress" ? "Folytatás →" : "Megnyitás →"}
+              </a>
+            );
+
+            if (entry.lifecycle_state === "completed") {
+              // V2.8.8.5 — the enriched, completed-game card. Scoped to
+              // 'completed' only: the target/final_guess_text fields the
+              // server sends are ALREADY null for anything else (see
+              // lib/corpus/gameCorpus.ts's own two independent gates), so
+              // this branch adds no security decision of its own — it is
+              // presentation-only, choosing to make target the most
+              // prominent text on a card whose target the server has
+              // already decided is safe to show.
+              const c = completedCopyFor(entry.game_language);
+              return (
+                <li
+                  key={entry.game_id}
+                  className="flex flex-col gap-2 rounded-md border border-[var(--ink)]/15 bg-white/50 p-4"
+                >
+                  <p
+                    className="text-base font-semibold leading-snug text-[var(--ink)]"
+                    lang={entry.target ? entry.game_language : undefined}
+                  >
+                    {entry.target ?? c.targetNotRetained}
+                  </p>
+                  {entry.final_guess_text && (
+                    <p className="text-sm text-[var(--ink-soft)]" lang={entry.game_language}>
+                      {c.guessLabel}: {entry.final_guess_text}
+                    </p>
+                  )}
+                  <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--ink-soft)]">
+                    <span>{entry.role ? ROLE_HU[entry.role] : "szerep ismeretlen"}</span>
+                    {isExperienceMode(entry.experience_mode) && (
+                      <span>· {EXPERIENCE_MODE_LABEL_HU[entry.experience_mode]}</span>
+                    )}
+                    <span>
+                      · {entry.question_count} / {entry.max_questions} {c.questionsLabel}
+                    </span>
+                    <span className={`font-medium ${status.className}`}>· {status.text}</span>
+                  </div>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="text-xs text-[var(--ink-soft)]">
+                      {formatWhen(entry.created_at, entry.game_language)}
+                    </span>
+                    {megnyitas}
+                  </div>
+                </li>
+              );
+            }
+
+            // Every non-completed lifecycle_state keeps the ORIGINAL,
+            // unchanged card layout — this ticket scopes the enriched
+            // fields to completed games only.
             return (
               <li
                 key={entry.game_id}
@@ -186,34 +305,7 @@ export default function HistoryClient({ versionLabel }: Props) {
                 </div>
                 <div className="flex items-center gap-3">
                   <span className={`text-sm font-medium ${status.className}`}>{status.text}</span>
-                  {/*
-                    V2.8.7.1 — an owned, still-live game must actually open from
-                    here. Before this, History had no link to any game at all,
-                    for any lifecycle_state: a stuck-but-recoverable game (see
-                    lib/rewind.ts's isWithinCorrectionWindow fix) was reachable
-                    by no path from this page.
-
-                    V2.8.8.2 — widened from "in_progress" only. A COMPLETED
-                    game had no link at all here, so a player could never
-                    actually re-open the transcript, target, guess, hints,
-                    adjudication or integrity-review detail /game/[id] already
-                    renders for a finished game (see ResultPanel.tsx and this
-                    direction's own client components) — the one confirmed
-                    gap this pass closes. Every lifecycle_state gets a link
-                    now: /game/[id]'s OWN existing, unchanged access control
-                    (decideGamePageAccess) still enforces strict per-game
-                    ownership, and its OWN existing not_found path still
-                    handles a record that has actually expired from the live
-                    store since the corpus row was written — this page still
-                    never guesses at or fabricates the game's current state,
-                    it only always OFFERS to check.
-                  */}
-                  <a
-                    href={`/game/${entry.game_id}`}
-                    className="min-h-11 rounded-md border border-[var(--ink)]/25 px-3 py-2 text-sm text-[var(--ink)] underline-offset-2 hover:underline"
-                  >
-                    {entry.lifecycle_state === "in_progress" ? "Folytatás →" : "Megnyitás →"}
-                  </a>
+                  {megnyitas}
                 </div>
               </li>
             );

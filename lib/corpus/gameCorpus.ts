@@ -747,6 +747,28 @@ export interface PlayerHistoryEntry {
    * GameRecord.experience_mode itself). See lib/experienceMode.ts.
    */
   experience_mode: string | null;
+  /** V2.8.8.5 — drives bilingual "not retained" card copy. NOT NULL at the schema level; the "hu" fallback only guards a future nullable-relaxation. */
+  game_language: string;
+  max_questions: number;
+  question_count: number;
+  /**
+   * V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS. Populated by the SAME single
+   * query as every other field here (a LEFT JOIN to game_targets/
+   * game_resolutions, never a second per-card query — see the module doc
+   * below the query itself). NEVER populated for anything but a
+   * lifecycle_state==='completed' row: game_targets is only ever written at
+   * the single declassification point in /resolve (migration 0001's own
+   * schema comment), so a non-completed row structurally has no target row
+   * to join at all — and the mapping below ALSO explicitly re-checks
+   * lifecycle_state as a second, independent gate rather than relying on
+   * the join's natural behavior alone. Null for a completed game whose
+   * target/resolution row is itself anomalously missing (see
+   * getArchivedGameForOwner's identical target_retained/resolution_retained
+   * doc) -- the caller renders a "not retained" label for that case, never
+   * a blank.
+   */
+  target: string | null;
+  final_guess_text: string | null;
 }
 
 /** V2.8.8.2 — see listPlayerHistory's own doc for why this split exists. */
@@ -764,25 +786,44 @@ export async function listPlayerHistory(playerId: string): Promise<PlayerHistory
   if (!sql) return { ok: true, games: [] };
 
   try {
+    // V2.8.8.5 — ONE query for the whole list, not one per card. The two
+    // LEFT JOINs add target/final_guess_text alongside every other column
+    // already being read; PLAYER_HISTORY_LIMIT still bounds it to a single
+    // round trip regardless of how many games a player has.
     const rows = await sql`
-      SELECT operational_game_id, created_at, lifecycle_state, outcome,
-             composer_player_id, racer_player_id, composer_kind, racer_kind,
-             experience_mode
-        FROM corpus.games
-       WHERE player_id = ${playerId}
-       ORDER BY created_at DESC
+      SELECT g.operational_game_id, g.created_at, g.lifecycle_state, g.outcome,
+             g.composer_player_id, g.racer_player_id, g.composer_kind, g.racer_kind,
+             g.experience_mode, g.game_language, g.max_questions, g.question_count,
+             t.target, r.final_guess_text
+        FROM corpus.games g
+        LEFT JOIN corpus.game_targets t ON t.corpus_game_id = g.corpus_game_id
+        LEFT JOIN corpus.game_resolutions r ON r.corpus_game_id = g.corpus_game_id
+       WHERE g.player_id = ${playerId}
+       ORDER BY g.created_at DESC
        LIMIT ${PLAYER_HISTORY_LIMIT}
     `;
 
-    const games = rows.map((row) => ({
-      game_id: String(row.operational_game_id),
-      created_at:
-        row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-      lifecycle_state: String(row.lifecycle_state),
-      outcome: typeof row.outcome === "string" ? row.outcome : null,
-      role: deriveHistoryRole(row, playerId),
-      experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
-    }));
+    const games = rows.map((row) => {
+      const isCompleted = String(row.lifecycle_state) === "completed";
+      return {
+        game_id: String(row.operational_game_id),
+        created_at:
+          row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+        lifecycle_state: String(row.lifecycle_state),
+        outcome: typeof row.outcome === "string" ? row.outcome : null,
+        role: deriveHistoryRole(row, playerId),
+        experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,
+        game_language: typeof row.game_language === "string" ? row.game_language : "hu",
+        max_questions: Number(row.max_questions),
+        question_count: Number(row.question_count),
+        // The explicit isCompleted re-check is the second, independent gate
+        // — see PlayerHistoryEntry's own doc on why this is defense in
+        // depth rather than trusting the join alone.
+        target: isCompleted && typeof row.target === "string" ? row.target : null,
+        final_guess_text:
+          isCompleted && typeof row.final_guess_text === "string" ? row.final_guess_text : null,
+      };
+    });
     return { ok: true, games };
   } catch (err) {
     // eslint-disable-next-line no-console
