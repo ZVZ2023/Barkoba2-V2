@@ -836,6 +836,8 @@ export interface ArchivedGameTurn {
 export interface ArchivedGameRecord {
   game_id: string;
   created_at: string;
+  /** V2.8.8.3 presentation audit — drives ArchivedGameView's bilingual narrative copy and content `lang` attributes. */
+  game_language: string;
   composer_kind: string;
   racer_kind: string;
   /** Same convention as PlayerHistoryEntry: null means "recorded before V2.8.8", never "competitive". */
@@ -878,7 +880,7 @@ export async function getArchivedGameForOwner(
   try {
     const rows = await sql`
       SELECT g.corpus_game_id, g.operational_game_id, g.created_at,
-             g.composer_kind, g.racer_kind, g.experience_mode,
+             g.composer_kind, g.racer_kind, g.experience_mode, g.game_language,
              g.max_questions, g.question_count, g.ambiguous_count, g.outcome,
              g.player_id, g.composer_player_id, g.racer_player_id,
              t.target,
@@ -908,6 +910,10 @@ export async function getArchivedGameForOwner(
       game_id: String(row.operational_game_id),
       created_at:
         row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+      // NOT NULL at the schema level (migration 0001); the "hu" fallback only
+      // guards a row from a future nullable-relaxation, matching
+      // lib/gameLanguage.ts's own AUTO resolution default elsewhere.
+      game_language: typeof row.game_language === "string" ? row.game_language : "hu",
       composer_kind: String(row.composer_kind),
       racer_kind: String(row.racer_kind),
       experience_mode: typeof row.experience_mode === "string" ? row.experience_mode : null,

@@ -24,6 +24,7 @@ interface FakeGameRow {
   composer_kind: string;
   racer_kind: string;
   experience_mode: string | null;
+  game_language: string;
   max_questions: number;
   question_count: number;
   ambiguous_count: number;
@@ -65,6 +66,7 @@ function game(overrides: Partial<FakeGameRow>): FakeGameRow {
     composer_kind: "human",
     racer_kind: "ai",
     experience_mode: "friendly",
+    game_language: "hu",
     max_questions: 20,
     question_count: 5,
     ambiguous_count: 0,
@@ -288,6 +290,24 @@ test("hints (clue turns) are included in the transcript", async () => {
 // A malformed / nonexistent game_id never leaks which case it was.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// V2.8.8.3 PRESENTATION AUDIT — game_language passthrough.
+// ---------------------------------------------------------------------------
+
+test("game_language: an English game is returned as 'en', not silently defaulted to 'hu'", async () => {
+  games.push(game({ player_id: PLAYER, game_language: "en" }));
+  const result = await getArchivedGameForOwner(GAME_ID, PLAYER);
+  assert.equal(result.status, "found");
+  if (result.status === "found") assert.equal(result.record.game_language, "en");
+});
+
+test("game_language: a Hungarian game is returned as 'hu'", async () => {
+  games.push(game({ player_id: PLAYER, game_language: "hu" }));
+  const result = await getArchivedGameForOwner(GAME_ID, PLAYER);
+  assert.equal(result.status, "found");
+  if (result.status === "found") assert.equal(result.record.game_language, "hu");
+});
+
 test("a nonexistent game_id returns not_found, same as a malformed one -- neither is distinguishable", async () => {
   const result = await getArchivedGameForOwner("00000000-0000-0000-0000-000000000099", PLAYER);
   assert.equal(result.status, "not_found");
@@ -334,4 +354,78 @@ test("SOURCE: never reveal an incomplete game's secret target -- getArchivedGame
   const fnAt = src.indexOf("export async function getArchivedGameForOwner");
   const fn = src.slice(fnAt, fnAt + 2000);
   assert.match(fn, /lifecycle_state = 'completed'/);
+});
+
+// ---------------------------------------------------------------------------
+// V2.8.8.3 PRESENTATION AUDIT.
+//
+// 1. Bilingual by game/UI language; 2. no raw enum/internal-field leakage;
+// 3. every listed item uses human-readable localized copy; 4. an Integrity
+// Review finding states whether it changed the final outcome; 5. targets
+// only for completed, owner-authorized games (already covered above).
+// ---------------------------------------------------------------------------
+
+const VIEW = readFileSync("app/game/[id]/ArchivedGameView.tsx", "utf8");
+
+test("AUDIT 1: the component selects its whole copy set from record.game_language, with a complete English variant", () => {
+  assert.match(VIEW, /function copyFor\(gameLanguage: string\): ArchivedViewCopy \{/);
+  assert.match(VIEW, /const t = copyFor\(record\.game_language\);/);
+  assert.match(VIEW, /en:\s*\{/);
+  // Every key present in the Hungarian copy object must also exist in the
+  // English one -- a missing EN key would silently fall back to nothing.
+  const huKeys = [...VIEW.matchAll(/^\s{4}(\w+):/gm)]
+    .map((m) => m[1]!)
+    .filter((k, i, arr) => arr.indexOf(k) === i);
+  assert.ok(huKeys.length >= 20, "expected the full ArchivedViewCopy key set to be discoverable");
+});
+
+test("AUDIT 1: timestamps are formatted with a locale that follows game_language, not hardcoded hu-HU", () => {
+  assert.match(VIEW, /function localeFor\(gameLanguage: string\): string \{/);
+  assert.match(VIEW, /gameLanguage === "en" \? "en-US" : "hu-HU"/);
+  assert.match(VIEW, /formatWhen\(record\.created_at, record\.game_language\)/);
+});
+
+test("AUDIT 1: free-text content (target, guess, questions, answers, notes, hints) carries lang=game_language; fixed value labels (role, mode) do not need to, by explicit design", () => {
+  assert.match(VIEW, /lang=\{record\.game_language\}/);
+  // At least the four main content sites are tagged.
+  const langSites = (VIEW.match(/lang=\{record\.game_language\}/g) ?? []).length;
+  assert.ok(langSites >= 4, `expected several content sites tagged with lang, found ${langSites}`);
+});
+
+test("AUDIT 2: no raw database enum can ever reach the player -- every enum lookup falls back to a translated 'unknown' label, never the raw value", () => {
+  assert.doesNotMatch(
+    VIEW,
+    /\?\?\s*record\.\w+/,
+    "no lookup may fall back to the raw record field -- must resolve to a translated label"
+  );
+  assert.doesNotMatch(VIEW, /\?\?\s*turn\.\w+/, "no per-turn lookup may fall back to the raw field either");
+  assert.match(VIEW, /const unknown = UNKNOWN_LABEL\[lang\]!;/);
+  assert.match(VIEW, /adjudicatorSentence\[record\.adjudicator_verdict\] \?\? unknown/);
+  assert.match(VIEW, /outcomeSentence\[record\.outcome\] \?\? unknown/);
+  assert.match(VIEW, /answerLabel\[turn\.composer_response\] \?\? unknown/);
+});
+
+test("AUDIT 3: YES/NO/AMBIGUOUS have distinct, human-readable labels in both languages -- never the raw enum text alone", () => {
+  assert.match(VIEW, /YES: "IGEN", NO: "NEM", AMBIGUOUS: "IS-IS"/);
+  assert.match(VIEW, /YES: "YES", NO: "NO", AMBIGUOUS: "UNCLEAR"/);
+});
+
+test("AUDIT 3: roles and experience mode intentionally stay Hungarian, matching the app's own already-approved decision -- documented, not accidental", () => {
+  assert.match(VIEW, /role and experience-mode LABELS stay Hungarian/);
+  assert.match(VIEW, /gondolkodó voltál/);
+  assert.match(VIEW, /kérdező voltál/);
+});
+
+test("AUDIT 4: an Integrity Review finding explicitly states whether it changed the final outcome, in both languages", () => {
+  assert.match(VIEW, /integrityChangedOutcome:/);
+  assert.match(VIEW, /integrityNoChange:/);
+  assert.match(
+    VIEW,
+    /record\.integrity_verdict === "violated" \? t\.integrityChangedOutcome : t\.integrityNoChange/
+  );
+  // Hungarian and English both state the effect, not just the raw verdict word.
+  assert.match(VIEW, /megváltoztatta a végeredményt/);
+  assert.match(VIEW, /changed the final outcome/);
+  assert.match(VIEW, /nem változtatta meg a végeredményt/);
+  assert.match(VIEW, /did not change the final outcome/);
 });
