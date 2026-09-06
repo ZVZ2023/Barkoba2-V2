@@ -105,6 +105,75 @@ test("SOURCE: the completed-game link reuses /game/[id] as-is -- no new detail-v
   assert.equal(hrefOccurrences.length, 1, "exactly one link site, covering every lifecycle_state uniformly");
 });
 
+// ---------------------------------------------------------------------------
+// V2.8.8.5 — MEANINGFUL GAME-HISTORY CARDS.
+//
+// Executable proof that the SERVER never returns target/guess for anything
+// but a completed, owned game lives in test/playerHistory.test.ts
+// (completed-target visibility, incomplete-target secrecy, non-owner
+// isolation, missing historical fields, query efficiency). These are the
+// source-contract confirmations that the CLIENT renders what the server
+// sends correctly and prominently, scoped to completed cards only.
+// ---------------------------------------------------------------------------
+
+test("SOURCE: target is the completed card's most prominent identifying text -- rendered first, in the largest/boldest text on the card", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  assert.ok(completedAt > 0);
+  const block = CLIENT.slice(completedAt, completedAt + 2500);
+  const targetAt = block.indexOf("entry.target ?? c.targetNotRetained");
+  const guessAt = block.indexOf("c.guessLabel");
+  assert.ok(targetAt > 0 && (guessAt < 0 || targetAt < guessAt), "target must render before the guess line");
+  assert.match(block, /text-base font-semibold/, "target uses the card's largest, boldest text treatment");
+});
+
+test("SOURCE: the final guess renders beneath the target, only when retained -- no placeholder when absent", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  const block = CLIENT.slice(completedAt, completedAt + 1200);
+  assert.match(block, /\{entry\.final_guess_text && \(/, "the guess line is conditional on being present, never a forced placeholder");
+});
+
+test("SOURCE: questions-used/limit is displayed on the completed card", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  const block = CLIENT.slice(completedAt, completedAt + 2500);
+  assert.match(block, /entry\.question_count\} \/ \{entry\.max_questions\}/);
+});
+
+test("SOURCE: date/time is secondary metadata on the completed card -- rendered after target/guess/mode/questions/outcome, not first", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  const block = CLIENT.slice(completedAt, completedAt + 2500);
+  const targetAt = block.indexOf("entry.target ?? c.targetNotRetained");
+  const dateAt = block.indexOf("formatWhen(entry.created_at, entry.game_language)");
+  assert.ok(targetAt > 0 && dateAt > targetAt, "date must be rendered after the target, not before it");
+});
+
+test("SOURCE: role, experience mode, and final outcome are all present on the completed card, human-readable (never a raw enum)", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  const block = CLIENT.slice(completedAt, completedAt + 2500);
+  assert.match(block, /entry\.role \? ROLE_HU\[entry\.role\]/);
+  assert.match(block, /EXPERIENCE_MODE_LABEL_HU\[entry\.experience_mode\]/);
+  assert.match(block, /status\.text/, "final outcome uses the SAME translated statusOf() text as every other card, never a raw outcome enum");
+});
+
+test("SOURCE: the completed card carries an explicit, localized 'not retained' label for a missing target -- never a blank or raw null", () => {
+  assert.match(CLIENT, /targetNotRetained: "A cél nincs megőrizve ehhez a játékhoz\."/);
+  assert.match(CLIENT, /targetNotRetained: "The target was not retained for this game\."/);
+});
+
+test("SOURCE: the Megnyitás link is preserved unchanged for completed cards too -- reused, not reimplemented", () => {
+  const completedAt = CLIENT.indexOf('entry.lifecycle_state === "completed"');
+  const block = CLIENT.slice(completedAt, completedAt + 2500);
+  assert.match(block, /\{megnyitas\}/);
+});
+
+test("SOURCE: a non-completed game's card layout is completely unchanged -- the enriched fields are scoped to completed only", () => {
+  assert.doesNotMatch(CLIENT, /entry\.lifecycle_state === "in_progress" && \(\s*<>/);
+  const nonCompletedAt = CLIENT.indexOf("Every non-completed lifecycle_state keeps the ORIGINAL");
+  assert.ok(nonCompletedAt > 0);
+  const block = CLIENT.slice(nonCompletedAt, nonCompletedAt + 1500);
+  assert.doesNotMatch(block, /entry\.target/, "target must never even be READ in the non-completed branch");
+  assert.doesNotMatch(block, /entry\.final_guess_text/, "guess must never even be read in the non-completed branch");
+});
+
 test("the history link is reachable from the header's Profil menu, only when authenticated", () => {
   const authBranch = ACCOUNT_CONTROL.slice(
     ACCOUNT_CONTROL.indexOf("{authenticated ? ("),
