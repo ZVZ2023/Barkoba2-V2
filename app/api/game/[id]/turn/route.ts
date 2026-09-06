@@ -30,9 +30,10 @@ import type { ModelCallUsage, ModelProviderId, ToolCallObservation } from "@/lib
 import { detectGuess } from "@/lib/guessDetector";
 import {
   priorAskedQuestions,
-  runWithDuplicateQuestionGuard,
+  runWithDuplicateAndPolicyQuestionGuard,
   isDuplicateQuestion,
 } from "@/lib/duplicateQuestionGuard";
+import { checkQuestionPolicy } from "@/lib/questionPolicy";
 import { consumeModelCall } from "@/lib/callBudget";
 import {
   TURN_BUDGET_CONFIG,
@@ -1123,7 +1124,7 @@ export async function POST(
     // one may draw on (runOneRacerAttempt's own budget gate).
     let attemptNumber = 0;
 
-    const guardResult = await runWithDuplicateQuestionGuard<RacerAttempt, NextResponse>(
+    const guardResult = await runWithDuplicateAndPolicyQuestionGuard<RacerAttempt, NextResponse>(
       priorQuestions,
       MAX_DUPLICATE_QUESTION_ATTEMPTS,
       async () => {
@@ -1142,16 +1143,24 @@ export async function POST(
         if (!outcome.ok) return { ok: false, failure: outcome.response };
 
         // S2 / RB-2 — finalize THIS attempt's telemetry now: only here is the
-        // duplicate-guard's verdict (accepted vs duplicate_rejected) known.
-        // Recomputing it with the guard's own exported isDuplicateQuestion
-        // (not a copy) is cheap, pure, in-memory string comparison — the
-        // guard immediately below makes the SAME, authoritative check;
-        // this only decides what gets written to telemetry.
+        // guard's verdict (accepted vs duplicate_rejected vs, as of V2.8.7.4,
+        // policy_rejected — see lib/questionPolicy.ts) known. Recomputing it
+        // with the guard's own exported isDuplicateQuestion/checkQuestionPolicy
+        // (not a copy) is cheap, pure, in-memory work — the guard immediately
+        // below makes the SAME, authoritative check; this only decides what
+        // gets written to telemetry, and which of the two reasons to record
+        // when both could theoretically apply (duplicate is checked first,
+        // matching the guard's own combined predicate's evaluation order).
         const { action, question_text } = outcome.attempt.turn;
         const isDuplicate =
           action === "question" && !!question_text && isDuplicateQuestion(question_text, priorQuestions);
+        const isPolicyViolation =
+          !isDuplicate &&
+          action === "question" &&
+          !!question_text &&
+          !checkQuestionPolicy(question_text).allowed;
         await recordOperationCompleted(outcome.attempt.telemetryHandle, {
-          status: isDuplicate ? "duplicate_rejected" : "accepted",
+          status: isDuplicate ? "duplicate_rejected" : isPolicyViolation ? "policy_rejected" : "accepted",
           latencyMs: outcome.attempt.attemptLatencyMs,
           errorClass: null,
           // S2 review fix — a successful call is the first point the
@@ -1172,10 +1181,17 @@ export async function POST(
       (attempt) => attempt.turn
     );
 
+    // V2.8.7.4 — the guard now blocks TWO independent things: an exact
+    // repeat, or a question that probes the target's written/spoken name
+    // (lib/questionPolicy.ts). Reported per candidate with its own reason,
+    // not a generic "duplicate" label for both.
     for (const blockedQuestion of guardResult.blockedQuestions) {
+      const reason = isDuplicateQuestion(blockedQuestion, priorQuestions)
+        ? "exact-repeat"
+        : "no-spelling-rule violation";
       // eslint-disable-next-line no-console
       console.warn(
-        `[barkoba] duplicate-question guard: blocked exact-repeat candidate on game ` +
+        `[barkoba] question guard: blocked candidate (${reason}) on game ` +
           `${game.game_id}: "${blockedQuestion}"`
       );
     }

@@ -4516,7 +4516,7 @@ RED FLAGS — reject and regenerate if the question:
 - Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
 - Names one specific sibling while a broader grouping one level up still has multiple live alternatives
 - Is a disguised identity question — naming a candidate is a GUESS, not a question
-- Investigates spelling, letters, or name structure instead of meaning and properties
+- Investigates spelling, letters, syllables, or pronunciation instead of meaning and properties
 - Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
 
 BEFORE ANY FINAL GUESS

@@ -9,6 +9,7 @@ import {
 import { resolveActingPlayerId } from "@/lib/actingPlayer";
 import { awaitingRacer, isHumanVsHuman, requireSeat } from "@/lib/seats";
 import { pendingQuestionIndex } from "@/lib/gameView";
+import { checkQuestionPolicy, QUESTION_POLICY_REJECTION_MESSAGE } from "@/lib/questionPolicy";
 import type { ComposerAnswer, QuestionLogEntry } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
@@ -382,6 +383,22 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       }
       const question = (body.question || "").trim().slice(0, MAX_TEXT);
       if (!question) return NextResponse.json({ error: "missing_question" }, { status: 400 });
+
+      // V2.8.7.4 — DEFECT 3: the universal no-spelling rule, enforced here
+      // too (a human Racer questioning a human Composer). Rejected before
+      // the question budget is touched and before the entry is ever
+      // created — the question is neither delivered to the Composer nor
+      // consumed. See lib/questionPolicy.ts's own module doc.
+      const policyCheck = checkQuestionPolicy(question);
+      if (!policyCheck.allowed) {
+        return NextResponse.json(
+          {
+            error: "question_policy_violation",
+            message: QUESTION_POLICY_REJECTION_MESSAGE[game.game_language],
+          },
+          { status: 422 }
+        );
+      }
 
       const entry = newEntry(game.qa_log.length + 1);
       entry.question_text = question;

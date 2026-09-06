@@ -180,6 +180,12 @@ export type OperationStatus =
   | "started"
   | "accepted"
   | "duplicate_rejected"
+  /**
+   * V2.8.7.4 — DEFECT 3: the AI Racer's own candidate question probed the
+   * target's written/spoken name (lib/questionPolicy.ts) and was blocked
+   * before emission, same as duplicate_rejected but for a different reason.
+   */
+  | "policy_rejected"
   | "provider_error"
   | "self_timeout"
   /**

@@ -253,20 +253,27 @@ test("GameClient.tsx: ResultPanel.tsx's heading (rendered via the shared ResultP
 // recent turn first exactly the same way a finished game does.)
 // ---------------------------------------------------------------------------
 
-test("RacerClient.tsx / HumanClient.tsx: the newest-first render call is unconditional on completion -- it renders the SAME way during active play, on a completed game, and on a game reopened from History", () => {
-  // RacerClient: the ordering call sits inside the always-rendered
-  // transcript <section>, never behind `live` or `game.phase === "complete"`.
+test("RacerClient.tsx / HumanClient.tsx: the newest-first render call itself is unconditional -- it renders the SAME way during active play, on a completed game, and on a game reopened from History", () => {
+  // Both screens' ACTIVE AREA legitimately contains its own `{live && (...)}`
+  // ask/answer/guess blocks now (V2.8.7.4's Defect 1 fix moved them above
+  // the history) -- so the thing to prove is narrower and more precise than
+  // "no `{live &&` appears anywhere before the call": the ordering CALL
+  // ITSELF must not be the direct child of a phase-gated wrapper. Checked by
+  // looking only at the text immediately preceding each call, which is where
+  // such a wrapper would have to open.
   const racerMapAt = RACER_CLIENT.indexOf("completedHistoryForDisplay(turns).map(");
-  const racerSectionAt = RACER_CLIENT.lastIndexOf('<section className="flex flex-col gap-4">', racerMapAt);
-  assert.ok(racerSectionAt > 0 && racerMapAt > racerSectionAt);
-  const racerGuard = RACER_CLIENT.slice(racerSectionAt, racerMapAt);
-  assert.doesNotMatch(racerGuard, /\{live &&/, "the ordering itself must not be gated on `live`");
-  assert.doesNotMatch(racerGuard, /game\.phase === "complete" &&\s*$/, "must not be gated on completion either");
+  assert.ok(racerMapAt > 0);
+  const racerImmediatelyBefore = RACER_CLIENT.slice(0, racerMapAt).slice(-40);
+  assert.doesNotMatch(
+    racerImmediatelyBefore,
+    /\{(live|game\.phase === "complete") &&\s*$/,
+    "the ordering call itself must not be gated on `live` or completion"
+  );
 
   // HumanClient: the <ol> transcript is unconditional -- no `{over && (...)}`
   // or `{live && (...)}` wraps the list itself (only the surrounding action
   // panels are phase-gated).
   const olAt = HUMAN_CLIENT.indexOf('<ol className="flex flex-col gap-2">');
   assert.ok(olAt > 0);
-  assert.doesNotMatch(HUMAN_CLIENT.slice(0, olAt).slice(-40), /\{(over|live) &&/);
+  assert.doesNotMatch(HUMAN_CLIENT.slice(0, olAt).slice(-40), /\{(over|live) &&\s*$/);
 });

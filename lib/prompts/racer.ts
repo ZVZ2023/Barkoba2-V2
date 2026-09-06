@@ -250,6 +250,24 @@ export const RACER_PROMPT_VERSION = "racer/5.0.0";
  * purpose — a benchmark target exists to test whether the Racer discovers
  * the relevant dimensions on its own, not whether this text names them for
  * it.
+ *
+ * V2.8.7.4 — DEFECT 3: the RED FLAGS bullet on spelling/letters/syllables/
+ * pronunciation is this prompt's OWN, necessarily imperfect line of defense
+ * (a model can still misjudge one candidate question in isolation, and no
+ * prompt can catch an indirect multi-question paraphrase engineered to
+ * reconstruct a name without ever using these words). It is no longer the
+ * ONLY defense: app/api/game/[id]/turn/route.ts now mechanically checks
+ * every candidate against lib/questionPolicy.ts (a deterministic,
+ * pattern-based classifier covering letter position/count/contains,
+ * spelling, prefix/suffix/acronym, syllables, pronunciation, rhyme, and
+ * "name in another language") through the SAME bounded regeneration loop
+ * that already existed for exact-duplicate questions
+ * (runWithDuplicateAndPolicyQuestionGuard) — a violation is rejected and
+ * regenerated before ever reaching the Composer, at no extra question cost.
+ * This bullet's own wording was kept at its EXISTING word budget (RG #4's
+ * <=400-word ceiling — see test/racerGuidance.test.ts — was already fully
+ * spent) rather than expanded to enumerate every category the mechanical
+ * layer now covers explicitly.
  */
 export const CORE_RACER_RULES = `RACER GUIDANCE V4 — UNCERTAINTY-MANAGEMENT LOOP — APPLY EVERY TURN
 
@@ -272,7 +290,7 @@ RED FLAGS — reject and regenerate if the question:
 - Re-probes a dimension already settled by a YES or a NO — a sibling within it, an edge case, or a more precise variant of the same confirmed value
 - Names one specific sibling while a broader grouping one level up still has multiple live alternatives
 - Is a disguised identity question — naming a candidate is a GUESS, not a question
-- Investigates spelling, letters, or name structure instead of meaning and properties
+- Investigates spelling, letters, syllables, or pronunciation instead of meaning and properties
 - Targets two or three very similar remaining candidates with something generic or descriptive rather than the one property that specifically separates them
 
 BEFORE ANY FINAL GUESS

@@ -502,147 +502,15 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       )}
 
       <section className="flex flex-col gap-4">
-        {turns.length === 0 && live && (
-          <p className="text-sm text-[var(--ink-soft)]">
-            Kérdezz bármit, amire igennel vagy nemmel lehet felelni.
-          </p>
-        )}
-
         {/*
-          V2.8.7.3 — completed history renders NEWEST-first, matching
-          GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
-          completedHistoryForDisplay). `turns` itself (chronological) is
-          untouched and remains what the "last turn" edit-button check below
-          reads.
+          V2.8.7.4 — ACTIVE INTERACTION AREA, always first: the field defect
+          was that the ask/hint/guess controls rendered AFTER the entire
+          transcript, forcing the player to scroll down to submit and back up
+          to read the answer. Matches GameClient.tsx's own established
+          "ACTIVE AREA, always first" pattern (see that file). `live` is
+          false once the game is complete, so none of this renders in a
+          terminal state — no active submission controls, per spec.
         */}
-        {completedHistoryForDisplay(turns).map((entry) =>
-          entry.turn_type === "clue" ? (
-            <div
-              key={entry.id}
-              className="flex flex-col gap-1 rounded-md border border-[var(--blue)]/25 bg-[var(--blue)]/6 px-2.5 py-2"
-            >
-              <span className="whitespace-nowrap text-xs uppercase tracking-wide text-[var(--blue)]">
-                SÚGÓ
-              </span>
-              <p className="min-w-0 break-words text-sm text-[var(--blue)]">
-                {entry.clue_text}
-              </p>
-            </div>
-          ) : (
-          <div key={entry.id} className="flex flex-col gap-1.5">
-            <div className="flex min-w-0 gap-3">
-              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
-                #{numbers.get(entry.id) ?? entry.turn_index}
-              </span>
-              <p className="min-w-0 break-words text-sm text-[var(--ink)]">
-                {entry.question_text}
-              </p>
-            </div>
-            <div className="flex gap-3">
-              <span className="w-6 shrink-0 sm:w-8" />
-              <span
-                className={
-                  entry.composer_response === "YES"
-                    ? "text-xs font-medium text-[var(--green)]"
-                    : entry.composer_response === "NO"
-                      ? "text-xs font-medium text-[var(--red)]"
-                      : "text-xs font-medium text-[var(--red)]"
-                }
-              >
-                {ANSWER_HU[entry.composer_response ?? ""] ?? entry.composer_response}
-              </span>
-            </div>
-            {entry.ambiguous_explanation && (
-              <div className="flex min-w-0 gap-3">
-                <span className="w-6 shrink-0 sm:w-8" />
-                <p className="min-w-0 break-words text-xs italic text-[var(--ink-soft)]">
-                  {entry.ambiguous_explanation}
-                </p>
-              </div>
-            )}
-            {live &&
-              entry.turn_index === turns[turns.length - 1]?.turn_index &&
-              editing !== entry.turn_index && (
-                <div className="flex min-w-0 gap-3">
-                  <span className="w-6 shrink-0 sm:w-8" />
-                  <button
-                    onClick={() => {
-                      setEditing(entry.turn_index);
-                      setEditText(entry.question_text ?? "");
-                    }}
-                    disabled={busy}
-                    className="text-xs text-[var(--ink-soft)] underline underline-offset-2 disabled:opacity-40"
-                  >
-                    Elgépelés javítása
-                  </button>
-                </div>
-              )}
-
-            {editing === entry.turn_index && (
-              <div className="flex min-w-0 gap-3">
-                <span className="w-6 shrink-0 sm:w-8" />
-                <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-[var(--ink)]/25 bg-white/60 p-3">
-                  <p className="text-xs text-[var(--ink-soft)]">
-                    Elgépelés vagy automatikus javítás helyreállítása. Ugyanaz a
-                    kérdés, javított szöveggel — újra megválaszoljuk, és nem kerül
-                    újabb kérdésbe. Más kérdéshez új kérdés kell.
-                  </p>
-                  <textarea
-                    spellCheck
-                    autoCorrect="on"
-                    autoCapitalize="sentences"
-                    className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
-                    value={editText}
-                    onChange={(e) => setEditText(e.target.value)}
-                    disabled={busy}
-                  />
-                  <div className="flex flex-wrap gap-2">
-                    <button
-                      onClick={() =>
-                        void send({
-                          edit_turn_index: entry.turn_index,
-                          question: editText,
-                        })
-                      }
-                      disabled={busy || !editText.trim()}
-                      className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
-                    >
-                      Javítom
-                    </button>
-                    <button
-                      onClick={() => {
-                        setEditing(null);
-                        setEditText("");
-                      }}
-                      disabled={busy}
-                      className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
-                    >
-                      Mégsem
-                    </button>
-                  </div>
-                </div>
-              </div>
-            )}
-
-            {entry.original_question_text && entry.edit_status === "accepted" && (
-              <div className="flex min-w-0 gap-3">
-                <span className="w-6 shrink-0 sm:w-8" />
-                <p className="min-w-0 break-words text-xs text-[var(--ink-soft)]">
-                  javítva erről: &bdquo;{entry.original_question_text}&rdquo;
-                </p>
-              </div>
-            )}
-
-            {/*
-              A clue no longer rides along with an answer — 0.9.9.0 removed that
-              channel. Clues appear as their own timeline entries above.
-            */}
-          </div>
-          )
-        )}
-
-        {busy && <p className="text-sm text-[var(--ink-soft)]">Gondolkodik…</p>}
-
         {live && !guessMode && (
           <div className="flex flex-col gap-2">
             {remaining > 0 ? (
@@ -761,16 +629,196 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
             </div>
           </div>
         )}
+
+        {/*
+          V2.8.7.4 — the generic "thinking" indicator covers ask/hint/guess
+          only. A pending correction gets its OWN, more specific message
+          (see the editing panel below) — showing both at once would be
+          redundant and, worse, would not tell the player WHICH action is
+          in flight.
+        */}
+        {busy && editing === null && <p className="text-sm text-[var(--ink-soft)]">Gondolkodik…</p>}
+
+        {/*
+          V2.8.7.4 — DEFECT 2 field report: an ask/edit failure used to
+          render in a banner after the entire (already newest-first)
+          transcript, which could be a long scroll away. Moved into the
+          active area so a rejection or network failure is immediately
+          visible next to the control that produced it. Gated on `live`:
+          once the game has moved past questioning, a leftover ask/edit
+          error is no longer actionable (the terminal-result / resolving
+          overlay above already shows what happened instead).
+        */}
+        {live && error && (
+          <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
+            <p className="text-sm text-[var(--red)]">{error}</p>
+          </div>
+        )}
+
+        {turns.length === 0 && live && (
+          <p className="text-sm text-[var(--ink-soft)]">
+            Kérdezz bármit, amire igennel vagy nemmel lehet felelni.
+          </p>
+        )}
+
+        {/*
+          V2.8.7.3 — completed history renders NEWEST-first, matching
+          GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
+          completedHistoryForDisplay). `turns` itself (chronological) is
+          untouched and remains what the "last turn" edit-button check below
+          reads.
+        */}
+        {completedHistoryForDisplay(turns).map((entry) =>
+          entry.turn_type === "clue" ? (
+            <div
+              key={entry.id}
+              className="flex flex-col gap-1 rounded-md border border-[var(--blue)]/25 bg-[var(--blue)]/6 px-2.5 py-2"
+            >
+              <span className="whitespace-nowrap text-xs uppercase tracking-wide text-[var(--blue)]">
+                SÚGÓ
+              </span>
+              <p className="min-w-0 break-words text-sm text-[var(--blue)]">
+                {entry.clue_text}
+              </p>
+            </div>
+          ) : (
+          <div key={entry.id} className="flex flex-col gap-1.5">
+            <div className="flex min-w-0 gap-3">
+              <span className="w-6 shrink-0 pt-0.5 text-xs text-[var(--ink-soft)] sm:w-8">
+                #{numbers.get(entry.id) ?? entry.turn_index}
+              </span>
+              <p className="min-w-0 break-words text-sm text-[var(--ink)]">
+                {entry.question_text}
+              </p>
+            </div>
+            <div className="flex gap-3">
+              <span className="w-6 shrink-0 sm:w-8" />
+              <span
+                className={
+                  entry.composer_response === "YES"
+                    ? "text-xs font-medium text-[var(--green)]"
+                    : entry.composer_response === "NO"
+                      ? "text-xs font-medium text-[var(--red)]"
+                      : "text-xs font-medium text-[var(--red)]"
+                }
+              >
+                {ANSWER_HU[entry.composer_response ?? ""] ?? entry.composer_response}
+              </span>
+            </div>
+            {entry.ambiguous_explanation && (
+              <div className="flex min-w-0 gap-3">
+                <span className="w-6 shrink-0 sm:w-8" />
+                <p className="min-w-0 break-words text-xs italic text-[var(--ink-soft)]">
+                  {entry.ambiguous_explanation}
+                </p>
+              </div>
+            )}
+            {live &&
+              entry.turn_index === turns[turns.length - 1]?.turn_index &&
+              editing !== entry.turn_index && (
+                <div className="flex min-w-0 gap-3">
+                  <span className="w-6 shrink-0 sm:w-8" />
+                  <button
+                    onClick={() => {
+                      setEditing(entry.turn_index);
+                      setEditText(entry.question_text ?? "");
+                    }}
+                    disabled={busy}
+                    className="text-xs text-[var(--ink-soft)] underline underline-offset-2 disabled:opacity-40"
+                  >
+                    Elgépelés javítása
+                  </button>
+                </div>
+              )}
+
+            {editing === entry.turn_index && (
+              <div className="flex min-w-0 gap-3">
+                <span className="w-6 shrink-0 sm:w-8" />
+                <div className="flex min-w-0 flex-1 flex-col gap-2 rounded-md border border-[var(--ink)]/25 bg-white/60 p-3">
+                  <p className="text-xs text-[var(--ink-soft)]">
+                    Elgépelés vagy automatikus javítás helyreállítása. Ugyanaz a
+                    kérdés, javított szöveggel — újra megválaszoljuk, és nem kerül
+                    újabb kérdésbe. Más kérdéshez új kérdés kell.
+                  </p>
+                  <textarea
+                    spellCheck
+                    autoCorrect="on"
+                    autoCapitalize="sentences"
+                    className="h-20 w-full min-w-0 resize-none rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
+                    value={editText}
+                    onChange={(e) => setEditText(e.target.value)}
+                    disabled={busy}
+                  />
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      onClick={() =>
+                        void send({
+                          edit_turn_index: entry.turn_index,
+                          question: editText,
+                        })
+                      }
+                      disabled={busy || !editText.trim()}
+                      className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+                    >
+                      Javítom
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditing(null);
+                        setEditText("");
+                      }}
+                      disabled={busy}
+                      className="min-h-11 rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm text-[var(--ink)]"
+                    >
+                      Mégsem
+                    </button>
+                  </div>
+                  {/*
+                    V2.8.7.4 — DEFECT 2 field report: pressing "Javítom" gave
+                    NO visible feedback for up to ~30-60s (this path runs two
+                    sequential model calls — see app/api/game/[id]/ask/
+                    route.ts's EDIT_TOTAL_PROVIDER_BUDGET_MS), so a player who
+                    saw nothing happen pressed it again. The second tap was
+                    already harmless (both "Javítom" and "Mégsem" are
+                    `disabled={busy}`, and send()'s own actionInFlightRef
+                    guard rejects a concurrent call before it ever reaches the
+                    network — see send()'s own doc) — the actual defect was
+                    that NEITHER tap produced anything for the player to see.
+                    This message is that missing feedback, specific to the
+                    correction (the generic "Gondolkodik…" indicator is
+                    suppressed while editing !== null for exactly this
+                    reason — see its own comment above).
+                  */}
+                  {busy && (
+                    <p className="text-xs text-[var(--ink-soft)]">
+                      Ellenőrzés és újraválaszolás folyamatban… Ez akár fél percig is eltarthat.
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {entry.original_question_text && entry.edit_status === "accepted" && (
+              <div className="flex min-w-0 gap-3">
+                <span className="w-6 shrink-0 sm:w-8" />
+                <p className="min-w-0 break-words text-xs text-[var(--ink-soft)]">
+                  javítva erről: &bdquo;{entry.original_question_text}&rdquo;
+                </p>
+              </div>
+            )}
+
+            {/*
+              A clue no longer rides along with an answer — 0.9.9.0 removed that
+              channel. Clues appear as their own timeline entries above.
+            */}
+          </div>
+          )
+        )}
+
       </section>
 
       {game.phase === "resolving" && (
         <EvaluationState error={error} busy={busy} onRetry={() => void resolveGame()} />
-      )}
-
-      {error && (
-        <div className="rounded-md border border-[var(--red)]/35 bg-[var(--red)]/8 p-3">
-          <p className="text-sm text-[var(--red)]">{error}</p>
-        </div>
       )}
 
       <div className="mt-2 flex flex-wrap items-center justify-between gap-3">

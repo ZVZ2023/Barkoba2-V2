@@ -370,40 +370,14 @@ export default function HumanClient({
       )}
 
       {/*
-        V2.8.7.3 — completed history renders NEWEST-first, matching
-        GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
-        completedHistoryForDisplay). The canonical, server-projected
-        view.turns stays chronological; only this render call reverses it.
+        V2.8.7.4 — ACTIVE INTERACTION AREA, always first: the same field
+        defect Defect 1 fixes for RacerClient.tsx applied here too (this
+        screen's answer/hint/ask/guess controls, and the error line, used to
+        render AFTER the whole <ol> transcript). Matches GameClient.tsx's own
+        established "ACTIVE AREA, always first" pattern. `live` is false
+        once the game is complete, so none of this renders in a terminal
+        state — no active submission controls, per spec.
       */}
-      <ol className="flex flex-col gap-2">
-        {completedHistoryForDisplay(view.turns).map((t) => (
-          <li key={t.turn_index} className="rounded-md border border-neutral-900/10 bg-white/60 p-3">
-            <div className="text-xs text-neutral-500">#{t.turn_index}</div>
-            {t.question_text && <div className="text-[15px]">{t.question_text}</div>}
-            {t.turn_type === "guess" && (
-              <div className="text-[15px]">Tipp: <strong>{t.guess_text}</strong></div>
-            )}
-            {t.turn_type === "concede" && <div className="text-[15px]">Feladta.</div>}
-            {/* A voluntary hint from the gondolkodó. Marked so it cannot be
-                misread as an answer to the question above it. */}
-            {t.turn_type === "clue" && t.clue_text && (
-              <div className="rounded-md bg-[#1e3a24]/8 px-2 py-1 text-[15px]">
-                <span className="text-xs uppercase tracking-wide text-neutral-600">Súgás</span>
-                <div>{t.clue_text}</div>
-              </div>
-            )}
-            {t.composer_response && (
-              <div className="mt-1 text-sm font-semibold text-[#1e3a24]">
-                {t.composer_response === "YES" ? "IGEN" : t.composer_response === "NO" ? "NEM" : "BIZONYTALAN"}
-              </div>
-            )}
-            {t.ambiguous_explanation && (
-              <div className="text-sm text-neutral-700">{t.ambiguous_explanation}</div>
-            )}
-          </li>
-        ))}
-      </ol>
-
       {error && <p className="text-sm text-[#8b2f2f]">{error}</p>}
 
       {/* Composer's controls: answer the outstanding question. */}
@@ -604,6 +578,43 @@ export default function HumanClient({
       {view.phase === "resolving" && (
         <p className="text-sm text-neutral-700">Értékelés folyamatban…</p>
       )}
+
+      {/*
+        V2.8.7.3 — completed history renders NEWEST-first, matching
+        GameClient.tsx's own established pattern (lib/gameHistoryOrder.ts's
+        completedHistoryForDisplay). The canonical, server-projected
+        view.turns stays chronological; only this render call reverses it.
+        V2.8.7.4 — moved to render AFTER the active interaction area above,
+        not before it (see that area's own comment).
+      */}
+      <ol className="flex flex-col gap-2">
+        {completedHistoryForDisplay(view.turns).map((t) => (
+          <li key={t.turn_index} className="rounded-md border border-neutral-900/10 bg-white/60 p-3">
+            <div className="text-xs text-neutral-500">#{t.turn_index}</div>
+            {t.question_text && <div className="text-[15px]">{t.question_text}</div>}
+            {t.turn_type === "guess" && (
+              <div className="text-[15px]">Tipp: <strong>{t.guess_text}</strong></div>
+            )}
+            {t.turn_type === "concede" && <div className="text-[15px]">Feladta.</div>}
+            {/* A voluntary hint from the gondolkodó. Marked so it cannot be
+                misread as an answer to the question above it. */}
+            {t.turn_type === "clue" && t.clue_text && (
+              <div className="rounded-md bg-[#1e3a24]/8 px-2 py-1 text-[15px]">
+                <span className="text-xs uppercase tracking-wide text-neutral-600">Súgás</span>
+                <div>{t.clue_text}</div>
+              </div>
+            )}
+            {t.composer_response && (
+              <div className="mt-1 text-sm font-semibold text-[#1e3a24]">
+                {t.composer_response === "YES" ? "IGEN" : t.composer_response === "NO" ? "NEM" : "BIZONYTALAN"}
+              </div>
+            )}
+            {t.ambiguous_explanation && (
+              <div className="text-sm text-neutral-700">{t.ambiguous_explanation}</div>
+            )}
+          </li>
+        ))}
+      </ol>
 
       <a href="/" className="min-h-11 text-sm text-neutral-600 underline underline-offset-2">
         ← Vissza a Barkóba főoldalra
