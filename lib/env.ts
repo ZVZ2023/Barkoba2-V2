@@ -311,12 +311,25 @@ export const env = {
    * BENCHMARK_INGRESS_SECRET already take for their own rare, unrelated
    * authorities. Unset means no admin access to anything gated on this,
    * for anyone — it must never fall open.
+   *
+   * V2.9.2.2 — each id is stripped of surrounding quotes (in addition to
+   * whitespace), the SAME hygiene booleanFlag() above already applies for
+   * exactly the same reason: a value typed or pasted into a hosting
+   * dashboard's env-var field routinely carries a stray leading/trailing
+   * quote (e.g. copied out of a JSON response's `"player_id":"…"` field, or
+   * out of habit from quoting shell exports) that `.trim()` alone does not
+   * remove. Left unstripped, a quoted id silently never matches the exact
+   * unquoted player_id read back from the session — access denied, with no
+   * error anywhere, which is indistinguishable from the id simply being
+   * wrong. This never loosens the allowlist: it only recognizes an id that
+   * was always intended to be exact-matched, once dashboard-typical
+   * quoting is removed.
    */
   adminPlayerIds: (): ReadonlySet<string> =>
     new Set(
       (process.env.ADMIN_PLAYER_IDS || "")
         .split(",")
-        .map((id) => id.trim())
+        .map((id) => id.trim().replace(/^["']|["']$/g, "").trim())
         .filter(Boolean)
     ),
 
