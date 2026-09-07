@@ -962,6 +962,7 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           finalGuessText={game.final_guess_text}
           finalAction={game.final_action}
           experienceMode={game.experience_mode}
+          racerKind={game.racer_kind}
         />
       )}
 
