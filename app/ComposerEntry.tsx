@@ -16,6 +16,54 @@ import {
 } from "@/lib/experienceMode";
 import type { Difficulty, ExperienceMode } from "@/lib/types";
 
+// ---------------------------------------------------------------------------
+// V2.8.8.7 — COST-SAFE AI ENGINE SELECTION.
+//
+// A plain string union duplicated locally rather than imported from
+// lib/racerEngineTier.ts — same reasoning HistoryClient.tsx's own doc gives
+// for duplicating its HistoryEntry shape: a client component should not
+// depend on a server module's exact export surface for two string literals.
+// The server (app/api/game/create/route.ts) is the sole authority on what
+// these values mean and do; this is presentation only.
+//
+// LABEL LANGUAGE, PER ENGINE. The standard tier's label is bilingual
+// ("Érvelő AI" / "Reasoning AI") per the approved product decision. The
+// premium tier's Hungarian label ("Emberi szintű AI") is the one APPROVED
+// public name and is used as-is regardless of gameLanguage — the same
+// "label stays fixed, narrative copy follows gameLanguage" split
+// app/game/[id]/ArchivedGameView.tsx already established for role/
+// experience-mode labels vs. narrative sentences. The premium PRICE and
+// disclaimer text, being a fact about money, still follows gameLanguage.
+// ---------------------------------------------------------------------------
+type EngineTier = "standard" | "premium";
+
+interface EnginePriceCopy {
+  price: string;
+  disclaimer: string;
+  ineligible: string;
+}
+
+const PREMIUM_PRICE_COPY: Record<"hu" | "en", EnginePriceCopy> = {
+  hu: {
+    price: "2 gombóc — jelenleg kb. 4,20 USD / játék",
+    disclaimer:
+      "A hozzávetőleges USD-árfolyam és az ár a vezető csúcskategóriás modellek " +
+      "szolgáltatási költségeinek változásával módosulhat.",
+    ineligible:
+      "Az „Emberi szintű AI” csak megvásárolt VERSENY-egyenlegből indítható — " +
+      "az ingyenes próbajáték és a regisztrációs jóváírás nem elég hozzá.",
+  },
+  en: {
+    price: "2 scoops — currently about USD 4.20 per game",
+    disclaimer:
+      "The approximate USD equivalent and price may change as exchange rates " +
+      "and leading frontier-model service costs change.",
+    ineligible:
+      "“Emberi szintű AI” can only be funded from a purchased VERSENY balance " +
+      "— the free trial game and registration credit are not enough.",
+  },
+};
+
 // V2.8.8 — this screen never had an assistance ("Segítség") selector at
 // all (clue_mode was always null here — see the V2.8.8 report's own
 // finding that this left the AI Racer's clue-request path structurally
@@ -81,6 +129,9 @@ export default function ComposerEntry({
   // V2.8.8 — visibly defaults to Friendly, never Competitive (decision #3).
   const [experienceMode, setExperienceMode] = useState<ExperienceMode>(DEFAULT_EXPERIENCE_MODE);
   const [budgetOverride, setBudgetOverride] = useState<number | null>(null);
+  // V2.8.8.7 — preselected to "standard", the only tier that existed before
+  // this feature and the one whose credit charge is unchanged.
+  const [engineTier, setEngineTier] = useState<EngineTier>("standard");
   // V2.5 — the language of PLAY, not of this screen. "auto" lets Barkóba read
   // it from how the target was written; the explicit options exist because a
   // one-word target (Grok, Apple, Tesla) reveals nothing about which language
@@ -88,6 +139,11 @@ export default function ComposerEntry({
   const [gameLanguage, setGameLanguage] = useState<"auto" | "hu" | "en">("auto");
   // V2.4 - refusal for lack of Play Credits must lead somewhere.
   const [noCredit, setNoCredit] = useState(false);
+  // V2.8.8.7 — distinct from noCredit: a player can have an ordinary,
+  // perfectly spendable balance and still be refused premium specifically,
+  // because that balance is not purchased. Conflating the two would show a
+  // "your balance is exhausted" message that is simply false.
+  const [premiumIneligible, setPremiumIneligible] = useState(false);
   const entitlement = useEntitlement();
   const [view, setView] = useState<ViewState>({ step: "entry" });
   // Asked once, before setup. Resolved locally after the answer so the form
@@ -96,6 +152,7 @@ export default function ComposerEntry({
 
   async function submit(force = false) {
     setNoCredit(false);
+    setPremiumIneligible(false);
     setView({ step: "submitting" });
     try {
       const res = await fetch("/api/game/create", {
@@ -121,6 +178,10 @@ export default function ComposerEntry({
           // "auto" is sent as-is; the server treats anything that is not "hu"
           // or "en" as a request to decide, so it never becomes game state.
           game_language: gameLanguage,
+          // V2.8.8.7 — a stable internal tier id, never a provider or model
+          // name (see lib/racerEngineTier.ts). The server re-validates and
+          // re-prices this; this only proposes.
+          engine_tier: engineTier,
           // Set once the player has seen the warning and chosen to continue.
           force,
         }),
@@ -134,6 +195,7 @@ export default function ComposerEntry({
       }
       if (!res.ok && data.error && data.error !== "validator_unavailable") {
         if (data.error === "no_play_credit") setNoCredit(true);
+        if (data.error === "premium_engine_insufficient_credit") setPremiumIneligible(true);
         setView({ step: "error", message: data.message || "Valami hiba történt." });
         return;
       }
@@ -267,6 +329,56 @@ export default function ComposerEntry({
             </p>
           </div>
 
+          {/*
+            V2.8.8.7 — the engine picker. Mobile-first: two full-width
+            stacked buttons, "Alapértelmezett" preselected. The provider and
+            model behind each are never named here — see PREMIUM_PRICE_COPY's
+            own doc on why the labels stay Hungarian while the price/legal
+            copy follows the game's language.
+          */}
+          {(() => {
+            const priceCopy = gameLanguage === "en" ? PREMIUM_PRICE_COPY.en : PREMIUM_PRICE_COPY.hu;
+            const premium = entitlement.view?.premium_engine;
+            const premiumEligible = premium?.eligible === true;
+            return (
+              <div className="flex flex-col gap-2">
+                <span className="text-sm font-medium text-[var(--ink)]">Ellenfél</span>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setEngineTier("standard")}
+                    className={`min-h-11 rounded-md border px-3 py-2.5 text-left text-sm font-medium ${
+                      engineTier === "standard"
+                        ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+                        : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
+                    }`}
+                  >
+                    {gameLanguage === "en" ? "Reasoning AI" : "Érvelő AI"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setEngineTier("premium")}
+                    className={`min-h-11 rounded-md border px-3 py-2.5 text-left text-sm font-medium ${
+                      engineTier === "premium"
+                        ? "border-[var(--green)] bg-[var(--green)] text-[var(--parchment)]"
+                        : "border-[var(--ink)]/15 bg-white/70 text-[var(--ink)]"
+                    }`}
+                  >
+                    Emberi szintű AI
+                  </button>
+                </div>
+                <p className="text-xs text-[var(--ink-soft)]">{priceCopy.price}</p>
+                <p className="text-xs text-[var(--ink-soft)]">{priceCopy.disclaimer}</p>
+                {engineTier === "premium" && !premiumEligible && (
+                  <div className="flex flex-col gap-2 rounded-md border border-[var(--red)]/30 bg-[var(--red)]/6 p-3">
+                    <p className="text-xs text-[var(--red)]">{priceCopy.ineligible}</p>
+                    <CreditGateway />
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
           {/* V2.3 — shared with the two-player setup screen: one rule for
               difficulty, recommendation and override. See BudgetPicker. */}
           <BudgetPicker
@@ -282,7 +394,12 @@ export default function ComposerEntry({
 
           <button
             onClick={() => void submit()}
-            disabled={!target}
+            // V2.8.8.7 — a courtesy only: the server enforces premium
+            // eligibility authoritatively regardless of this. Disabling here
+            // just avoids sending a request that would visibly refuse.
+            disabled={
+              !target || (engineTier === "premium" && entitlement.view?.premium_engine?.eligible !== true)
+            }
             className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
           >
             Célpont rögzítése
@@ -341,6 +458,7 @@ export default function ComposerEntry({
           {noCredit && entitlement.view?.play_state === "exhausted" && (
             <CreditGateway />
           )}
+          {premiumIneligible && <CreditGateway />}
           <button
             onClick={() => setView({ step: "entry" })}
             className="min-h-11 self-start rounded-md border border-[var(--ink)]/25 px-4 py-2.5 text-sm"

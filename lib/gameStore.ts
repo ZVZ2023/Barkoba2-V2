@@ -56,6 +56,8 @@ export async function createGame(
     racer_kind: "ai",
     // V2.5-B3 — null means Anthropic, which is what every game before B3 was.
     racer_provider: null,
+    // V2.8.8.7 — null means "standard", the only tier that existed before.
+    racer_engine_tier: null,
     difficulty: null,
     clue_mode: null,
     experience_mode: null,
@@ -155,6 +157,9 @@ export async function getGame(gameId: string): Promise<GameRecord | null> {
   // V2.5-B3. Games created before B3 live for up to GAME_TTL_SECONDS and were
   // all played by Anthropic, so null is the only correct backfill.
   if (record.racer_provider === undefined) record.racer_provider = null;
+  // V2.8.8.7. Games created before this feature had no tier concept at all,
+  // so null ("standard") is the only correct backfill.
+  if (record.racer_engine_tier === undefined) record.racer_engine_tier = null;
   // V2.5 per-turn provenance. Same TTL window, same reasoning — and note this
   // repairs the SHAPE only. A turn played before 2.5.0.0 had no provenance
   // observed, so it stays null forever. Filling it in from today's config

@@ -2,6 +2,7 @@ import { getSql, isCorpusConfigured, type SqlClient } from "./corpus/db";
 import { env } from "./env";
 import { getPlayerAccount } from "./playerAccounts";
 import { playCreditCostForBudget } from "./questionBudget";
+import { creditsForPackage } from "./playCreditPackages";
 
 // ---------------------------------------------------------------------------
 // V2.4 — PLAY CREDIT. The only module permitted to read or write accounts.*,
@@ -52,6 +53,75 @@ export interface EntitlementStatus {
    * played guest "your first game awaits" — see resolvePlayState's callers.
    */
   anonymous_complimentary_granted: boolean;
+  /**
+   * V2.8.8.7 — total ever consumed specifically by the premium ("Emberi
+   * szintű AI") engine, tagged via PREMIUM_CONSUMPTION_NOTE. Never negative,
+   * a positive count of Play Credits already spent on that tier. Exists so
+   * purchasedEligibleBalance() can tell how much of a player's total ever
+   * purchased has already gone to premium play.
+   */
+  premium_consumed: number;
+}
+
+// ---------------------------------------------------------------------------
+// V2.8.8.7 — THE PREMIUM ("Emberi szintű AI") ENGINE'S ENTITLEMENT.
+//
+// PRICE, REUSED NOT INVENTED. "Two Digital Ice Cream scoops per game" is
+// exactly what creditsForPackage("dics_scoop", 2) already says two scoops
+// are worth — the same reward table a real purchase of two scoops would
+// grant. There is no second, independently-chosen number to keep in sync.
+//
+// ONLY PURCHASED VALUE MAY FUND THIS TIER. accounts.entitlement_ledger
+// already distinguishes 'purchase' from 'complimentary_grant' by `kind`
+// (migration 0004) — that provenance is real, not merely a label — but
+// ordinary consumption (consumeForGame) draws down the fungible SUM(amount)
+// balance without recording which pool it drew from, so "purchased minus
+// already spent" cannot be read directly off the ledger. The smallest safe
+// fix, requiring NO migration: premium consumption rows are tagged with
+// PREMIUM_CONSUMPTION_NOTE (the existing, unconstrained `note` column), and
+// purchasedEligibleBalance() below derives a CONSERVATIVE bound from that:
+//
+//   min(current total balance, total ever purchased - total ever spent on premium)
+//
+// Both halves of that MIN matter and neither is sufficient alone:
+//   - "total purchased - premium spent" alone could exceed the player's
+//     actual current balance (double-spending value an ORDINARY game
+//     already consumed from the same fungible pool).
+//   - "current balance" alone would let complimentary/promotional value
+//     fund a tier only purchases may fund.
+// The MIN of both can never overstate what is both REAL (currently held)
+// and PURCHASED (never complimentary), without needing per-credit FIFO
+// tracking or a schema change.
+// ---------------------------------------------------------------------------
+
+/** The ledger `note` tagging a premium-engine consumption row, distinct from
+ * an ordinary game's 'game_start' — see the block comment above. */
+const PREMIUM_CONSUMPTION_NOTE = "premium_engine_start";
+
+/**
+ * The premium engine's fixed Play Credit price: exactly two Digital Ice
+ * Cream scoops' worth, per the existing dics_scoop reward table. Asserted
+ * non-null at module load — a change to that table that stopped covering
+ * quantity 2 would be a shipping-blocking regression, not a runtime fallback.
+ */
+export const PREMIUM_ENGINE_PLAY_CREDIT_COST: number = (() => {
+  const cost = creditsForPackage("dics_scoop", 2);
+  if (cost === null) {
+    throw new Error(
+      "entitlements: dics_scoop has no defined price for quantity 2 — " +
+        "the premium engine's price is undefined."
+    );
+  }
+  return cost;
+})();
+
+/**
+ * A conservative bound on how much of this player's CURRENT balance could
+ * possibly be attributed to a real purchase — see the block comment above
+ * for why the MIN of both bounds is required. Never negative.
+ */
+export function purchasedEligibleBalance(status: EntitlementStatus): number {
+  return Math.max(0, Math.min(status.balance, status.purchased - status.premium_consumed));
 }
 
 export type PlayState =
@@ -271,7 +341,11 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
         BOOL_OR(grant_key = 'anonymous_first_game')
           FILTER (WHERE kind = 'complimentary_grant'),
         false
-      )                                                                          AS anonymous_complimentary_granted
+      )                                                                          AS anonymous_complimentary_granted,
+      COALESCE(
+        -SUM(amount) FILTER (WHERE kind = 'consumption' AND note = ${PREMIUM_CONSUMPTION_NOTE}),
+        0
+      )                                                                          AS premium_consumed
     FROM accounts.entitlement_ledger
     WHERE player_id = ${playerId}
   `;
@@ -284,6 +358,7 @@ export async function getStatus(playerId: string): Promise<EntitlementStatus> {
     expired: Number(r.expired ?? 0),
     initial_complimentary_granted: r.initial_complimentary_granted === true,
     anonymous_complimentary_granted: r.anonymous_complimentary_granted === true,
+    premium_consumed: Number(r.premium_consumed ?? 0),
   };
 }
 
@@ -607,6 +682,123 @@ export async function canStartGame(
     return options.allowGuestFallback
       ? { ok: true, reason: "guest_fallback" }
       : { ok: false, reason: "unavailable" };
+  }
+}
+
+/**
+ * Read-only pre-check for the premium engine, mirroring canStartGame's own
+ * role (avoid spending a Validator call on a player who cannot afford this
+ * tier) but against the STRICTER purchased-only test.
+ *
+ * NO GUEST FALLBACK, EVER — unlike canStartGame/consumeForGame, this never
+ * accepts options.allowGuestFallback. A newcomer's anonymous free game and an
+ * outage-triggered guest fallback are exactly the unlocks this tier must
+ * never grant; both fail closed here unconditionally.
+ */
+export async function canFundPremiumEngine(playerId: string | null): Promise<ConsumeOutcome> {
+  if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
+  if (!playerId) return { ok: false, reason: "no_player" };
+
+  // Same exemption as every other entitlement check, reused rather than
+  // reinvented: an authorized developer/admin identity selects either engine
+  // with no internal charge. See lib/entitlements.ts's own V2.6 doc above.
+  if (await hasUnlimitedPlay(playerId)) return { ok: true, reason: "unlimited" };
+
+  try {
+    const status = await getStatus(playerId);
+    return purchasedEligibleBalance(status) >= PREMIUM_ENGINE_PLAY_CREDIT_COST
+      ? { ok: true, reason: "consumed" }
+      : { ok: false, reason: "insufficient_balance" };
+  } catch (err) {
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] premium entitlement pre-check failed for ${playerId}:`, err);
+    return { ok: false, reason: "unavailable" };
+  }
+}
+
+/**
+ * Charge one premium-engine game. Mirrors consumeForGame's atomicity,
+ * idempotency and advisory-lock guarantees exactly — see that function's own
+ * doc for why each piece is necessary — reusing the SAME
+ * accounts.entitlement_ledger table and the SAME
+ * entitlement_one_consumption_per_game unique index (kind='consumption',
+ * operational_game_id), so a retried creation still collides with its own
+ * earlier charge rather than paying twice. The only differences are:
+ *
+ *   - the cost is the FIXED PREMIUM_ENGINE_PLAY_CREDIT_COST, never derived
+ *     from a question budget;
+ *   - the atomic INSERT's guard adds a SECOND condition, that
+ *     purchased - already-spent-on-premium is ALSO at least the cost, so a
+ *     complimentary-only balance can satisfy the first (plain balance)
+ *     condition and still be correctly refused by the second;
+ *   - the written row is tagged PREMIUM_CONSUMPTION_NOTE, not 'game_start',
+ *     so future purchased-eligible-balance reads can see it;
+ *   - NO allowGuestFallback path exists, anywhere, ever — see
+ *     canFundPremiumEngine's own doc on why.
+ */
+export async function consumeForPremiumEngine(
+  playerId: string | null,
+  operationalGameId: string
+): Promise<ConsumeOutcome> {
+  if (!isEntitlementEnabled()) return { ok: true, reason: "disabled" };
+  if (!playerId) return { ok: false, reason: "no_player" };
+
+  if (await hasUnlimitedPlay(playerId)) return { ok: true, reason: "unlimited" };
+
+  const cost = PREMIUM_ENGINE_PLAY_CREDIT_COST;
+
+  try {
+    const sql = requireSql();
+
+    const existing = await sql`
+      SELECT entry_id FROM accounts.entitlement_ledger
+       WHERE kind = 'consumption' AND operational_game_id = ${operationalGameId}::uuid
+       LIMIT 1
+    `;
+    if (existing.length > 0) return { ok: true, reason: "already_consumed" };
+
+    // Same advisory-lock reasoning as consumeForGame: the check-and-write
+    // must be serialised per player, or two concurrent charges could each
+    // observe a sufficient balance before either commits.
+    const results = await sql.transaction([
+      sql`SELECT pg_advisory_xact_lock(4242, hashtext(${playerId}))`,
+      sql`
+        INSERT INTO accounts.entitlement_ledger
+          (player_id, kind, amount, operational_game_id, note)
+        SELECT ${playerId}, 'consumption', ${-cost}, ${operationalGameId}::uuid, ${PREMIUM_CONSUMPTION_NOTE}
+        WHERE (
+          SELECT COALESCE(SUM(amount), 0)
+            FROM accounts.entitlement_ledger
+           WHERE player_id = ${playerId}
+        ) >= ${cost}
+        AND (
+          SELECT COALESCE(SUM(amount) FILTER (WHERE kind = 'purchase'), 0)
+               - COALESCE(-SUM(amount) FILTER (WHERE kind = 'consumption' AND note = ${PREMIUM_CONSUMPTION_NOTE}), 0)
+            FROM accounts.entitlement_ledger
+           WHERE player_id = ${playerId}
+        ) >= ${cost}
+        ON CONFLICT (operational_game_id) WHERE kind = 'consumption' DO NOTHING
+        RETURNING entry_id
+      `,
+    ]);
+
+    const inserted = results[1] ?? [];
+    if (inserted.length > 0) return { ok: true, reason: "consumed" };
+
+    const raced = await sql`
+      SELECT entry_id FROM accounts.entitlement_ledger
+       WHERE kind = 'consumption' AND operational_game_id = ${operationalGameId}::uuid
+       LIMIT 1
+    `;
+    if (raced.length > 0) return { ok: true, reason: "already_consumed" };
+
+    return { ok: false, reason: "insufficient_balance" };
+  } catch (err) {
+    // Fails closed, unconditionally — no allowGuestFallback branch exists
+    // here at all, unlike consumeForGame.
+    // eslint-disable-next-line no-console
+    console.error(`[barkoba] premium entitlement charge failed for ${playerId}:`, err);
+    return { ok: false, reason: "unavailable" };
   }
 }
 

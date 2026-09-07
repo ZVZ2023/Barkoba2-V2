@@ -442,6 +442,17 @@ test("the xAI adapter is quarantined from the secret store", () => {
   assert.doesNotMatch(src, /revealed_target|private_clarification/);
 });
 
+test("V2.8.8.7 CORRECTION — the STANDARD (\"Érvelő AI\") tier is pinned to xai, server-side, declared once", () => {
+  // Restores the pre-V2.8.7 configuration for the standard tier after an
+  // interim period (V2.8.7–V2.8.8.6) where PUBLIC_RACER_PROVIDER held
+  // "openai" — see test/openaiProvider.test.ts's own superseded-assumption
+  // test for the other half of this reassignment.
+  const create = readFileSync("app/api/game/create/route.ts", "utf8");
+  const matches = create.match(/const PUBLIC_RACER_PROVIDER: ModelProviderId = "([^"]+)";/g) ?? [];
+  assert.equal(matches.length, 1);
+  assert.match(matches[0]!, /"xai"/);
+});
+
 test("the key is server-side only and never reaches a client bundle", () => {
   assert.doesNotMatch(readFileSync("lib/env.ts", "utf8"), /NEXT_PUBLIC_XAI/);
   assert.doesNotMatch(readFileSync("app/ComposerEntry.tsx", "utf8"), /XAI_API_KEY/);

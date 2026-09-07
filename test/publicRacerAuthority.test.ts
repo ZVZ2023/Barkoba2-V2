@@ -17,10 +17,16 @@ const CREATE_ROUTE = readFileSync("app/api/game/create/route.ts", "utf8");
 const COMPOSER_ENTRY = readFileSync("app/ComposerEntry.tsx", "utf8");
 const RACER_SETUP = readFileSync("app/RacerSetup.tsx", "utf8");
 
-test("PUBLIC_RACER_PROVIDER is openai (V2.8.7: GPT-6 Astra), declared once", () => {
+test("PUBLIC_RACER_PROVIDER is xai (V2.8.8.7 CORRECTION: restores the pre-V2.8.7 Grok configuration for the standard tier), declared once", () => {
+  // V2.8.7 through V2.8.8.6 held "openai" here. V2.8.8.7 introduced a
+  // premium tier and reassigned roles: PREMIUM_RACER_PROVIDER
+  // (lib/racerEngineTier.ts) now holds "openai" (GPT-6 Astra) for the
+  // premium ("Emberi szintű AI") tier, and this constant reverted to "xai"
+  // for the standard ("Érvelő AI") tier — the exact pre-V2.8.7 Grok
+  // configuration, not a new one.
   const matches = CREATE_ROUTE.match(/const PUBLIC_RACER_PROVIDER: ModelProviderId = "([^"]+)";/);
   assert.ok(matches, "PUBLIC_RACER_PROVIDER must be declared exactly this way");
-  assert.equal(matches?.[1], "openai");
+  assert.equal(matches?.[1], "xai");
   const count = (CREATE_ROUTE.match(/const PUBLIC_RACER_PROVIDER/g) ?? []).length;
   assert.equal(count, 1, "exactly one declaration, no duplicate policy constant");
 });
