@@ -104,8 +104,9 @@ test("SOURCE: the collapsed action is a small text link, not a prominent button,
   assert.match(FEEDBACK_ACTION, /"Visszajelzés küldése"/);
   // Discreet styling: text link classes, not the primary button treatment
   // ("Új játék" uses bg-[var(--green)]" + larger padding; this must not).
-  const collapsedAt = FEEDBACK_ACTION.indexOf("if (!open)");
-  const collapsedBlock = FEEDBACK_ACTION.slice(collapsedAt, FEEDBACK_ACTION.indexOf(";", FEEDBACK_ACTION.indexOf("</button>", collapsedAt)));
+  const collapsedAt = FEEDBACK_ACTION.indexOf("{!open && (");
+  assert.ok(collapsedAt > 0);
+  const collapsedBlock = FEEDBACK_ACTION.slice(collapsedAt, FEEDBACK_ACTION.indexOf("</button>", collapsedAt) + "</button>".length);
   assert.match(collapsedBlock, /underline-offset-2 hover:underline/);
   assert.doesNotMatch(collapsedBlock, /bg-\[var\(--green\)\]/);
 });
@@ -216,6 +217,65 @@ test("SOURCE: no file input, no email field, and no public-display rendering exi
 test("SOURCE: the compact (embedded) form uses a smaller textarea, and every touch target meets the existing min-h-11 convention", () => {
   assert.match(FEEDBACK_FORM, /compact \? "h-20" : "h-32"/);
   assert.match(FEEDBACK_FORM, /min-h-11/);
+});
+
+// ---------------------------------------------------------------------------
+// V2.9.1 CORRECTION — a "Bezárás"/"Close" control on the embedded form.
+// ---------------------------------------------------------------------------
+
+test("SOURCE: a bilingual Close control exists and is wired to an onClose prop, not a bare unmount", () => {
+  assert.match(FEEDBACK_FORM, /close: "Bezárás"/);
+  assert.match(FEEDBACK_FORM, /close: "Close"/);
+  assert.match(FEEDBACK_FORM, /onClose\?: \(\) => void/);
+  // Rendered conditionally on the prop being provided -- absent entirely
+  // (never a disabled/hidden button) when no onClose is passed, i.e. on the
+  // standalone /feedback page.
+  const closeRenders = [...FEEDBACK_FORM.matchAll(/\{onClose && \(/g)];
+  assert.ok(closeRenders.length >= 2, "Close must render in both the editing view and the success view");
+});
+
+test("SOURCE: Close is available in both the editing/error view and the success confirmation view", () => {
+  const successAt = FEEDBACK_FORM.indexOf('step.kind === "success"');
+  const submittingConstAt = FEEDBACK_FORM.indexOf("const submitting = step.kind");
+  const successBlock = FEEDBACK_FORM.slice(successAt, submittingConstAt);
+  const editingBlock = FEEDBACK_FORM.slice(submittingConstAt);
+  assert.match(successBlock, /\{onClose && \(/, "Close must be offered on the success screen too");
+  assert.match(editingBlock, /\{onClose && \(/, "Close must be offered while editing");
+});
+
+test("SOURCE: Close never clears the typed message or the current step -- its handler is exactly onClose, nothing else", () => {
+  for (const m of FEEDBACK_FORM.matchAll(/\{onClose && \(([\s\S]*?)\)\}/g)) {
+    const block = m[1]!;
+    assert.match(block, /onClick=\{onClose\}/, "the Close button's onClick must be the bare prop, not a wrapper that also touches state");
+    assert.doesNotMatch(block, /setMessage/, "Close must never clear typed text");
+  }
+});
+
+test("SOURCE: Close is styled as plain/secondary text, never the primary filled Submit treatment", () => {
+  for (const m of FEEDBACK_FORM.matchAll(/\{onClose && \(([\s\S]*?)\)\}/g)) {
+    const block = m[1]!;
+    assert.match(block, /underline-offset-2 hover:underline/);
+    assert.doesNotMatch(block, /bg-\[var\(--green\)\]/);
+    assert.match(block, /min-h-11/, "must still meet the mobile touch-target convention");
+  }
+});
+
+test("SOURCE: FeedbackAction keeps the form mounted-but-hidden once opened, rather than unmounting it, so Close cannot lose unsent text", () => {
+  assert.match(FEEDBACK_ACTION, /const \[mounted, setMounted\] = useState\(false\);/);
+  assert.match(FEEDBACK_ACTION, /hidden=\{!open\}/, "collapsing must hide, not unmount, the mounted form");
+  assert.match(FEEDBACK_ACTION, /onClose=\{\(\) => setOpen\(false\)\}/);
+  // The collapse path must never be a full unmount of FeedbackForm: once
+  // `mounted` flips true it must stay in the JSX tree (gated only by
+  // `mounted &&`, never re-joined with `open &&`).
+  assert.doesNotMatch(FEEDBACK_ACTION, /\{open && \(\s*<div[^>]*>\s*<FeedbackForm/);
+});
+
+test("SOURCE: reopening the action does not remount FeedbackForm -- the toggle only flips `open`, never `mounted`, once true", () => {
+  const toggleOnAt = FEEDBACK_ACTION.indexOf("setMounted(true)");
+  assert.ok(toggleOnAt > 0, "the initial open must set mounted true exactly once");
+  // There must be no second call that could reset mounted back to false --
+  // i.e. no `setMounted(false)` anywhere in the file.
+  assert.doesNotMatch(FEEDBACK_ACTION, /setMounted\(false\)/);
 });
 
 // ---------------------------------------------------------------------------

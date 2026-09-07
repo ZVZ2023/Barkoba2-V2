@@ -31,6 +31,7 @@ const COPY = {
     placeholder: "Mit gondolsz a Barkóbáról?",
     submit: "Küldés",
     submitting: "Küldés…",
+    close: "Bezárás",
     success: "Köszönjük a visszajelzést!",
     sendAnother: "Másik visszajelzés küldése",
     emptyError: "Írj néhány szót, mielőtt elküldöd.",
@@ -43,6 +44,7 @@ const COPY = {
     placeholder: "What do you think about Barkóba?",
     submit: "Submit",
     submitting: "Submitting…",
+    close: "Close",
     success: "Thanks for your feedback!",
     sendAnother: "Send another",
     emptyError: "Write a few words before submitting.",
@@ -63,12 +65,21 @@ export default function FeedbackForm({
   lang,
   gameId = null,
   compact = false,
+  onClose,
 }: {
   lang: "hu" | "en";
   /** Opaque; never rendered — see this file's own header. Omitted entirely for the standalone page. */
   gameId?: string | null;
   /** Tighter spacing for the embedded, discreet per-game placement. */
   compact?: boolean;
+  /**
+   * V2.9.1 CORRECTION — provided only by the embedded FeedbackAction
+   * placement, which keeps this component mounted (hidden, not unmounted)
+   * while collapsed so a Close tap can never lose typed-but-unsent text.
+   * Undefined on the standalone /feedback page, which has nothing to close
+   * back to — so no Close control renders there.
+   */
+  onClose?: () => void;
 }) {
   const [message, setMessage] = useState("");
   const [step, setStep] = useState<Step>({ kind: "editing" });
@@ -140,13 +151,24 @@ export default function FeedbackForm({
     return (
       <div className={compact ? "flex flex-col gap-2" : "flex flex-col gap-3"}>
         <p className="text-sm font-medium text-[var(--green)]">{t.success}</p>
-        <button
-          type="button"
-          onClick={() => setStep({ kind: "editing" })}
-          className="self-start text-xs text-[var(--ink-soft)] underline-offset-2 hover:underline"
-        >
-          {t.sendAnother}
-        </button>
+        <div className="flex items-center gap-4">
+          <button
+            type="button"
+            onClick={() => setStep({ kind: "editing" })}
+            className="min-h-11 text-xs text-[var(--ink-soft)] underline-offset-2 hover:underline"
+          >
+            {t.sendAnother}
+          </button>
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="min-h-11 text-xs text-[var(--ink-soft)] underline-offset-2 hover:underline"
+            >
+              {t.close}
+            </button>
+          )}
+        </div>
       </div>
     );
   }
@@ -173,14 +195,31 @@ export default function FeedbackForm({
 
       {step.kind === "error" && <p className="text-sm text-[var(--red)]">{step.message}</p>}
 
-      <button
-        type="button"
-        onClick={() => void submit()}
-        disabled={submitting || message.trim().length === 0}
-        className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
-      >
-        {submitting ? t.submitting : t.submit}
-      </button>
+      <div className="flex items-center gap-4">
+        <button
+          type="button"
+          onClick={() => void submit()}
+          disabled={submitting || message.trim().length === 0}
+          className="min-h-11 rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
+        >
+          {submitting ? t.submitting : t.submit}
+        </button>
+        {onClose && (
+          // Deliberately plain text, never a bordered/filled button — it must
+          // read as secondary to Submit, per this control's own requirement.
+          // Never disabled: closing must remain possible even mid-submit (the
+          // request keeps running against the hidden-not-unmounted form; see
+          // FeedbackAction.tsx), and closing never touches `message` or
+          // `step`, so it can never itself lose typed text or double-submit.
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 px-1 text-xs text-[var(--ink-soft)] underline-offset-2 hover:underline"
+          >
+            {t.close}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
