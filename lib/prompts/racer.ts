@@ -680,20 +680,45 @@ function renderLanguage(state: RacerPublicState): string {
 // version, because the database claim RACER_PROMPT_VERSION makes is about
 // the strategy block, not about every sentence in the assembled message.
 // ---------------------------------------------------------------------------
-const RACER_MODE_TONE: Record<ExperienceMode, string> = {
-  competitive:
+// ---------------------------------------------------------------------------
+// V2.9.1 CORRECTION — production evidence from a Friendly game showed the
+// model greeting the player ("Szia!") on consecutive turns, with the second
+// greeting padded by self-referential filler ("...és remélem, tetszik a
+// kérdésem"). The Friendly entry above gave open-ended license ("warmly and
+// approachably") with no constraint against repeating a greeting or
+// commenting on the model's own curiosity/enjoyment, and — since this same
+// static string is resent unconditionally on every turn — nothing told the
+// model turn 4's greeting had already been said on turn 1.
+//
+// FIX: each entry is now a function of ISOPENING (state.transcript.length
+// === 0 — the same "no questions asked yet" signal renderTranscript already
+// uses), not a second decision system. Competitive/Teaching ignore the
+// parameter (their guidance never mentioned greetings and stays byte-for-
+// byte the sentences already pinned by existing tests). Friendly permits
+// exactly one opening greeting, then explicitly withdraws it and names the
+// filler phrasing to avoid. Humorous gets the same one-greeting discipline
+// defensively, without weakening its playfulness or its already-tested
+// meaning-preservation guarantee.
+// ---------------------------------------------------------------------------
+const RACER_MODE_TONE: Record<ExperienceMode, (isOpening: boolean) => string> = {
+  competitive: () =>
     "TONE: Neutral and concise. State your question plainly, with no embellishment.",
-  friendly:
-    "TONE: Friendly. Phrase your question warmly and approachably. This changes wording only — never what the question actually asks, and never your strategy.",
-  teaching:
+  friendly: (isOpening) =>
+    isOpening
+      ? "TONE: Friendly. You may open with one brief, warm greeting, then ask your question plainly. This changes wording only — never what the question actually asks, and never your strategy."
+      : "TONE: Friendly. No greeting or preamble this turn — you already greeted once, at the start. Ask directly, with at most a light warmth in word choice. Do not add self-referential filler about your own curiosity or enjoyment (no \"Nagyon kíváncsi vagyok\", no \"remélem, tetszik a kérdésem\", no \"ez egy érdekes kérdés lesz\", or English equivalents) — the question itself should be the main thing the player reads. This changes wording only — never what the question actually asks, and never your strategy.",
+  teaching: () =>
     'TONE: Teaching. Ordinary phrasing is fine. If one short added clause fits naturally, you may briefly note what you\'re narrowing down as you ask (e.g. "still narrowing down what kind of X this is, so:"). Never reveal your private reasoning or working notes, never turn one question into two, and never change what is actually being asked.',
-  humorous:
-    "TONE: Humorous. You may phrase your question with light wit or playfulness. The literal yes/no meaning must stay exactly as clear and precise as an ordinary phrasing — a joke must never blur, hedge, or change what is actually being asked.",
+  humorous: (isOpening) =>
+    isOpening
+      ? "TONE: Humorous. You may open with one brief, playful greeting or aside, then ask your question. Light wit or playfulness in the phrasing is welcome on every turn too — the literal yes/no meaning must stay exactly as clear and precise as an ordinary phrasing — a joke must never blur, hedge, or change what is actually being asked."
+      : "TONE: Humorous. No greeting this turn — you already opened once. You may still phrase your question with light wit or playfulness. The literal yes/no meaning must stay exactly as clear and precise as an ordinary phrasing — a joke must never blur, hedge, or change what is actually being asked.",
 };
 
 function renderModeTone(state: RacerPublicState): string {
   if (!state.experience_mode) return "";
-  return RACER_MODE_TONE[state.experience_mode];
+  const isOpening = state.transcript.length === 0;
+  return RACER_MODE_TONE[state.experience_mode](isOpening);
 }
 
 function renderClues(state: RacerPublicState): string {

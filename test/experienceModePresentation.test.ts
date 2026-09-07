@@ -262,3 +262,79 @@ test("SOURCE: racer.ts's runRacerTurn/resolveGuessIntent decision logic is untou
   // tone constant/function are additive, not inserted into any decision path.
   assert.match(RACER_SRC, /function renderModeTone\(state: RacerPublicState\): string \{/);
 });
+
+// ---------------------------------------------------------------------------
+// 5. V2.9.1 CORRECTION -- production evidence of Friendly mode greeting on
+//    consecutive turns ("Szia!" on Q4 and again on Q5, the second padded
+//    with self-referential filler "...remélem, tetszik a kérdésem"). A
+//    greeting may appear at most once per game; later turns get warmth
+//    through concise phrasing only, never a repeated salutation or
+//    commentary about the model's own curiosity/enjoyment.
+// ---------------------------------------------------------------------------
+
+function turnMessageAt(mode: ExperienceMode, priorAnsweredQuestions: number): string {
+  const log: QuestionLogEntry[] = Array.from({ length: priorAnsweredQuestions }, (_, i) =>
+    entry({ turn_index: i + 1, composer_response: "YES" })
+  );
+  const state = toRacerPublicState(game(mode, log));
+  return buildRacerTurnMessage(state, { forceFinal: false, clueAvailable: false });
+}
+
+test("Friendly: the opening turn permits exactly one greeting", () => {
+  const opening = turnMessageAt("friendly", 0);
+  assert.match(opening, /TONE: Friendly/);
+  assert.match(opening, /open with one brief, warm greeting/i);
+});
+
+test("Friendly: consecutive/later turns explicitly prohibit repeating the greeting", () => {
+  const later = turnMessageAt("friendly", 1);
+  assert.match(later, /No greeting or preamble this turn/i);
+  assert.doesNotMatch(later, /open with one brief, warm greeting/i);
+});
+
+test("Friendly: later turns discourage self-referential filler by name", () => {
+  const later = turnMessageAt("friendly", 1);
+  assert.match(later, /self-referential filler/i);
+  assert.match(later, /Nagyon kíváncsi vagyok/);
+  assert.match(later, /remélem, tetszik a kérdésem/);
+});
+
+test("Friendly: concise warmth remains allowed on later turns", () => {
+  const later = turnMessageAt("friendly", 1);
+  assert.match(later, /light warmth in word choice/i);
+});
+
+test("Humorous: the opening turn permits exactly one greeting/aside, later turns forbid repeating it", () => {
+  const opening = turnMessageAt("humorous", 0);
+  const later = turnMessageAt("humorous", 1);
+  assert.match(opening, /open with one brief, playful greeting or aside/i);
+  assert.match(later, /No greeting this turn/i);
+  assert.doesNotMatch(later, /open with one brief, playful greeting or aside/i);
+});
+
+test("Humorous: playfulness and the meaning-preservation guarantee survive on every turn", () => {
+  for (const priorQuestions of [0, 1, 3]) {
+    const content = turnMessageAt("humorous", priorQuestions);
+    assert.match(content, /light wit or playfulness/i);
+    assert.match(content, /must never blur, hedge, or change what is actually being asked/);
+  }
+});
+
+function toneLine(content: string): string {
+  const line = content.split("\n").find((l) => l.startsWith("TONE:"));
+  assert.ok(line, "message must carry a TONE line");
+  return line as string;
+}
+
+test("Competitive and Teaching tone text is unaffected by the opening/later distinction", () => {
+  for (const mode of ["competitive", "teaching"] as ExperienceMode[]) {
+    assert.equal(toneLine(turnMessageAt(mode, 0)), toneLine(turnMessageAt(mode, 1)));
+  }
+});
+
+test("the greeting fix does not touch language matching, budget, or the byte-verified strategy block", () => {
+  const later = turnMessageAt("friendly", 2);
+  assert.match(later, /Language of this game: English\. Write your question, guess, and rationale in English\./);
+  assert.match(later, /Questions used: 2 of 20\. Remaining: 18\./);
+  assert.ok(later.includes(CORE_RACER_RULES));
+});

@@ -15,6 +15,7 @@ import {
 } from "@/lib/turnRequestGuard";
 import { shouldReconcileStaleRequestOnForeground } from "@/lib/turnRecovery";
 import { useResultReveal } from "@/app/components/useResultReveal";
+import FeedbackAction from "@/app/components/FeedbackAction";
 import { EXPERIENCE_MODE_LABEL_HU, EXPERIENCE_MODE_STRATEGY_TIP_HU } from "@/lib/experienceMode";
 import type { ComposerAnswer, ExperienceMode, GamePhase } from "@/lib/types";
 
@@ -399,6 +400,9 @@ export default function HumanClient({
           {view.integrity_notes && (
             <p className="text-sm text-neutral-700">{view.integrity_notes}</p>
           )}
+
+          {/* V2.9.1 — see ResultPanel.tsx's identical comment. */}
+          <FeedbackAction gameId={view.game_id} gameLanguage={view.game_language} />
         </div>
       )}
 

@@ -1,11 +1,5 @@
 import { cookies, headers } from "next/headers";
-import {
-  PLAYER_COOKIE,
-  PLAYER_NAME_COOKIE,
-  readPlayerName,
-  verifyPlayerCookie,
-} from "@/lib/playerIdentity";
-import { getPlayerAccount } from "@/lib/playerAccounts";
+import { shouldAskForName } from "@/lib/nameScreen";
 import { resolveAccountHeaderState } from "@/lib/actingPlayer";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
 import RacerSetup from "../../RacerSetup";
@@ -20,34 +14,13 @@ import RacerSetup from "../../RacerSetup";
 export const dynamic = "force-dynamic";
 
 
-/**
- * Should this player be asked for a display name?
- *
- * Server-side because the cookies are httpOnly - a client component cannot see
- * them, which is the point. Asked exactly once per anonymous Player: the skip
- * writes the cookie too, so a skipped player is never asked again.
- *
- * V2.8.8.7 PRODUCTION FIX — see app/compose/page.tsx's identical comment: a
- * registered account's own display_name is checked first and skips the
- * prompt outright, rather than trusting only the per-device name cookie.
- */
-async function shouldAskForName(): Promise<boolean> {
-  const jar = cookies();
-  const playerId = await verifyPlayerCookie(jar.get(PLAYER_COOKIE)?.value);
-  if (!playerId) return false; // identity unavailable - nothing to attach a name to
-  const account = await getPlayerAccount(playerId);
-  if (account?.display_name && account.display_name.trim().length > 0) return false;
-  const state = await readPlayerName(playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
-  return !state.asked;
-}
-
 export default async function Page() {
   // V2.8.4.3 — see app/compose/page.tsx's identical comment.
   const accountHeaderState = await resolveAccountHeaderState(headers());
   return (
     <RacerSetup
       versionLabel={formatVersionLabel(getAppVersion())}
-      askForName={await shouldAskForName()}
+      askForName={await shouldAskForName(headers(), cookies())}
       accountAuthenticated={accountHeaderState.authenticated}
       accountPhotoUrl={accountHeaderState.photoUrl}
     />

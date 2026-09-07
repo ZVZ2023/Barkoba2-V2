@@ -1,6 +1,7 @@
 "use client";
 
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
+import FeedbackAction from "@/app/components/FeedbackAction";
 import type { RefObject } from "react";
 import type { GameRecord } from "@/lib/types";
 
@@ -214,6 +215,14 @@ export default function ResultPanel({ game, resolving, error, onRetry, headingRe
       >
         Új játék
       </a>
+
+      {/*
+        V2.9.1 — discreet, opt-in, below the primary "Új játék" CTA it must
+        never compete with. game.game_id is the SAME id corpus.games mirrors
+        as operational_game_id; FeedbackAction only ever forwards it into a
+        feedback submission body, never renders it.
+      */}
+      <FeedbackAction gameId={game.game_id} gameLanguage={game.game_language} />
     </section>
   );
 }
