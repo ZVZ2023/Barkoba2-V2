@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import ProfilePhotoPrompt from "./ProfilePhotoPrompt";
 
 interface Profile {
+  player_id: string;
   display_name: string | null;
   email: string | null;
   email_verified: boolean;
@@ -118,6 +119,24 @@ export default function AccountProfile() {
       <div className="border-t border-[var(--ink)]/10 pt-3">
         <ProfilePhotoPrompt currentPhotoUrl={profile?.photo_url ?? null} />
       </div>
+
+      {/*
+        V2.9.2 — self-service admin-access discovery. Not a secret (see
+        app/api/account/profile/route.ts's own header) and not itself
+        admin access — the operator still has to add this value to
+        ADMIN_PLAYER_IDS in the deployment's own configuration for anything
+        to change. Kept last, small, and plainly labelled rather than
+        promoted, since it is only ever relevant to whoever operates this
+        deployment.
+      */}
+      {profile?.player_id && (
+        <div className="border-t border-[var(--ink)]/10 pt-3">
+          <p className="text-xs text-[var(--ink-soft)]">
+            Játékos-azonosító (admin hozzáféréshez):{" "}
+            <code className="break-all font-mono">{profile.player_id}</code>
+          </p>
+        </div>
+      )}
     </div>
   );
 }

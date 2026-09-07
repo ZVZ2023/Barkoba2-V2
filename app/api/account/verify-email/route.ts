@@ -6,6 +6,7 @@ import {
 } from "@/lib/playerAccounts";
 import { verificationTokenHash } from "@/lib/emailVerification";
 import { ensureInitialComplimentary } from "@/lib/entitlements";
+import { notifyOwnerOfVerifiedSignup } from "@/lib/ownerNotifications";
 import {
   ACCOUNT_SESSION_COOKIE,
   accountSessionCookieOptions,
@@ -270,6 +271,22 @@ export async function POST(req: Request) {
     // immediately above having already committed, silently skipping the
     // grant. See EnsureInitialComplimentaryOptions in lib/entitlements.ts.
     await ensureInitialComplimentary(account.player_id, { trustVerified: true });
+
+    // V2.9.2 — owner-monitoring alert, ONLY on this fresh-verification
+    // branch (reached exactly once per account, ever — see this function's
+    // own header and lib/ownerNotifications.ts's doc on why). The reusable-
+    // token "already verified" branch above never reaches this call, so a
+    // repeat login from any device cannot re-notify the owner.
+    try {
+      await notifyOwnerOfVerifiedSignup({
+        playerName: account.display_name ?? "",
+        email: account.email ?? "",
+        signupTime: new Date(),
+      });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] notifyOwnerOfVerifiedSignup failed (verification still succeeded):", err);
+    }
 
     return respondAuthenticated(req, account.player_id, account.display_name, {
       verified: true,
