@@ -1,6 +1,7 @@
 "use client";
 
 import PostGameRegisterCTA from "@/app/components/PostGameRegisterCTA";
+import FeedbackAction from "@/app/components/FeedbackAction";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { clueCreditsAvailable, cluesEnabled } from "@/lib/clueCredits";
 import { EXPERIENCE_MODE_LABEL_HU, EXPERIENCE_MODE_STRATEGY_TIP_HU } from "@/lib/experienceMode";
@@ -609,6 +610,9 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
           >
             Új játék
           </a>
+
+          {/* V2.9.1 — see ResultPanel.tsx's identical comment. */}
+          <FeedbackAction gameId={game.game_id} gameLanguage={game.game_language} />
         </section>
       )}
 
