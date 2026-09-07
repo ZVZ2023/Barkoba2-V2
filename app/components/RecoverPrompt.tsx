@@ -13,6 +13,29 @@ import { useState } from "react";
  * (POST /api/account/recovery-request → app/recover-account/), for a player
  * who never saved/generated a code. The code path below is completely
  * unchanged; this only adds a toggle to an alternative, not a replacement.
+ *
+ * V2.9.2.3 PRODUCTION FIX — a report of "clicked the email-recovery link
+ * three times, no visible change, no email received". Traced: the "Nincs
+ * meg a kódod? Kérj linket e-mailben" control's onClick only ever calls
+ * setMode("email") — it has never sent a network request; POST
+ * /api/account/recovery-request is only reached from the SEPARATE "Link
+ * küldése" button below, one more step later. So "no email" was correctly
+ * explained by "no request was ever sent" (confirmed by reading this file,
+ * not assumed as an email-delivery problem) -- the click target reported
+ * never calls fetch at all. That step-toggle itself was, and remains,
+ * functionally correct (mode does change), but nothing signalled it: the
+ * email-mode form is a different but similarly-shaped box with no strong
+ * visual cue, and the actual submit button gave no busy-state feedback
+ * (just `disabled`, indistinguishable at a glance from "did nothing"). Two
+ * fixes below make the transition and the submission itself unmistakable:
+ * the email input autofocuses the moment this step appears (moves the
+ * caret, and browsers scroll a newly-focused field into view on their
+ * own), and the submit button's own label changes while the request is in
+ * flight. Neither touches app/api/account/recovery-request/route.ts's
+ * response shape, rate limits, or its deliberate "always the same generic
+ * message" contract -- see that route's own header for why every outcome
+ * (no account, unverified, verified, either rate limit) must stay
+ * indistinguishable.
  */
 export default function RecoverPrompt({ initiallyOpen = false }: { initiallyOpen?: boolean }) {
   const [open, setOpen] = useState(initiallyOpen);
@@ -108,6 +131,7 @@ export default function RecoverPrompt({ initiallyOpen = false }: { initiallyOpen
               type="email"
               inputMode="email"
               autoComplete="email"
+              autoFocus
               className="w-full min-w-0 rounded-md border border-[var(--ink)]/15 bg-white/70 px-3 py-2 text-sm text-[var(--ink)] outline-none focus:border-[var(--green)]"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
@@ -119,7 +143,7 @@ export default function RecoverPrompt({ initiallyOpen = false }: { initiallyOpen
               disabled={emailBusy || !email.trim()}
               className="min-h-11 self-start rounded-md bg-[var(--green)] px-4 py-2.5 text-sm font-medium text-[var(--parchment)] disabled:opacity-40"
             >
-              Link küldése
+              {emailBusy ? "Küldés…" : "Link küldése"}
             </button>
             {error && <p className="text-sm text-[var(--red)]">{error}</p>}
           </>
