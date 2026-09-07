@@ -11,11 +11,12 @@ import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity"
 enableTestIdentityLookups();
 process.env.ANTHROPIC_API_KEY = "test-key";
 // The public creation path pins every ordinary human-Composer game's Racer
-// seat to "openai" (see app/api/game/create/route.ts's PUBLIC_RACER_PROVIDER
-// — matches test/phaseOneLanguageGate.test.ts's own identical requirement),
-// so creating one at all needs this key present, even though this file never
+// seat to "xai" (see app/api/game/create/route.ts's PUBLIC_RACER_PROVIDER —
+// V2.8.8.7 CORRECTION restored this from "openai"; matches
+// test/phaseOneLanguageGate.test.ts's own identical requirement), so
+// creating one at all needs this key present, even though this file never
 // exercises the Racer's own turn.
-process.env.OPENAI_API_KEY = "test-key";
+process.env.XAI_API_KEY = "test-key";
 process.env.RATE_LIMIT_DISABLED = "true";
 
 // ---------------------------------------------------------------------------

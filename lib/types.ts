@@ -420,6 +420,19 @@ export interface GameRecord {
    */
   racer_provider: string | null;
   /**
+   * V2.8.8.7 — which economic tier this game's AI Racer plays at:
+   * "standard" or "premium" ("Emberi szintű AI"), or null for any game
+   * recorded before this feature (or any game with no AI Racer at all).
+   * Same reasoning as racer_provider for storing text rather than the
+   * narrower RacerEngineTier union: a stale record must be re-validated on
+   * read, never trusted blindly. Fixed at creation, re-read on every turn
+   * so turn N+1 resolves the same model as turn N — see
+   * lib/prompts/racer.ts's racerModelFor, which takes both this and
+   * racer_provider together. OPERATIONAL STATE ONLY, same as
+   * racer_provider: not mirrored into a corpus column, for the same reason.
+   */
+  racer_engine_tier: string | null;
+  /**
    * Set only when the AI is the Composer. Null in 0.3.x games, where the
    * human chose the target and difficulty is not a meaningful concept.
    */

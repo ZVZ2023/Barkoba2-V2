@@ -55,7 +55,7 @@ function game(log: QuestionLogEntry[]): GameRecord {
     phase: "questioning", created_at: new Date().toISOString(),
     expires_at: new Date().toISOString(), max_questions: 20, game_language: "en",
     private_target: false, composer_kind: "human", racer_kind: "ai",
-    racer_provider: null, difficulty: null, clue_mode: null, experience_mode: null,
+    racer_provider: null, racer_engine_tier: null, difficulty: null, clue_mode: null, experience_mode: null,
     question_count: log.length, question_count_high_water_mark: log.length, ambiguous_count: 0, qa_log: log,
     final_action: null, final_guess_text: null, result: null,
     integrity_notes: null, integrity_flagged_turns: null, adjudication_notes: null,

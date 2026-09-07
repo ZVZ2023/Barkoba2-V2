@@ -67,7 +67,7 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     private_target: false,
     composer_kind: "ai",
     racer_kind: "human",
-    racer_provider: null,
+    racer_provider: null, racer_engine_tier: null,
     difficulty: "easy",
     clue_mode: "none",
     experience_mode: null,
@@ -279,7 +279,7 @@ test("actor attribution follows the seats, not the turn shape", () => {
   const g = game({
     composer_kind: "ai",
     racer_kind: "human",
-    racer_provider: null,
+    racer_provider: null, racer_engine_tier: null,
     qa_log: [
       answered(1),
       entry({ turn_index: 2, turn_type: "clue", clue_text: "hint" }),

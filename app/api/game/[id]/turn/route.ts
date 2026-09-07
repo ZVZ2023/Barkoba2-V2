@@ -27,6 +27,7 @@ import { pendingClueRequest } from "@/lib/clueCredits";
 import { runRacerTurn, resolveGuessIntent, racerModelFor } from "@/lib/prompts/racer";
 import { DEFAULT_RACER_PROVIDER, isModelProviderId } from "@/lib/providers";
 import type { ModelCallUsage, ModelProviderId, ToolCallObservation } from "@/lib/providers/types";
+import { DEFAULT_RACER_ENGINE_TIER, isRacerEngineTier, type RacerEngineTier } from "@/lib/racerEngineTier";
 import { detectGuess } from "@/lib/guessDetector";
 import {
   priorAskedQuestions,
@@ -293,6 +294,7 @@ async function runOneRacerAttempt(
   racerState: RacerPublicState,
   forceFinal: boolean,
   racerProvider: ModelProviderId,
+  racerEngineTier: RacerEngineTier,
   gameId: string,
   revisionAtLockTime: number,
   providerDeadlineAt: number,
@@ -347,7 +349,7 @@ async function runOneRacerAttempt(
   // timed-out attempt keeps this value; only a successful call's telemetry
   // finalization (in POST's produceCandidate closure, which alone knows the
   // duplicate-guard's verdict) may overwrite it with the RESOLVED model.
-  const requestedModel = racerModelFor(racerProvider);
+  const requestedModel = racerModelFor(racerProvider, racerEngineTier);
 
   const telemetryHandle = await recordOperationStarted({
     gameId,
@@ -404,6 +406,7 @@ async function runOneRacerAttempt(
       runRacerTurn(racerState, {
         forceFinal,
         provider: racerProvider,
+        tier: racerEngineTier,
         signal,
         layerTwoState,
       })
@@ -498,6 +501,7 @@ async function runOneRacerAttempt(
             turn.question_text,
             racerProvider,
             {
+              tier: racerEngineTier,
               onCallObserved: (o) => {
                 intentObserved.value = o;
               },
@@ -1101,6 +1105,15 @@ export async function POST(
       );
     }
 
+    // V2.8.8.7 — same "fixed at creation, read every turn" rule as
+    // racer_provider above. An unrecognised value (never expected — the
+    // field is server-written only) falls back to "standard" rather than
+    // refusing the turn, since tier is a pricing/model-selection detail,
+    // not an identity claim the way racer_provider is.
+    const racerEngineTier: RacerEngineTier = isRacerEngineTier(game.racer_engine_tier)
+      ? game.racer_engine_tier
+      : DEFAULT_RACER_ENGINE_TIER;
+
     // -------------------------------------------------------------------------
     // Steps 2–4, retried on an exact-duplicate question. This calls the exact
     // same loop implementation (lib/duplicateQuestionGuard.ts) that
@@ -1134,6 +1147,7 @@ export async function POST(
           racerState,
           forceFinal,
           racerProvider,
+          racerEngineTier,
           gameId,
           revisionAtLockTime,
           providerDeadlineAt,

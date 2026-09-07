@@ -138,7 +138,10 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   }
 
   if (/BOOL_OR\(grant_key = 'initial_complimentary'\)/.test(query)) {
-    const playerId = String(v[0]);
+    // V2.8.8.7 — player_id is always the LAST interpolated value in this
+    // query (its WHERE clause is necessarily last, after premium_consumed's
+    // own added parameter).
+    const playerId = String(v[v.length - 1]);
     const rows = ledger.filter((r) => r.player_id === playerId);
     return Promise.resolve([{
       balance: rows.reduce((n, r) => n + r.amount, 0),

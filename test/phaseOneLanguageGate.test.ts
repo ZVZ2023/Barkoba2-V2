@@ -5,7 +5,7 @@ import { NextRequest } from "next/server";
 import { POST as createPOST } from "../app/api/game/create/route";
 import { POST as turnPOST } from "../app/api/game/[id]/turn/route";
 import { getGame } from "../lib/gameStore";
-import { openaiAdapter } from "../lib/providers/openai";
+import { xaiAdapter } from "../lib/providers/xai";
 import type { ToolCallResult } from "../lib/providers/types";
 import { enableTestIdentityLookups, testPlayerId } from "./helpers/testIdentity";
 
@@ -16,15 +16,15 @@ enableTestIdentityLookups();
 // caller's would be, then required again on every /turn call below.
 const TEST_COMPOSER_ID = testPlayerId("a");
 
-// The public creation path pins every ordinary game's Racer seat to "openai"
-// (V2.8.7 — see PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a
-// real-flow test that goes through the actual create route needs openai
-// "available" and must mock openaiAdapter, not anthropicAdapter, to observe
-// the Racer's turn.
+// The public creation path pins every ordinary game's Racer seat to "xai"
+// (V2.8.8.7 CORRECTION restored this from "openai" — see
+// PUBLIC_RACER_PROVIDER in app/api/game/create/route.ts), so a real-flow
+// test that goes through the actual create route needs xai "available" and
+// must mock xaiAdapter, not anthropicAdapter, to observe the Racer's turn.
 // ANTHROPIC_API_KEY is required too: lib/prompts/validator.ts always calls
 // the real Anthropic transport (mocked below via global.fetch), and the
 // transport reads the key before the mocked fetch is ever reached.
-process.env.OPENAI_API_KEY = "test-key";
+process.env.XAI_API_KEY = "test-key";
 process.env.ANTHROPIC_API_KEY = "test-key";
 // This file creates several games from the same synthetic guest identity —
 // the per-hour creation rate limit is an anonymous-abuse safeguard unrelated
@@ -116,10 +116,10 @@ async function answer(gameId: string, ans: "YES" | "NO" | "AMBIGUOUS", revision:
 }
 
 function mockRacerOnce(questionText: string) {
-  const original = openaiAdapter.callTool;
+  const original = xaiAdapter.callTool;
   let calls = 0;
   let capturedMessages: unknown[] = [];
-  openaiAdapter.callTool = (async (request: { messages: unknown[] }) => {
+  xaiAdapter.callTool = (async (request: { messages: unknown[] }) => {
     calls += 1;
     capturedMessages = request.messages;
     return {
@@ -141,12 +141,12 @@ function mockRacerOnce(questionText: string) {
       },
       resolvedModel: "stub",
     } as ToolCallResult<unknown>;
-  }) as typeof openaiAdapter.callTool;
+  }) as typeof xaiAdapter.callTool;
   return {
     callCount: () => calls,
     lastMessages: () => capturedMessages,
     restore: () => {
-      openaiAdapter.callTool = original;
+      xaiAdapter.callTool = original;
     },
   };
 }
@@ -320,10 +320,10 @@ test("REAL FLOW: Phase One still makes zero Racer-provider calls after the langu
     mock.restore();
   }
 
-  const original = openaiAdapter.callTool;
-  openaiAdapter.callTool = (async () => {
+  const original = xaiAdapter.callTool;
+  xaiAdapter.callTool = (async () => {
     throw new Error("PROVIDER MUST NOT BE CALLED DURING PHASE ONE");
-  }) as typeof openaiAdapter.callTool;
+  }) as typeof xaiAdapter.callTool;
   try {
     const opening = await callTurn(gameId!);
     let rev = opening.data.game.revision;
@@ -334,6 +334,6 @@ test("REAL FLOW: Phase One still makes zero Racer-provider calls after the langu
     // Q5 not yet answered -- the 5th answer is what triggers Phase Two, so
     // stopping short of it keeps this test a pure zero-provider-calls check.
   } finally {
-    openaiAdapter.callTool = original;
+    xaiAdapter.callTool = original;
   }
 });

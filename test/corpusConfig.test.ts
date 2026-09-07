@@ -168,7 +168,7 @@ function game(qa: QuestionLogEntry[]): GameRecord {
     private_target: false,
     composer_kind: "ai",
     racer_kind: "human",
-    racer_provider: null,
+    racer_provider: null, racer_engine_tier: null,
     difficulty: "easy",
     clue_mode: "none",
     experience_mode: null,

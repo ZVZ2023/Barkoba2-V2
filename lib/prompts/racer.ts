@@ -1,6 +1,7 @@
 import { DEFAULT_RACER_PROVIDER, getAdapter } from "../providers";
 import { env } from "../env";
 import type { ModelProviderId, ToolCallObservation, ToolCallResult } from "../providers/types";
+import { DEFAULT_RACER_ENGINE_TIER, type RacerEngineTier } from "../racerEngineTier";
 import { validateCandidateMove, type LayerTwoCandidate, type LayerTwoState } from "../layerTwo";
 import type {
   ExperienceMode,
@@ -972,7 +973,30 @@ function assertGuidanceApplied(content: string): void {
 // S2 / RB-2 review fix — exported so route.ts can record the REQUESTED model
 // in turn-operation telemetry before the call, without duplicating this
 // resolution logic a second time. Behavior unchanged; only visibility widened.
-export function racerModelFor(provider: ModelProviderId): string {
+/**
+ * V2.8.8.7 — `tier` is a SECOND, independent axis from `provider` (see
+ * lib/racerEngineTier.ts's own doc). Defaults to "standard" so every
+ * existing call site — every game recorded before this feature, every
+ * diagnostic script, every test that has no opinion on tier — resolves to
+ * EXACTLY the behavior this function already had. A "premium" game always
+ * runs on PREMIUM_RACER_PROVIDER ("openai"), so in practice `provider` is
+ * "openai" whenever `tier` is "premium" — this function still branches on
+ * `tier` FIRST rather than relying on that coincidence, so the mapping stays
+ * centrally correct even if a tier's fixed provider ever changes again.
+ *
+ * V2.8.8.7 CORRECTION — premium resolves to env.openaiModelRacer(), the
+ * SAME already-proven GPT-6 Astra configuration PUBLIC_RACER_PROVIDER used
+ * as the public default since V2.8.7, reused rather than inventing a new
+ * model. An earlier draft of this function returned env.premiumRacerModel()
+ * (a newly-introduced "claude-opus-5" on Anthropic) — reverted; see this
+ * function's own git history and lib/racerEngineTier.ts's
+ * PREMIUM_RACER_PROVIDER doc for why.
+ */
+export function racerModelFor(
+  provider: ModelProviderId,
+  tier: RacerEngineTier = DEFAULT_RACER_ENGINE_TIER
+): string {
+  if (tier === "premium") return env.openaiModelRacer();
   if (provider === "xai") return env.xaiModelRacer();
   if (provider === "openai") return env.openaiModelRacer();
   return env.modelRacer();
@@ -983,6 +1007,12 @@ export async function runRacerTurn(
   options: {
     forceFinal: boolean;
     provider?: ModelProviderId;
+    /**
+     * V2.8.8.7 — which economic tier this game plays at. Defaults to
+     * "standard", exactly preserving behavior for any caller with no
+     * opinion — see racerModelFor's own doc.
+     */
+    tier?: RacerEngineTier;
     /**
      * Diagnostic seam ONLY, for scripts/probeRacerLatency.ts. Production never
      * passes it, so every Grok turn keeps running at the provider default. This
@@ -1013,6 +1043,7 @@ export async function runRacerTurn(
 ): Promise<RacerTurnResult> {
   const { forceFinal } = options;
   const provider = options.provider ?? DEFAULT_RACER_PROVIDER;
+  const tier = options.tier ?? DEFAULT_RACER_ENGINE_TIER;
   // Eligibility only. The Racer is never told to take a clue, and the prompt
   // below says so explicitly — an available credit is an option, not an
   // instruction. No other part of its strategy is touched by this feature.
@@ -1027,7 +1058,7 @@ export async function runRacerTurn(
   // must receive the same task, or a comparison between them measures the
   // prompt and not the model.
   const adapter = getAdapter(provider);
-  const requestedModel = racerModelFor(provider);
+  const requestedModel = racerModelFor(provider, tier);
 
   // Assembled ONCE, provider-neutrally, and verified before the transport is
   // handed anything. Both halves matter: one assembly is what makes Claude and
@@ -1184,6 +1215,12 @@ export async function resolveGuessIntent(
      * return shape is unchanged; this is a side channel, never the result.
      */
     onCallObserved?: (observation: ToolCallObservation) => void;
+    /**
+     * V2.8.8.7 — same seat, same provider, same TIER as the turn being
+     * resolved. Defaults to "standard" like every other tier-aware
+     * parameter in this module.
+     */
+    tier?: RacerEngineTier;
   } = {}
 ): Promise<GuessIntentResolution> {
   // Same seat, same provider as the turn it is resolving — the caller passes
@@ -1206,8 +1243,9 @@ export async function resolveGuessIntent(
   const content = buildGuessIntentMessage(state, flaggedQuestion);
   assertGuidanceApplied(content);
 
+  const tier = options.tier ?? DEFAULT_RACER_ENGINE_TIER;
   const { output: result, resolvedModel, diagnostics } = await getAdapter(provider).callTool<GuessIntentResolution>({
-    model: racerModelFor(provider),
+    model: racerModelFor(provider, tier),
     system: GUESS_INTENT_SYSTEM_PROMPT,
     messages: [{ role: "user", content }],
     toolName: "resolve_guess_intent",

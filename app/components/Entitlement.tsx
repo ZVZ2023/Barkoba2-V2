@@ -34,6 +34,14 @@ export interface EntitlementView {
    * than claiming a privilege it cannot confirm.
    */
   unlimited?: boolean;
+  /**
+   * V2.8.8.7 — the premium ("Emberi szintű AI") engine's fixed Play Credit
+   * cost and whether THIS caller can currently fund it. Absent is read as
+   * ineligible (never inferred as eligible), matching `unlimited`'s own
+   * fallback rule for an older deployment that has not shipped this field
+   * yet — the courtesy UI must never claim an eligibility it cannot confirm.
+   */
+  premium_engine?: { cost: number; eligible: boolean };
 }
 
 /** Shared fetch. Returns null when entitlement cannot be read at all. */

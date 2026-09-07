@@ -78,7 +78,7 @@ function game(overrides: Partial<GameRecord> = {}): GameRecord {
     private_target: false,
     composer_kind: "human",
     racer_kind: "ai",
-    racer_provider: null,
+    racer_provider: null, racer_engine_tier: null,
     difficulty: "hard",
     clue_mode: "none",
     experience_mode: null,

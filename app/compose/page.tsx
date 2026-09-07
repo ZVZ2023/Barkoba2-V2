@@ -5,6 +5,7 @@ import {
   readPlayerName,
   verifyPlayerCookie,
 } from "@/lib/playerIdentity";
+import { getPlayerAccount } from "@/lib/playerAccounts";
 import { resolveAccountHeaderState } from "@/lib/actingPlayer";
 import type { Metadata } from "next";
 import { formatVersionLabel, getAppVersion } from "@/lib/appVersion";
@@ -49,11 +50,22 @@ export function generateMetadata(): Metadata {
  * Server-side because the cookies are httpOnly - a client component cannot see
  * them, which is the point. Asked exactly once per anonymous Player: the skip
  * writes the cookie too, so a skipped player is never asked again.
+ *
+ * V2.8.8.7 PRODUCTION FIX — a REGISTERED account's own display_name
+ * (accounts.players, authoritative) is checked FIRST and skips the prompt
+ * outright. Before this fix, a signed-in registered user with an existing
+ * profile name still saw "Hogy szólítsunk?" on any browser/device whose
+ * per-device bk_player_name cookie happened to be absent (a cleared cookie,
+ * a fresh device, a second browser) — readPlayerName only ever consulted
+ * that cookie, never the account. The cookie remains the sole mechanism for
+ * a true guest, who has no accounts.players row to reuse a name from.
  */
 async function shouldAskForName(): Promise<boolean> {
   const jar = cookies();
   const playerId = await verifyPlayerCookie(jar.get(PLAYER_COOKIE)?.value);
   if (!playerId) return false; // identity unavailable - nothing to attach a name to
+  const account = await getPlayerAccount(playerId);
+  if (account?.display_name && account.display_name.trim().length > 0) return false;
   const state = await readPlayerName(playerId, jar.get(PLAYER_NAME_COOKIE)?.value);
   return !state.asked;
 }

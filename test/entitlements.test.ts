@@ -55,7 +55,11 @@ function fakeSql(strings: TemplateStringsArray, ...values: SqlValue[]) {
   }
 
   if (/FILTER \(WHERE kind = 'complimentary_grant'\)/.test(sql)) {
-    const player = String(v[0]);
+    // V2.8.8.7 — player_id is always the LAST interpolated value in this
+    // query (its WHERE clause, necessarily after every SELECT-list
+    // interpolation) — robust to premium_consumed's own added parameter,
+    // which now precedes it.
+    const player = String(v[v.length - 1]);
     const mine = ledger.filter((r) => r.player_id === player);
     const sum = (k: string) => mine.filter((r) => r.kind === k).reduce((n, r) => n + r.amount, 0);
     return Promise.resolve([

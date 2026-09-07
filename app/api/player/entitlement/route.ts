@@ -1,9 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveActingPlayer } from "@/lib/actingPlayer";
 import {
+  PREMIUM_ENGINE_PLAY_CREDIT_COST,
   entitlementStatus,
   getStatus,
   hasUnlimitedPlay,
+  purchasedEligibleBalance,
   resolvePlayState,
 } from "@/lib/entitlements";
 import { getPlayerAccount } from "@/lib/playerAccounts";
@@ -58,6 +60,10 @@ export async function GET(req: NextRequest) {
       play_state: null,
       balance: null,
       costs,
+      // V2.8.8.7 — not enforcing means no ledger to speak of, so premium is
+      // reported unconditionally eligible at cost, mirroring how `costs`
+      // above is still sent so a picker can show what a tier WOULD cost.
+      premium_engine: { cost: PREMIUM_ENGINE_PLAY_CREDIT_COST, eligible: true },
     });
   }
 
@@ -115,6 +121,15 @@ export async function GET(req: NextRequest) {
       purchased: status.purchased,
       consumed: status.consumed,
       costs,
+      // V2.8.8.7 — an unlimited identity is eligible regardless of ledger
+      // content (same exemption every other entitlement check reuses);
+      // otherwise eligibility is the SAME purchased-only test
+      // canFundPremiumEngine enforces server-side at creation — this is
+      // exposure for the picker, never a second decision.
+      premium_engine: {
+        cost: PREMIUM_ENGINE_PLAY_CREDIT_COST,
+        eligible: unlimited || purchasedEligibleBalance(status) >= PREMIUM_ENGINE_PLAY_CREDIT_COST,
+      },
     });
   } catch (err) {
     // A balance we cannot read is not a balance of zero. Say so rather than

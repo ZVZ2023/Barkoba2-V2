@@ -121,7 +121,7 @@ function game(o: Partial<GameRecord> = {}): GameRecord {
     private_target: false,
     composer_kind: "ai",
     racer_kind: "human",
-    racer_provider: null,
+    racer_provider: null, racer_engine_tier: null,
     difficulty: null,
     clue_mode: null,
     experience_mode: null,

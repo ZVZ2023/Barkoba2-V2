@@ -9,8 +9,10 @@ import { createJoinCode } from "@/lib/joinCode";
 import { reconcileOpportunistically, recentAiComposerTargets } from "@/lib/corpus/gameCorpus";
 import { MAX_TARGET_NOVELTY_ATTEMPTS, RECENT_AI_TARGET_LIMIT, isExactNormalizedRepeat } from "@/lib/targetNovelty";
 import {
+  canFundPremiumEngine,
   canStartGame,
   consumeForGame,
+  consumeForPremiumEngine,
   ensureAnonymousComplimentary,
   ensureInitialComplimentary,
 } from "@/lib/entitlements";
@@ -45,6 +47,37 @@ function entitlementRefusal(outcome: ConsumeOutcome): NextResponse | null {
     { status: 503 }
   );
 }
+
+/**
+ * V2.8.8.7 — the premium ("Emberi szintű AI") engine's OWN refusal, distinct
+ * from entitlementRefusal above. A generic "no_play_credit" message would be
+ * actively misleading here: a player can be refused premium while still
+ * holding a perfectly ordinary, spendable complimentary balance, and telling
+ * them their balance is "elfogyott" (exhausted) would be false. The error
+ * code is also distinct so the client can route straight to a purchase CTA
+ * rather than the ordinary top-up path.
+ */
+function premiumEntitlementRefusal(outcome: ConsumeOutcome): NextResponse | null {
+  if (outcome.ok) return null;
+  if (outcome.reason === "insufficient_balance") {
+    return NextResponse.json(
+      {
+        error: "premium_engine_insufficient_credit",
+        message:
+          "Az „Emberi szintű AI” csak megvásárolt VERSENY-egyenlegből indítható, " +
+          "az ingyenes vagy regisztrációs jóváírás nem elég hozzá.",
+      },
+      { status: 402 }
+    );
+  }
+  return NextResponse.json(
+    {
+      error: "premium_engine_entitlement_unavailable",
+      message: "Most nem tudjuk ellenőrizni az „Emberi szintű AI” egyenlegedet. Próbáld újra hamarosan.",
+    },
+    { status: 503 }
+  );
+}
 import { checkGameCreationRateLimit, extractClientIp } from "@/lib/rateLimit";
 import { isPersistentKvConfigured } from "@/lib/kv";
 import { chooseComposerTarget } from "@/lib/prompts/composerTarget";
@@ -59,6 +92,12 @@ import {
   isProviderAvailable,
 } from "@/lib/providers";
 import type { ModelProviderId } from "@/lib/providers/types";
+import {
+  DEFAULT_RACER_ENGINE_TIER,
+  PREMIUM_RACER_PROVIDER,
+  isRacerEngineTier,
+  type RacerEngineTier,
+} from "@/lib/racerEngineTier";
 import { env } from "@/lib/env";
 import { recordAnthropicSeatCall, type SeatCallObservation } from "@/lib/corpus/turnTelemetry";
 
@@ -143,11 +182,18 @@ function resolveBenchmark(req: NextRequest): {
  * boundary is drawn — reusing resolveBenchmark()'s existing secret-header
  * gate rather than inventing a second one.
  */
-// V2.8.7 — GPT-6 Astra (OpenAI) replaces Grok as the one public Racer. Same
-// server-authoritative rule, same two refusals, same "no substitution":
-// a runtime without OPENAI_API_KEY refuses the public game rather than
+// V2.8.7 — GPT-6 Astra (OpenAI) replaced Grok as the one public Racer.
+//
+// V2.8.8.7 CORRECTION — restored to "xai" (Grok). This constant now serves
+// the STANDARD ("Érvelő AI") tier specifically, not "the public default"
+// unqualified: since V2.8.8.7 introduced a premium tier fixed to "openai"
+// (PREMIUM_RACER_PROVIDER, lib/racerEngineTier.ts — the exact GPT-6 Astra
+// configuration this constant used to hold), the standard tier reuses the
+// pre-V2.8.7 xAI/Grok configuration instead of sharing OpenAI with premium.
+// Same server-authoritative rule, same two refusals, same "no substitution":
+// a runtime without XAI_API_KEY refuses the standard-tier game rather than
 // quietly racing another model.
-const PUBLIC_RACER_PROVIDER: ModelProviderId = "openai";
+const PUBLIC_RACER_PROVIDER: ModelProviderId = "xai";
 
 function resolveRacerProvider(
   requested: unknown
@@ -227,6 +273,15 @@ interface CreateGameBody {
    * work unchanged.
    */
   racer_provider?: string;
+  /**
+   * V2.8.8.7 — a STABLE INTERNAL TIER ID ("standard" or "premium"), never a
+   * public label or a provider/model name — see lib/racerEngineTier.ts.
+   * Meaningful only in the SAME branch racer_provider is (an AI actually
+   * races): humanVsHuman ignores it exactly as it ignores racer_provider.
+   * Absent or invalid falls back to "standard", matching every other
+   * optional field's legacy-client posture in this route.
+   */
+  engine_tier?: string;
   /**
    * V2.5 — the language the game is PLAYED in: "hu", "en", or absent/"auto"
    * to let Barkóba decide. The shell stays Hungarian either way; this governs
@@ -716,6 +771,48 @@ export async function POST(req: NextRequest) {
   );
   if (!racerProviderChoice.ok) return racerProviderChoice.response;
 
+  // -------------------------------------------------------------------------
+  // V2.8.8.7 — COST-SAFE AI ENGINE SELECTION.
+  //
+  // Same scope as racer_provider immediately above: meaningful only when an
+  // AI actually races (never humanVsHuman), and — a NEW restriction — never
+  // for a benchmark caller either. The benchmark/internal testing surface
+  // keeps choosing racer_provider directly, exactly as it always has; this
+  // feature is a player-facing choice, not a second knob for that surface.
+  //
+  // Resolved and, for "premium", GATED entirely BEFORE the Validator call
+  // below — same reasoning as racerProviderChoice's own placement: a refusal
+  // here costs no model call and charges nothing.
+  // -------------------------------------------------------------------------
+  const requestedEngineTier = humanVsHuman || isBenchmarkCaller ? undefined : body.engine_tier;
+  let racerEngineTier: RacerEngineTier = DEFAULT_RACER_ENGINE_TIER;
+  if (requestedEngineTier !== undefined) {
+    if (!isRacerEngineTier(requestedEngineTier)) {
+      return NextResponse.json(
+        { error: "invalid_engine_tier", message: "Ismeretlen motorválasztás." },
+        { status: 400 }
+      );
+    }
+    racerEngineTier = requestedEngineTier;
+  }
+
+  // The tier decides the WHOLE transport, overriding racerProviderChoice's
+  // result outright rather than varying a model within it — see
+  // lib/racerEngineTier.ts's own doc on why this is a second, independent
+  // axis. Still refused (never substituted) exactly like racerProviderChoice
+  // if this runtime cannot actually reach it.
+  let finalRacerProvider: ModelProviderId = racerProviderChoice.provider;
+  if (racerEngineTier === "premium") {
+    const premiumProviderChoice = resolveRacerProvider(PREMIUM_RACER_PROVIDER);
+    if (!premiumProviderChoice.ok) return premiumProviderChoice.response;
+    finalRacerProvider = premiumProviderChoice.provider;
+
+    // NO allowGuestFallback, ever — see canFundPremiumEngine's own doc.
+    const premiumEligibility = await canFundPremiumEngine(playerId);
+    const premiumRefusal = premiumEntitlementRefusal(premiumEligibility);
+    if (premiumRefusal) return premiumRefusal;
+  }
+
   // V2.8.7 — minted BEFORE the Validator call so it is attributable to this
   // game's cost; nothing is persisted under it until createSecret below.
   const gameId = randomUUID();
@@ -782,7 +879,9 @@ export async function POST(req: NextRequest) {
     racer_kind: humanVsHuman ? "human" : "ai",
     // Recorded only where an AI actually races. A Human↔Human game has no
     // provider, and writing one would claim a player that does not exist.
-    racer_provider: humanVsHuman ? null : racerProviderChoice.provider,
+    racer_provider: humanVsHuman ? null : finalRacerProvider,
+    // V2.8.8.7 — same scope as racer_provider directly above.
+    racer_engine_tier: humanVsHuman ? null : racerEngineTier,
     // Recorded whenever the Composer actually expressed one, in either human
     // flow, so the corpus knows what the allowance was chosen against. Stays
     // null when no choice was made, so games that never had a difficulty are
@@ -825,13 +924,16 @@ export async function POST(req: NextRequest) {
   // Authoritative charge. Same reasoning as the AI branch: a refusal here
   // leaves an orphaned, turn-less game that never enters the corpus.
   // Same rule: the persisted, server-resolved budget decides the cost.
-  const charge = await consumeForGame(
-    playerId,
-    game.game_id,
-    game.max_questions,
-    entitlementOptions
-  );
-  const refusal = entitlementRefusal(charge);
+  // V2.8.8.7 — the premium engine is charged through its OWN, stricter
+  // consumeForPremiumEngine (fixed price, purchased-only, no guest fallback
+  // ever) — never consumeForGame, whose existing charge this feature must
+  // leave byte-for-byte unchanged for every other game.
+  const charge =
+    racerEngineTier === "premium"
+      ? await consumeForPremiumEngine(playerId, game.game_id)
+      : await consumeForGame(playerId, game.game_id, game.max_questions, entitlementOptions);
+  const refusal =
+    racerEngineTier === "premium" ? premiumEntitlementRefusal(charge) : entitlementRefusal(charge);
   if (refusal) return refusal;
 
   const joinCode = humanVsHuman ? await createJoinCode(game.game_id) : null;

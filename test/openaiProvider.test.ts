@@ -338,11 +338,23 @@ test("the Racer model for openai is server-held and defaults to the exact verifi
 // Routing and isolation — source-structure guards.
 // ---------------------------------------------------------------------------
 
-test("the public Racer seat is pinned to openai, server-side, declared once", () => {
+test("V2.8.8.7 CORRECTION — GPT-6 Astra is now the PREMIUM tier's seat, not the public default", () => {
+  // Superseded assumption, stated honestly rather than silently deleted:
+  // PUBLIC_RACER_PROVIDER held "openai" from V2.8.7 through V2.8.8.6. The
+  // approved V2.8.8.7 correction reassigns roles — PUBLIC_RACER_PROVIDER
+  // (app/api/game/create/route.ts) is the STANDARD tier and reverted to
+  // "xai" (see test/xaiProvider.test.ts's own pin); GPT-6 Astra is now
+  // reached ONLY via PREMIUM_RACER_PROVIDER (lib/racerEngineTier.ts),
+  // server-side, declared once.
   const create = readFileSync("app/api/game/create/route.ts", "utf8");
   const matches = create.match(/const PUBLIC_RACER_PROVIDER: ModelProviderId = "([^"]+)";/g) ?? [];
   assert.equal(matches.length, 1);
-  assert.match(matches[0]!, /"openai"/);
+  assert.match(matches[0]!, /"xai"/, "the public default is xAI/Grok again, not openai");
+
+  const tier = readFileSync("lib/racerEngineTier.ts", "utf8");
+  const premiumMatches = tier.match(/export const PREMIUM_RACER_PROVIDER: ModelProviderId = "([^"]+)";/g) ?? [];
+  assert.equal(premiumMatches.length, 1);
+  assert.match(premiumMatches[0]!, /"openai"/, "GPT-6 Astra is reachable only through the premium tier now");
 });
 
 test("the OpenAI adapter is quarantined from the secret store", () => {
