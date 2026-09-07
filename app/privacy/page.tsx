@@ -57,6 +57,23 @@ export const metadata: Metadata = { title: "Adatvédelem — Barkóba" };
 // Claims that could NOT be verified from the repository — what the hosting
 // provider logs, how long those logs live — are described as unknown rather
 // than asserted. Saying "we store nothing" would have been false.
+//
+// CORRECTED IN 2.9.1.2 — three more stale claims, found during an MVP
+// onboarding pass:
+//   - "sem e-mail-címet ... nem kérünk" was written before V2.6.x's email
+//     verification shipped. Registration (app/api/account/register/route.ts)
+//     has required a confirmed email ever since — it unlocks the 5-credit
+//     registration bonus and is the only way to recover a lost session on a
+//     new device. The stored-fields list below now names it explicitly.
+//   - "nyilvánosság előtti, zárt teszt- és kutatási szakasz" was false the
+//     moment ordinary play required no invitation, application, or account
+//     at all — which has been true throughout. Corrected to describe what is
+//     actually true: publicly playable, still early and evolving.
+//   - the closing note conditioned "fiókok, mentett játékok, többszereplős
+//     funkciók" on some future release, when all three had already shipped
+//     (accounts: V2.6.x; retained games: this same section, above;
+//     Human-vs-Human: V2.3.0.0, app/play/human/). Removed the hypothetical.
+// The three-provider AI disclosure above is untouched by this pass.
 
 export default function PrivacyPage() {
   return (
@@ -67,9 +84,9 @@ export default function PrivacyPage() {
       <Section heading="Játékosfiók">
         <p>
           Regisztráció nélkül is játszhatsz vendégként. A vásárolt VERSENY
-          megőrzéséhez játékosfiók kell, de ehhez sem e-mail-címet, sem jelszót,
-          sem profilt nem kérünk. A fiók kulcsa az egyszer megjelenített
-          helyreállító kód.
+          megőrzéséhez játékosfiók kell: ehhez egy név és egy megerősített
+          e-mail-cím szükséges, jelszót és profilt viszont nem kérünk. A fiók
+          kulcsa az egyszer megjelenített helyreállító kód.
         </p>
       </Section>
 
@@ -161,20 +178,20 @@ export default function PrivacyPage() {
           Alapesetben a játékosazonosítód a böngésződben marad, és nem tárolunk
           róla fiókrekordot a szervereinken. (A lejátszott játékok megőrzése ettől
           független — arról a „Megőrzött játékok” rész szól.) Ha regisztrálsz,
-          akkor ehhez tartósan eltárolunk három
+          akkor ehhez tartósan eltárolunk négy
           dolgot:
         </p>
         <Bullets
           items={[
             "A játékosod azonosítóját — ugyanazt a véletlen számot, ami eddig is csak a böngésződben volt.",
-            "A megadott megszólítást, ha adtál meg ilyet. Enélkül másik eszközön nem tudnánk visszaadni.",
+            "A megadott megszólítást.",
+            "Az e-mail-címedet és annak megerősítési állapotát. Ez teszi lehetővé az 5 további VERSENY jóváírását regisztrációkor, és e nélkül másik eszközön sem tudnánk visszaadni a fiókodat.",
             "A helyreállító kódod ellenőrzőjét. Magát a kódot nem tároljuk el sehol: csak egy olyan matematikai lenyomatot, amiből a kód nem állítható vissza. Ezért nem is tudjuk neked újra megmutatni, ha elveszik.",
           ]}
         />
         <p>
-          Ez minimális játékosfiók: nincs e-mail cím és nincs hagyományos jelszó.
-          A helyreállító kód birtokosa be tud lépni, ezért ugyanúgy vigyázz rá,
-          mint egy kulcsra.
+          Ez minimális játékosfiók: nincs hagyományos jelszó. A helyreállító kód
+          birtokosa be tud lépni, ezért ugyanúgy vigyázz rá, mint egy kulcsra.
         </p>
         <p>
           Regisztrált fiók törlését a jelenlegi változat nem kínálja fel, nehogy
@@ -209,9 +226,9 @@ export default function PrivacyPage() {
           játékok kellenek.
         </p>
         <p>
-          Ez jelenleg egy nyilvánosság előtti, zárt teszt- és kutatási szakasz. A
-          nyilvános indulás előtt ezt a részt újra kell gondolni, és ez az oldal
-          frissülni fog.
+          A Barkóba jelenleg is nyilvánosan játszható, regisztráció nélkül —
+          korai fejlesztési és kutatási szakaszban van. Ezt a részt a fejlődés
+          során újra átgondoljuk, és ez az oldal frissülni fog.
         </p>
       </Section>
 
@@ -294,8 +311,8 @@ export default function PrivacyPage() {
 
       <Section heading="Ez a jelenlegi állapot">
         <p>
-          Ez a jelenleg telepített változatra vonatkozó tájékoztatás. Ha később fiókok, mentett játékok
-          vagy többszereplős funkciók készülnek, ez az oldal frissülni fog. A szöveg nem
+          Ez a jelenleg telepített változatra vonatkozó tájékoztatás. Ahogy a
+          Barkóba tovább fejlődik, ez az oldal is frissülni fog. A szöveg nem
           jogi szakértő által ellenőrzött dokumentum.
         </p>
       </Section>

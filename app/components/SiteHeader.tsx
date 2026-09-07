@@ -2,12 +2,15 @@
 
 import Link from "next/link";
 import { copy } from "@/lib/ui/copy";
-import { useComingSoon } from "./ComingSoon";
 import { BalanceBadge, CreditGateway, useEntitlement } from "./Entitlement";
 import AccountControl from "./AccountControl";
 
-// The language selector remains painted/Coming Soon. AccountControl is the
-// minimal real registration/login/logout surface; the TASK 7 layout is kept.
+// V2.9.1 HU MVP — the language selector used to sit here as a painted/Coming
+// Soon placeholder ("🌐 HU ▾"). This is a Hungarian-only launch: a control
+// that visually implies another language is one tap away, when none exists,
+// is misleading rather than merely unfinished — removed rather than left
+// disabled. AccountControl remains the real registration/login/logout
+// surface.
 
 export default function SiteHeader({
   hasEstablishedPlayerIdentity,
@@ -19,7 +22,6 @@ export default function SiteHeader({
   /** V2.8.4.3 — threaded from PlayerAwareSiteHeader's server-side resolution. */
   photoUrl?: string | null;
 }) {
-  const comingSoon = useComingSoon();
   const entitlement = useEntitlement(
     hasEstablishedPlayerIdentity,
     accountAuthenticated ? "account" : "guest"
@@ -39,16 +41,6 @@ export default function SiteHeader({
       </Link>
 
       <div className="flex min-w-0 items-center justify-end gap-2 md:col-start-3 md:row-start-1">
-        <button
-          onClick={() => comingSoon(copy.header.languageAria ?? "Nyelv")}
-          aria-label={copy.header.languageAria}
-          className="flex min-h-10 shrink-0 items-center gap-1.5 rounded-md border border-neutral-900/20 px-2.5 py-2 text-sm text-neutral-800 sm:min-h-11 sm:px-3"
-        >
-          <span aria-hidden="true">🌐</span>
-          <span className="font-medium">{copy.header.language}</span>
-          <span aria-hidden="true" className="text-xs opacity-60">▾</span>
-        </button>
-
         <AccountControl authenticated={accountAuthenticated} photoUrl={photoUrl} />
       </div>
 

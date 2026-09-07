@@ -105,7 +105,17 @@ export default function AccountControl({
                 </div>
               </>
             ) : (
-              <div className="border-t border-neutral-900/10 pt-3">
+              <div className="flex flex-col gap-2 border-t border-neutral-900/10 pt-3">
+                {/*
+                  V2.9.1 HU MVP — ClaimPrompt above already self-labels as
+                  registration ("Regisztrálsz játékosfiókot?"). RecoverPrompt
+                  below had no heading of its own here, so a returning player
+                  could read the two blocks as one continuous registration
+                  flow rather than two distinct, clearly labelled paths.
+                */}
+                <p className="text-sm font-medium text-[var(--ink)]">
+                  Már van fiókod? Belépés
+                </p>
                 <RecoverPrompt initiallyOpen />
               </div>
             )}
