@@ -205,6 +205,21 @@ export const env = {
     && process.env.ENTITLEMENTS_ENABLED.trim().length > 0,
 
   /**
+   * V2.9.0 Slice 1 — master switch for the Limited Beta / Founding Tester
+   * program (application, review, community profile). Default OFF — missing,
+   * malformed, or literally "false" all fall through booleanFlag() to the
+   * same safe default, matching entitlementsEnabled()'s own posture: a
+   * feature this new must ship inert until explicitly turned on, not merely
+   * until someone remembers to configure it correctly.
+   *
+   * Feedback (lib/feedback.ts) deliberately does NOT check this flag — it is
+   * available to every player regardless of beta program status, by product
+   * decision, so it is not one of the "beta/community entry points" this
+   * gate exists to hide.
+   */
+  betaCommunityEnabled: () => booleanFlag("BETA_COMMUNITY_ENABLED"),
+
+  /**
    * First-contact complimentary allowance, granted at most once per player.
    *
    * V2.4.1 sets this to 10. Spendable on any tier including budget-100 (cost

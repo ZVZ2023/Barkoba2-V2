@@ -187,3 +187,49 @@ export async function checkEmailChangeTargetRateLimit(email: string): Promise<Ra
 
   return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
 }
+
+/**
+ * V2.9.0 Slice 1 — POST /api/feedback. Keyed on (ip, identity) exactly like
+ * checkGameCreationRateLimit, for the same reason: a shared/NAT'd IP must
+ * not let one device's feedback spam block another's. `identity` defaults
+ * to "unknown" so a caller with genuinely no identity at all (feedback is
+ * available even then, by product decision) still gets a real, if coarser,
+ * per-IP limit rather than being refused outright for lack of one.
+ *
+ * Generous relative to the recovery/email limiters above: feedback is not a
+ * secret-guessing or inbox-spamming vector, only a noise/storage one, and a
+ * genuinely engaged player might reasonably leave several notes in an hour.
+ */
+export async function checkFeedbackRateLimit(
+  ip: string,
+  playerId?: string | null
+): Promise<RateLimitResult> {
+  const limit = 20;
+  if (env.rateLimitDisabled()) return { allowed: true, limit, remaining: limit };
+
+  const hourBucket = new Date().toISOString().slice(0, 13);
+  const identity = playerId ?? "unknown";
+  const count = await getKV().incrWithExpiry(
+    `ratelimit:feedback:${ip}:${identity}:${hourBucket}`,
+    60 * 60
+  );
+
+  return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
+}
+
+/**
+ * V2.9.0 Slice 1 — POST /api/beta/apply. A verified account is already a
+ * meaningful cost to obtain repeatedly, and submitApplication() is itself
+ * idempotent per player_id (migration 0015's own doc), so this exists only
+ * to bound retry/spam noise against the endpoint, not to gate a real
+ * abuse vector the unique constraint does not already close.
+ */
+export async function checkBetaApplicationRateLimit(ip: string): Promise<RateLimitResult> {
+  const limit = 10;
+  if (env.rateLimitDisabled()) return { allowed: true, limit, remaining: limit };
+
+  const hourBucket = new Date().toISOString().slice(0, 13);
+  const count = await getKV().incrWithExpiry(`ratelimit:beta-apply:${ip}:${hourBucket}`, 60 * 60);
+
+  return { allowed: count <= limit, limit, remaining: Math.max(0, limit - count) };
+}
