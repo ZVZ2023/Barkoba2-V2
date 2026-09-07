@@ -87,6 +87,7 @@ test("SOURCE: the visible guess, mode-aware evaluation copy, and retry-in-progre
   assert.match(block, /finalGuessText=\{game\.final_guess_text\}/);
   assert.match(block, /finalAction=\{game\.final_action\}/);
   assert.match(block, /experienceMode=\{game\.experience_mode\}/);
+  assert.match(block, /racerKind=\{game\.racer_kind\}/, "V2.9.2.1: role is derived from game state (game.racer_kind), not account identity");
 });
 
 test("SOURCE: no adjudication/Integrity Review/scoring/prompt logic is introduced by this change (requirement 7)", () => {

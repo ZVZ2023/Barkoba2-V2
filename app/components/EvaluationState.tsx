@@ -1,7 +1,7 @@
 "use client";
 
 import { evaluationStatusLine, guessRevealLine } from "@/lib/evaluationCopy";
-import type { ExperienceMode, RacerAction } from "@/lib/types";
+import type { ExperienceMode, ParticipantKind, RacerAction } from "@/lib/types";
 
 // ---------------------------------------------------------------------------
 // The dominant evaluation state, shared by both game modes.
@@ -25,6 +25,13 @@ import type { ExperienceMode, RacerAction } from "@/lib/types";
 // what its caller already decided is safe to show. The guess line sits
 // OUTSIDE the error/pending branch below so it stays visible identically
 // through the initial evaluation, any retry, and any recoverable error.
+//
+// V2.9.2.1 — `racerKind` is required, not optional or defaulted: both
+// existing callers (GameClient.tsx, RacerClient.tsx) already have
+// `game.racer_kind` on hand, and a silent default here is exactly how the
+// AI-Racer-only wording leaked into RacerClient.tsx's human-Racer screen in
+// the first place. See lib/evaluationCopy.ts's own header for the full
+// account of that defect.
 // ---------------------------------------------------------------------------
 
 export default function EvaluationState({
@@ -34,6 +41,7 @@ export default function EvaluationState({
   finalGuessText,
   finalAction,
   experienceMode,
+  racerKind,
 }: {
   error: string | null;
   busy: boolean;
@@ -41,8 +49,9 @@ export default function EvaluationState({
   finalGuessText: string | null;
   finalAction: RacerAction | null;
   experienceMode: ExperienceMode | null;
+  racerKind: ParticipantKind;
 }) {
-  const guessLine = guessRevealLine(finalGuessText);
+  const guessLine = guessRevealLine(finalGuessText, racerKind);
 
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-[var(--parchment)]/95 p-6 backdrop-blur-sm">
@@ -91,7 +100,7 @@ export default function EvaluationState({
               FOLYAMATBAN…
             </h2>
             <p className="text-sm text-[var(--ink-soft)]">
-              {evaluationStatusLine(experienceMode, finalAction)}
+              {evaluationStatusLine(experienceMode, finalAction, racerKind)}
             </p>
           </>
         )}

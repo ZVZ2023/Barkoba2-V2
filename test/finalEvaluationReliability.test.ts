@@ -161,43 +161,92 @@ test("SOURCE: lib/resolveResult.ts is not imported or reimplemented by the fast 
 // (5), (6), (7) — the guess reveal and mode-aware copy.
 // ---------------------------------------------------------------------------
 
-test("guessRevealLine: the exact required format", () => {
-  assert.equal(guessRevealLine("ceiling"), "Az AI tippje: „ceiling”.");
-  assert.equal(guessRevealLine("  televízió távirányító  "), "Az AI tippje: „televízió távirányító”.");
+test("guessRevealLine: the exact required format, AI Racer perspective (racer_kind 'ai') -- byte-identical to the pre-V2.9.2.1 wording", () => {
+  assert.equal(guessRevealLine("ceiling", "ai"), "Az AI tippje: „ceiling”.");
+  assert.equal(guessRevealLine("  televízió távirányító  ", "ai"), "Az AI tippje: „televízió távirányító”.");
 });
 
-test("guessRevealLine: null for a missing or blank guess (a concede)", () => {
-  assert.equal(guessRevealLine(null), null);
-  assert.equal(guessRevealLine(""), null);
-  assert.equal(guessRevealLine("   "), null);
+test("guessRevealLine: null for a missing or blank guess (a concede), in either perspective", () => {
+  assert.equal(guessRevealLine(null, "ai"), null);
+  assert.equal(guessRevealLine("", "ai"), null);
+  assert.equal(guessRevealLine("   ", "ai"), null);
+  assert.equal(guessRevealLine(null, "human"), null);
+  assert.equal(guessRevealLine("", "human"), null);
+  assert.equal(guessRevealLine("   ", "human"), null);
 });
 
-test("evaluationStatusLine: every experience mode produces its required character, for a guess", () => {
-  assert.match(evaluationStatusLine("competitive", "guess"), /hivatalos ellenőrzése/, "Competitive: concise and serious");
-  assert.match(evaluationStatusLine("friendly", "guess"), /együtt/, "Friendly: warm and collaborative");
+// V2.9.2.1 PRODUCTION FIX -- the reported field defect: RacerClient.tsx (AI
+// Composer, HUMAN Racer) showed "Az AI tippje: „Kite”." to the human player
+// who had just typed "Kite" themselves. These are the ticket's own exact
+// required strings, for racer_kind "human".
+test("guessRevealLine: the human Racer's own view (racer_kind 'human') -- the production fix", () => {
+  assert.equal(guessRevealLine("Kite", "human"), "A tipped: „Kite”.");
+  assert.equal(guessRevealLine("  televízió távirányító  ", "human"), "A tipped: „televízió távirányító”.");
+});
+
+test("evaluationStatusLine: every experience mode produces its required character, for a guess, AI Racer perspective", () => {
+  assert.match(evaluationStatusLine("competitive", "guess", "ai"), /hivatalos ellenőrzése/, "Competitive: concise and serious");
+  assert.match(evaluationStatusLine("friendly", "guess", "ai"), /együtt/, "Friendly: warm and collaborative");
   assert.match(
-    evaluationStatusLine("teaching", "guess"),
+    evaluationStatusLine("teaching", "guess", "ai"),
     /ugyanarra a dologra utal-e.*következetesek maradtak-e/,
     "Teaching: explains what is being checked -- referent identity AND answer consistency"
   );
-  assert.match(evaluationStatusLine("humorous", "guess"), /fején találta-e a szöget/, "Humorous: playful, but a status description");
+  assert.match(evaluationStatusLine("humorous", "guess", "ai"), /fején találta-e a szöget/, "Humorous: playful, but a status description");
 });
 
-test("evaluationStatusLine: humor never asserts an outcome -- only ever describes the pending check", () => {
-  for (const mode of EXPERIENCE_MODES) {
-    const line = evaluationStatusLine(mode, "guess");
-    assert.doesNotMatch(line, /nyertél|vesztettél|helyes|helytelen/i, `${mode}'s status line must not assert a verdict`);
+test("evaluationStatusLine: every experience mode produces the corrected human-Racer wording, for a guess", () => {
+  assert.match(evaluationStatusLine("competitive", "guess", "human"), /hivatalos ellenőrzése/, "Competitive stays concise and serious");
+  assert.match(evaluationStatusLine("friendly", "guess", "human"), /sikerült-e eltalálnod/, "Friendly: 2nd person, the production fix's exact required text");
+  assert.match(
+    evaluationStatusLine("teaching", "guess", "human"),
+    /rögzített titok.*következetesek maradtak-e/,
+    "Teaching: the secret belongs to the AI Composer, not the human viewer"
+  );
+  assert.match(evaluationStatusLine("humorous", "guess", "human"), /fején találtad-e a szöget/, "Humorous: 2nd person");
+});
+
+test("evaluationStatusLine: humor never asserts an outcome -- only ever describes the pending check, in either perspective", () => {
+  for (const racerKind of ["ai", "human"] as const) {
+    for (const mode of EXPERIENCE_MODES) {
+      const line = evaluationStatusLine(mode, "guess", racerKind);
+      assert.doesNotMatch(line, /nyertél|vesztettél|helyes|helytelen/i, `${mode}/${racerKind}'s status line must not assert a verdict`);
+    }
   }
 });
 
-test("evaluationStatusLine: a legacy game (no experience_mode) gets the neutral Competitive wording", () => {
-  assert.equal(evaluationStatusLine(null, "guess"), evaluationStatusLine("competitive", "guess"));
-  assert.equal(evaluationStatusLine(null, "concede"), evaluationStatusLine("competitive", "concede"));
+test("evaluationStatusLine: a legacy game (no experience_mode) gets the neutral Competitive wording, in either perspective", () => {
+  assert.equal(evaluationStatusLine(null, "guess", "ai"), evaluationStatusLine("competitive", "guess", "ai"));
+  assert.equal(evaluationStatusLine(null, "concede", "ai"), evaluationStatusLine("competitive", "concede", "ai"));
+  assert.equal(evaluationStatusLine(null, "guess", "human"), evaluationStatusLine("competitive", "guess", "human"));
+  assert.equal(evaluationStatusLine(null, "concede", "human"), evaluationStatusLine("competitive", "concede", "human"));
 });
 
-test("evaluationStatusLine: a concede is worded distinctly from a guess, in every mode", () => {
+test("evaluationStatusLine: a concede is worded distinctly from a guess, in every mode and either perspective", () => {
+  for (const racerKind of ["ai", "human"] as const) {
+    for (const mode of [...EXPERIENCE_MODES, null] as (ExperienceMode | null)[]) {
+      assert.notEqual(evaluationStatusLine(mode, "guess", racerKind), evaluationStatusLine(mode, "concede", racerKind));
+    }
+  }
+});
+
+test("evaluationStatusLine: racer_kind 'ai' output is byte-identical to the pre-V2.9.2.1 wording -- the AI-Racer perspective must be preserved exactly", () => {
+  assert.equal(evaluationStatusLine("competitive", "guess", "ai"), "Az eredmény hivatalos ellenőrzése folyamatban.");
+  assert.equal(evaluationStatusLine("competitive", "concede", "ai"), "Az AI feladta. Az eredmény hivatalos ellenőrzése folyamatban.");
+  assert.equal(evaluationStatusLine("friendly", "guess", "ai"), "Nézzük meg együtt, sikerült-e eltalálnia!");
+  assert.equal(
+    evaluationStatusLine("friendly", "concede", "ai"),
+    "Az AI feladta a próbálkozást. Nézzük meg, kiállták-e a válaszaid az ellenőrzést!"
+  );
+  assert.equal(evaluationStatusLine("humorous", "guess", "ai"), "Most jön a hivatalos igazságpillanat — lássuk, tényleg fején találta-e a szöget!");
+});
+
+test("evaluationStatusLine/guessRevealLine: the human-Racer perspective never addresses the AI Composer's secret/answers as the viewer's own ('a titkod'/'a válaszaid')", () => {
   for (const mode of [...EXPERIENCE_MODES, null] as (ExperienceMode | null)[]) {
-    assert.notEqual(evaluationStatusLine(mode, "guess"), evaluationStatusLine(mode, "concede"));
+    for (const finalAction of ["guess", "concede"] as const) {
+      const line = evaluationStatusLine(mode, finalAction, "human");
+      assert.doesNotMatch(line, /a titkod|a válaszaid/, `${mode}/${finalAction} must not misattribute the secret/answers to the human Racer`);
+    }
   }
 });
 
@@ -213,13 +262,13 @@ test("SOURCE: EvaluationState.tsx retains the plain 'ÉRTÉKELÉS FOLYAMATBAN…
   assert.match(EVALUATION_STATE_SRC, /aria-live="polite"/);
 });
 
-test("SOURCE: EvaluationState.tsx sources its copy from lib/evaluationCopy.ts, not inline strings", () => {
+test("SOURCE: EvaluationState.tsx sources its copy from lib/evaluationCopy.ts, not inline strings, and threads racerKind (V2.9.2.1) into both calls", () => {
   assert.match(EVALUATION_STATE_SRC, /from "@\/lib\/evaluationCopy"/);
-  assert.match(EVALUATION_STATE_SRC, /guessRevealLine\(finalGuessText\)/);
-  assert.match(EVALUATION_STATE_SRC, /evaluationStatusLine\(experienceMode, finalAction\)/);
+  assert.match(EVALUATION_STATE_SRC, /guessRevealLine\(finalGuessText, racerKind\)/);
+  assert.match(EVALUATION_STATE_SRC, /evaluationStatusLine\(experienceMode, finalAction, racerKind\)/);
 });
 
-test("SOURCE: GameClient.tsx passes final_guess_text/final_action/experience_mode, and the guess is never shown before the existing pre-guess checkpoint", () => {
+test("SOURCE: GameClient.tsx passes final_guess_text/final_action/experience_mode/racer_kind, and the guess is never shown before the existing pre-guess checkpoint", () => {
   const at = GAME_CLIENT_SRC.indexOf("<EvaluationState");
   assert.ok(at > 0);
   const block = GAME_CLIENT_SRC.slice(Math.max(0, at - 300), at + 300);
@@ -227,15 +276,17 @@ test("SOURCE: GameClient.tsx passes final_guess_text/final_action/experience_mod
   assert.match(block, /finalGuessText=\{game\.final_guess_text\}/);
   assert.match(block, /finalAction=\{game\.final_action\}/);
   assert.match(block, /experienceMode=\{game\.experience_mode\}/);
+  assert.match(block, /racerKind=\{game\.racer_kind\}/, "V2.9.2.1: role must be derived from game state, not account identity or which file is rendering");
 });
 
-test("SOURCE: RacerClient.tsx passes final_guess_text/final_action/experience_mode into EvaluationState", () => {
+test("SOURCE: RacerClient.tsx passes final_guess_text/final_action/experience_mode/racer_kind into EvaluationState -- the production fix's actual call site", () => {
   const at = RACER_CLIENT_SRC.indexOf("<EvaluationState");
   assert.ok(at > 0);
   const block = RACER_CLIENT_SRC.slice(at, at + 300);
   assert.match(block, /finalGuessText=\{game\.final_guess_text\}/);
   assert.match(block, /finalAction=\{game\.final_action\}/);
   assert.match(block, /experienceMode=\{game\.experience_mode\}/);
+  assert.match(block, /racerKind=\{game\.racer_kind\}/, "V2.9.2.1: RacerClient.tsx's game.racer_kind is always \"human\" -- this prop is what fixes the reported defect");
 });
 
 // ---------------------------------------------------------------------------
