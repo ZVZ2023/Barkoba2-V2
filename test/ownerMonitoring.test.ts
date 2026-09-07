@@ -6,6 +6,8 @@ import { notifyOwnerOfNewSignup, notifyOwnerOfVerifiedSignup } from "../lib/owne
 import { getAccountTotals, rangeSince } from "../lib/adminOverview";
 import { createAccountSession } from "../lib/accountSession";
 import { registerPlayerAccount } from "../lib/playerAccounts";
+import { env } from "../lib/env";
+import { isAdminPlayer } from "../lib/admin";
 import { POST as verifyEmailPOST } from "../app/api/account/verify-email/route";
 import { GET as adminOverviewGET } from "../app/api/admin/overview/route";
 
@@ -472,6 +474,56 @@ test("GET /api/admin/overview refuses an anonymous caller with no session at all
     new Request("https://barkoba.test/api/admin/overview") as Parameters<typeof adminOverviewGET>[0]
   );
   assert.equal(res.status, 403);
+});
+
+// ---------------------------------------------------------------------------
+// V2.9.2.2 PRODUCTION FIX — reported symptom: the owner set
+// ADMIN_PLAYER_IDS to their exact player_id (read from /api/account/profile,
+// which uses the SAME resolveActingPlayer identity resolution as this
+// route) and redeployed, yet /admin/overview still showed "Nincs
+// jogosultságod ehhez az oldalhoz." Root cause: env.adminPlayerIds() only
+// ever trimmed whitespace, never stripped surrounding quotes — a value
+// typed or pasted into a hosting dashboard (e.g. copied out of a JSON
+// response's `"player_id":"…"` field, or out of habit from quoting a shell
+// export) routinely keeps a leading/trailing quote character, which then
+// never exact-matches the raw, unquoted id resolveAccountSession returns.
+// This is the SAME class of dashboard-input hygiene bug booleanFlag() above
+// already guards against, for the identical reason.
+// ---------------------------------------------------------------------------
+
+test("env.adminPlayerIds strips surrounding quotes (single or double) in addition to whitespace, per id", () => {
+  const id = "a".repeat(32);
+  process.env.ADMIN_PLAYER_IDS = `"${id}"`;
+  assert.ok(env.adminPlayerIds().has(id), "a double-quoted id must still match the raw id");
+
+  process.env.ADMIN_PLAYER_IDS = `'${id}'`;
+  assert.ok(env.adminPlayerIds().has(id), "a single-quoted id must still match the raw id");
+
+  process.env.ADMIN_PLAYER_IDS = `  "${id}"  `;
+  assert.ok(env.adminPlayerIds().has(id), "surrounding whitespace AND quotes together must still match");
+});
+
+test("env.adminPlayerIds / isAdminPlayer: quote-stripping never loosens the allowlist -- a genuinely different id is still refused", () => {
+  const admin = "b".repeat(32);
+  const other = "c".repeat(32);
+  process.env.ADMIN_PLAYER_IDS = `"${admin}"`;
+  assert.equal(isAdminPlayer(admin), true);
+  assert.equal(isAdminPlayer(other), false, "an unrelated id must never be granted, quoted config or not");
+  assert.equal(isAdminPlayer(`"${admin}"`), false, "the literal quoted string itself is never itself a valid id to check against");
+});
+
+test("GET /api/admin/overview grants the allowlisted admin even when ADMIN_PLAYER_IDS was pasted with surrounding quotes -- the exact reported production symptom", async () => {
+  const owner = "1".repeat(32);
+  process.env.ADMIN_PLAYER_IDS = `"${owner}"`;
+  await registerPlayerAccount({ playerId: owner, recoveryKey: "quotedownerrk".padEnd(64, "0"), displayName: "Owner" });
+  const token = await createAccountSession(owner);
+
+  const res = await adminOverviewGET(
+    new Request("https://barkoba.test/api/admin/overview", {
+      headers: { cookie: `bk_account_session=${token}` },
+    }) as Parameters<typeof adminOverviewGET>[0]
+  );
+  assert.equal(res.status, 200, "a quoted ADMIN_PLAYER_IDS value must not deny the owner it names");
 });
 
 test("GET /api/admin/overview grants the allowlisted admin, returning bounded account totals and recent signups", async () => {
