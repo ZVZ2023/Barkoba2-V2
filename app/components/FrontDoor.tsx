@@ -169,8 +169,8 @@ export default function FrontDoor({ version }: { version?: string }) {
               <p className="text-sm leading-relaxed text-neutral-700">
                 A kérdező AI alapértelmezetten az ingyenes „Érvelő AI” motort
                 használja. Megvásárolt VERSENY-egyenlegből a prémium „Emberi
-                szintű AI” motorra is válthatsz — 2 gombóc, jelenleg kb. 4,20
-                USD / játék.
+                szintű AI” motorra is válthatsz — 2 digitális fagyigombóc,
+                jelenleg kb. 4,20 USD / játék.
               </p>
             </div>
 

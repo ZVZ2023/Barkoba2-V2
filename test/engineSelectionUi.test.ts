@@ -56,7 +56,7 @@ test("SOURCE: the provider/model behind either engine is never named in Composer
 test("SOURCE: complete Hungarian and English price/disclaimer copy exists, keyed to the game's language", () => {
   assert.match(COMPOSER, /hu: \{/);
   assert.match(COMPOSER, /en: \{/);
-  assert.match(COMPOSER, /2 gombóc — jelenleg kb\. 4,20 USD \/ játék/);
+  assert.match(COMPOSER, /2 digitális fagyigombóc — jelenleg kb\. 4,20 USD \/ játék/);
   assert.match(COMPOSER, /2 scoops — currently about USD 4\.20 per game/);
   assert.match(
     COMPOSER,
