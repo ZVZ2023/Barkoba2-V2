@@ -28,6 +28,7 @@ import type { ComposerAnswer, ExperienceMode, GameLanguage, GameRecord, Question
 import ResultPanel from "./ResultPanel";
 import AccountControl from "@/app/components/AccountControl";
 import EvaluationState from "@/app/components/EvaluationState";
+import FeedbackAction from "@/app/components/FeedbackAction";
 import ThinkingIndicator from "@/app/components/ThinkingIndicator";
 import { useResultReveal } from "@/app/components/useResultReveal";
 
@@ -778,6 +779,18 @@ export default function GameClient({
             experience_mode) shows nothing here, exactly as before. */}
         {game.experience_mode ? ` · ${EXPERIENCE_MODE_LABEL_HU[game.experience_mode]}` : ""}
       </p>
+
+      {/*
+        V2.9.1 HU MVP — reachable during active play too, not only after the
+        game ends. A separate component with its own local state; mounting
+        it here cannot touch, clear, or interfere with anything the player
+        has typed elsewhere on this screen. Hidden once complete — ResultPanel
+        below carries its own FeedbackAction from there, so exactly one is
+        ever visible at a time.
+      */}
+      {game.phase === "questioning" && (
+        <FeedbackAction gameId={game.game_id} gameLanguage={game.game_language} />
+      )}
 
       {/*
         V2.8.7.3 — the result is the PRIMARY visible content on completion:

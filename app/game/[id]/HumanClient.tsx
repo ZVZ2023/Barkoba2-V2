@@ -317,6 +317,16 @@ export default function HumanClient({
         )}
       </div>
 
+      {/*
+        V2.9.1 HU MVP — reachable during active play too, not only after the
+        game ends. A separate component with its own local state; mounting
+        it here cannot touch, clear, or interfere with anything either
+        player has typed elsewhere on this screen. Hidden once complete —
+        the result block below carries its own FeedbackAction from there, so
+        exactly one is ever visible at a time.
+      */}
+      {!over && <FeedbackAction gameId={view.game_id} gameLanguage={view.game_language} />}
+
       {/* The Composer's own secret. Never present in a Racer payload. */}
       {isComposerView(view) && !over && (
         <div className="rounded-md border border-[#1e3a24]/25 bg-[#1e3a24]/5 p-3 text-sm">

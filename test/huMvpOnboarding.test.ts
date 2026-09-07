@@ -31,6 +31,9 @@ const SITE_FOOTER = readFileSync("app/components/SiteFooter.tsx", "utf8");
 const COPY = readFileSync("lib/ui/copy.ts", "utf8");
 const REGISTER_ROUTE = readFileSync("app/api/account/register/route.ts", "utf8");
 const CLAIM_PROMPT = readFileSync("app/components/ClaimPrompt.tsx", "utf8");
+const RACER_CLIENT = readFileSync("app/game/[id]/RacerClient.tsx", "utf8");
+const GAME_CLIENT = readFileSync("app/game/[id]/GameClient.tsx", "utf8");
+const HUMAN_CLIENT = readFileSync("app/game/[id]/HumanClient.tsx", "utf8");
 
 /**
  * Several files in this pass carry a dev comment that explains what was
@@ -81,6 +84,62 @@ test("AccountControl clearly labels the login path, without touching ClaimPrompt
 
 test("registration already self-labels via ClaimPrompt's own copy — confirms no duplicate/contradictory label was needed there", () => {
   assert.match(CLAIM_PROMPT, /Regisztrálsz játékosfiókot\?/);
+});
+
+test("a new visitor's default ClaimPrompt state is a working registration action, not a placeholder", () => {
+  // ClaimPrompt starts at step "loading" (renders null) and resolves via its
+  // own GET to /api/account/register; the DEFAULT resolved state for a
+  // fresh guest with no prior attempt is "offer" -- this is the ONLY state
+  // showing the "Regisztrálsz játékosfiókot?" heading, and it renders a real
+  // submit button wired to register(), not a dead/disabled control.
+  const offerAt = CLAIM_PROMPT.indexOf("Regisztrálsz játékosfiókot?");
+  assert.ok(offerAt > 0);
+  const offerBlock = CLAIM_PROMPT.slice(offerAt, CLAIM_PROMPT.indexOf("</div>", offerAt) + 20);
+  assert.match(offerBlock, /onClick=\{\(\) => void register\(\)\}/);
+  assert.match(offerBlock, />\s*Regisztráció\s*</, "must be labelled Registration, not a generic 'submit'");
+});
+
+// ---------------------------------------------------------------------------
+// Feedback reachable during an ACTIVE game too, not only after it ends —
+// without disturbing anything the player has typed elsewhere on the screen.
+// ---------------------------------------------------------------------------
+
+test("feedback is reachable during active play on all three game screens, gated so exactly one instance is ever visible", () => {
+  assert.match(RACER_CLIENT, /\{live && <FeedbackAction gameId=\{game\.game_id\} gameLanguage=\{game\.game_language\} \/>\}/);
+  assert.match(GAME_CLIENT, /\{game\.phase === "questioning" && \(\s*<FeedbackAction gameId=\{game\.game_id\} gameLanguage=\{game\.game_language\} \/>\s*\)\}/);
+  assert.match(HUMAN_CLIENT, /\{!over && <FeedbackAction gameId=\{view\.game_id\} gameLanguage=\{view\.game_language\} \/>\}/);
+});
+
+test("the active-play feedback action is gated OFF once the game is complete, in each of the three screens", () => {
+  // RacerClient: `live` is defined as game.phase === "questioning" -- false
+  // once complete, so the active-phase instance disappears there.
+  assert.match(RACER_CLIENT, /const live = game\.phase === "questioning";/);
+  // GameClient: gated directly on the same phase check.
+  assert.match(GAME_CLIENT, /game\.phase === "questioning" && \(\s*<FeedbackAction/);
+  // HumanClient: `over` is defined as view.phase === "complete"; `!over`
+  // covers every active sub-state (live, awaiting the other player).
+  assert.match(HUMAN_CLIENT, /const over = view\.phase === "complete";/);
+});
+
+test("the new active-play instances are a SEPARATE mount from the result-screen one -- adding them cannot lose anything typed into FeedbackForm's own textarea, or the game's own inputs", () => {
+  // FeedbackAction/FeedbackForm keep their own local `message`/`step` state
+  // (see app/components/FeedbackForm.tsx) -- an entirely separate React
+  // subtree from the game screen's own inputs (question box, answer
+  // buttons). Placing a second <FeedbackAction> earlier in the same file
+  // does not share state with the first; each mount is independent.
+  const feedbackForm = readFileSync("app/components/FeedbackForm.tsx", "utf8");
+  assert.match(feedbackForm, /const \[message, setMessage\] = useState\(""\);/);
+  assert.match(feedbackForm, /const \[step, setStep\] = useState<Step>\(\{ kind: "editing" \}\);/);
+  // Confirm the active-phase instance is its own JSX element, not a ref/prop
+  // pointing back at the result-phase one. RacerClient and HumanClient own
+  // BOTH instances directly (active + their own result markup), so each
+  // must show exactly two occurrences. GameClient's result-phase instance
+  // lives inside the separately-imported ResultPanel.tsx instead, so
+  // GameClient itself owns only the one new active-phase occurrence.
+  assert.equal((RACER_CLIENT.match(/<FeedbackAction /g) ?? []).length, 2);
+  assert.equal((HUMAN_CLIENT.match(/<FeedbackAction /g) ?? []).length, 2);
+  assert.equal((GAME_CLIENT.match(/<FeedbackAction /g) ?? []).length, 1);
+  assert.match(GAME_CLIENT, /<ResultPanel/, "GameClient's OWN result markup lives in ResultPanel, which carries the second (result-phase) instance");
 });
 
 // ---------------------------------------------------------------------------
