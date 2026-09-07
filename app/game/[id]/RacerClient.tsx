@@ -530,6 +530,16 @@ export default function RacerClient({ initialGame, versionLabel }: Props) {
       </p>
 
       {/*
+        V2.9.1 HU MVP — reachable during active play too, not only after the
+        game ends. A separate component with its own local state (open/
+        message/step); mounting it here cannot touch, clear, or interfere
+        with anything the player has typed into the question box below.
+        Hidden once complete — the result panel's own FeedbackAction (below)
+        takes over from there, so exactly one is ever visible at a time.
+      */}
+      {live && <FeedbackAction gameId={game.game_id} gameLanguage={game.game_language} />}
+
+      {/*
         V2.8.7.3 — the result is the PRIMARY visible content on completion:
         it renders here, before the transcript, not after it (the old
         behavior).

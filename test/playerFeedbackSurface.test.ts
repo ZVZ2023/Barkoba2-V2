@@ -112,12 +112,19 @@ test("SOURCE: the collapsed action is a small text link, not a prominent button,
 });
 
 test("SOURCE: the action does not appear before the primary 'Új játék' / new-game link in either GameClient's or RacerClient's result markup", () => {
+  // V2.9.1 HU MVP added a SECOND, phase-gated FeedbackAction to RacerClient
+  // (and GameClient's own screen, via a direct import rather than through
+  // ResultPanel) so feedback is reachable during active play too, not only
+  // after the game ends — that earlier occurrence necessarily precedes "Új
+  // játék", which exists only in the result markup. The guarantee this test
+  // protects is scoped to the RESULT section specifically: search for the
+  // action from the new-game link onward, not the file's first occurrence.
   const panelNewGameAt = RESULT_PANEL.indexOf("Új játék");
   const panelActionAt = RESULT_PANEL.indexOf("<FeedbackAction");
   assert.ok(panelNewGameAt > 0 && panelActionAt > panelNewGameAt);
 
   const racerNewGameAt = RACER_CLIENT.indexOf("Új játék");
-  const racerActionAt = RACER_CLIENT.indexOf("<FeedbackAction");
+  const racerActionAt = RACER_CLIENT.indexOf("<FeedbackAction", racerNewGameAt);
   assert.ok(racerNewGameAt > 0 && racerActionAt > racerNewGameAt);
 });
 

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { copy } from "@/lib/ui/copy";
 import PlayerAwareSiteHeader from "./PlayerAwareSiteHeader";
 import SiteFooter from "./SiteFooter";
+import WelcomeVideoSlot from "./WelcomeVideoSlot";
 
 // ---------------------------------------------------------------------------
 // The front door: real HTML over the artwork stage.
@@ -104,6 +105,78 @@ export default function FrontDoor({ version }: { version?: string }) {
                 </li>
               ))}
             </ol>
+          </section>
+
+          {/*
+            V2.9.1 HU MVP ONBOARDING — a newcomer landing on "/" had no brief
+            explanation of the two roles, the current beta status, the free
+            trial game, the 5-credit registration bonus, or that a paid
+            engine tier exists — all of it lived behind /rules, /purchase, or
+            a finished game, never here. Copy reused verbatim from its
+            existing approved sources rather than invented: role titles/
+            details from `copy.modes` (already used on /play), the beta
+            framing from app/beta/BetaClient.tsx's own live copy, and the
+            premium price from app/ComposerEntry.tsx's PREMIUM_PRICE_COPY —
+            same string, not a second one that could drift from it.
+            WelcomeVideoSlot is reused here specifically so the video is
+            reachable BEFORE registration; its two other placements
+            (PurchaseClient, ClaimPrompt) are both post-registration gates.
+          */}
+          <section
+            aria-label="Mielőtt elkezded"
+            className="flex flex-col gap-6 rounded-2xl border border-white/60 bg-white/70 p-4 shadow-sm backdrop-blur-sm sm:p-6 lg:flex-row lg:items-start"
+          >
+            <div className="flex min-w-0 flex-1 flex-col gap-4">
+              <div>
+                <h2 className="text-2xl font-semibold tracking-tight">Mielőtt elkezded</h2>
+                <p className="mt-1 text-sm leading-relaxed text-neutral-700">
+                  A Barkóba jelenleg mindenki számára béta állapotban elérhető,
+                  magyar nyelven.
+                </p>
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="min-w-0">
+                  <p className="font-semibold leading-snug">
+                    {copy.modes.humanComposer.title}{" "}
+                    <span className="font-normal text-neutral-600">
+                      {copy.modes.humanComposer.subtitle}
+                    </span>
+                  </p>
+                  <p className="text-sm leading-snug text-neutral-700">
+                    {copy.modes.humanComposer.detail}
+                  </p>
+                </div>
+                <div className="min-w-0">
+                  <p className="font-semibold leading-snug">
+                    {copy.modes.aiComposer.title}{" "}
+                    <span className="font-normal text-neutral-600">
+                      {copy.modes.aiComposer.subtitle}
+                    </span>
+                  </p>
+                  <p className="text-sm leading-snug text-neutral-700">
+                    {copy.modes.aiComposer.detail}
+                  </p>
+                </div>
+              </div>
+
+              <p className="text-sm leading-relaxed text-neutral-700">
+                Az első játék ingyenes próbajáték. Regisztrációval — egy név és
+                egy megerősített e-mail-cím megadásával — 5 további VERSENYT
+                kapsz.
+              </p>
+
+              <p className="text-sm leading-relaxed text-neutral-700">
+                A kérdező AI alapértelmezetten az ingyenes „Érvelő AI” motort
+                használja. Megvásárolt VERSENY-egyenlegből a prémium „Emberi
+                szintű AI” motorra is válthatsz — 2 gombóc, jelenleg kb. 4,20
+                USD / játék.
+              </p>
+            </div>
+
+            <div className="shrink-0 self-center lg:self-start">
+              <WelcomeVideoSlot />
+            </div>
           </section>
         </div>
       </main>

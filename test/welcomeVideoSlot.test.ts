@@ -105,18 +105,23 @@ function allSourceFiles(dir: string): string[] {
   return out;
 }
 
-test("the video is not wired into any unrelated screen — only its own component and the two pre-existing call sites reference it", () => {
+test("the video is not wired into any unrelated screen — only its own component and the three approved call sites reference it", () => {
+  // V2.9.1 HU MVP onboarding pass deliberately added a THIRD call site,
+  // app/components/FrontDoor.tsx (the homepage) — the other two are both
+  // reachable only after registering, and the ticket for that pass
+  // explicitly required the video be discoverable before registration too.
   const referencing = allSourceFiles("app")
     .filter((f) => f !== join("app", "components", "WelcomeVideoSlot.tsx"))
     .filter((f) => readFileSync(f, "utf8").includes("WelcomeVideoSlot"));
   const allowed = new Set([
     join("app", "purchase", "PurchaseClient.tsx"),
     join("app", "components", "ClaimPrompt.tsx"),
+    join("app", "components", "FrontDoor.tsx"),
   ]);
   for (const f of referencing) {
     assert.ok(allowed.has(f), `unexpected new reference to WelcomeVideoSlot in ${f}`);
   }
-  assert.equal(referencing.length, allowed.size, "both pre-existing call sites must still be present");
+  assert.equal(referencing.length, allowed.size, "all three approved call sites must still be present");
 });
 
 test("gameplay, prompts, credits, engine-selection, authentication, history, and moderation files are untouched by this change", () => {

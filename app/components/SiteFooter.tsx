@@ -2,15 +2,17 @@
 
 import Link from "next/link";
 import { copy } from "@/lib/ui/copy";
-import { useComingSoon } from "./ComingSoon";
 
 // The four content pages are real as of 0.9.1.0 and are ordinary links now.
-// Social destinations still do not exist, so those keep the Coming Soon
-// treatment rather than pointing at invented accounts.
+//
+// V2.9.1 HU MVP — the social-icon row (Facebook/Instagram/X) that used to
+// sit below them is removed, not merely hidden or left as Coming Soon.
+// Social destinations still do not exist, and a set of icons implying they
+// do is misleading for this Hungarian launch — see app/contact/page.tsx's
+// own honest "no public channel exists yet" framing, which this now matches
+// instead of contradicting.
 
 export default function SiteFooter({ version }: { version?: string }) {
-  const comingSoon = useComingSoon();
-
   const link = (href: string, label: string) => (
     <Link
       key={href}
@@ -35,20 +37,6 @@ export default function SiteFooter({ version }: { version?: string }) {
           {link("/about", copy.footer.about)}
           {link("/contact", copy.footer.contact)}
         </nav>
-
-        <div className="flex items-center gap-3">
-          <span className="text-sm text-neutral-600">{copy.footer.social}</span>
-          {["Facebook", "Instagram", "X"].map((n) => (
-            <button
-              key={n}
-              onClick={() => comingSoon(n)}
-              aria-label={n}
-              className="flex h-11 w-11 items-center justify-center rounded-full border border-neutral-900/20 text-sm text-neutral-700"
-            >
-              {n[0]}
-            </button>
-          ))}
-        </div>
 
         <div className="flex flex-wrap items-center justify-between gap-3">
           <Link href="/compose" className="text-xs text-neutral-500 underline underline-offset-2">

@@ -11,9 +11,6 @@ export const copy = {
   brand: { name: "Barkóba", tagline: "Gondolj valamire. Az AI kitalálja." },
 
   header: {
-    language: "HU",
-    languageAria: "Nyelv",
-    languageLabel: "Nyelv",
     login: "Bejelentkezés",
   },
 
@@ -63,7 +60,6 @@ export const copy = {
     privacy: "Adatvédelem",
     about: "Rólunk",
     contact: "Kapcsolat",
-    social: "Közösség",
   },
 
   comingSoon: {

@@ -7,12 +7,21 @@ export const metadata: Metadata = { title: "Szabályzat — Barkóba" };
 // question budgets from app/api/game/create/route.ts, the flat question cost
 // from the turn and ask routes, and the adjudication/integrity conditions from
 // lib/resolveResult.ts. If the engine changes, this page is wrong until updated.
+//
+// CORRECTED IN 2.9.1.2 — "jelenlegi V1 változat" is the same hardcoded-
+// version mistake app/privacy/page.tsx already documents fixing twice (see
+// its own 2.1.3.1 note): version-neutral phrasing now matches Privacy's.
+// "Ember a ember elleni játék jelenleg nem érhető el" was also stale —
+// Human-vs-Human has been live, ungated, since V2.3.0.0 (app/play/human/) —
+// folded into a third mode instead of a denial. Experience modes, the
+// automatic question-wording pass, and the no-spelling fairness rule were
+// simply never described here; added below.
 
 export default function RulesPage() {
   return (
     <ContentPage
       title="Szabályzat"
-      lead="A Barkóba kérdéseken és következtetésen alapuló játék. Az alábbiak a jelenlegi V1 változat tényleges szabályai."
+      lead="A Barkóba kérdéseken és következtetésen alapuló játék. Az alábbiak a jelenleg telepített változat tényleges szabályai."
     >
       <Section heading="A játék lényege">
         <p>
@@ -25,15 +34,36 @@ export default function RulesPage() {
         </p>
       </Section>
 
-      <Section heading="Két játékmód">
+      <Section heading="Három játékmód">
         <Bullets
           items={[
             "Én gondolok valamire → az AI találja ki. Te rögzíted a titkot, az AI kérdez.",
             "Az AI gondol valamire → én találom ki. Az AI rögzíti a titkot, te kérdezel.",
+            "Ember a ember ellen → meghívod a másik játékost egy linkkel, és ti ketten játszotok — az AI nincs jelen egyik szerepben sem.",
           ]}
         />
+      </Section>
+
+      <Section heading="Élmény">
         <p>
-          Ember a ember elleni játék jelenleg nem érhető el.
+          Amikor az AI gondol valamire, a hangvételt is választhatod — ez csak a
+          megfogalmazást változtatja, sosem azt, mire kérdez, vagy a stratégiáját.
+        </p>
+        <Bullets
+          items={[
+            "Verseny: semleges, tömör hangvétel, díszítés nélkül.",
+            "Baráti: melegebb hangvétel — a játék elején köszön, utána a kérdésre koncentrál.",
+            "Tanító: időnként egy rövid megjegyzés arról, mit próbál éppen leszűkíteni.",
+            "Humoros: könnyed, játékos hangvétel — a kérdés pontossága ettől nem csorbul.",
+          ]}
+        />
+      </Section>
+
+      <Section heading="Kérdésfinomítás">
+        <p>
+          Ha egy kérdés nem tiszta igen/nem formában érkezik, a rendszer
+          finomíthatja a megfogalmazást — anélkül, hogy megváltoztatná, mire
+          kérdezel.
         </p>
       </Section>
 
@@ -93,6 +123,7 @@ export default function RulesPage() {
             "Ne használd ki a rendszer hibáit.",
             "Ne próbáld promptinjekcióval vagy más módon kicsalni a titkot.",
             "Ne manipuláld szándékosan a játékrendszert.",
+            "Ne kérdezz betűzésre, helyesírásra vagy kiejtésre — a jelentésről és a tulajdonságokról szól a játék, nem a szóalakról.",
           ]}
         />
       </Section>
