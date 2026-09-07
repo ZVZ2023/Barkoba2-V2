@@ -94,3 +94,36 @@ test("no other existing privacy disclosure was disturbed by this correction", ()
   assert.match(PRIVACY, /három funkcionális sütit/);
   assert.match(PRIVACY, /Digital Ice Cream-vásárlásnál/);
 });
+
+// ---------------------------------------------------------------------------
+// SECOND CORRECTION — reviewer-specified exact wording, applied verbatim
+// after independent verification against the audited payloads:
+//   - lib/prompts/integrityReview.ts:158-198 sends the full qa_log
+//     (questions AND answers) to Anthropic, conditionally (only when the
+//     guess didn't land or the Composer conceded) — matching "kerülhetnek"
+//     (may be forwarded), not an unconditional claim.
+//   - lib/prompts/adjudicator.ts:149-188 receives only target/clarification/
+//     guess, never the transcript — confirming the transcript-to-Anthropic
+//     claim belongs to the integrity-review step, not adjudication.
+//   - no player_id/display_name/balance field appears anywhere in
+//     lib/prompts/*.ts or lib/racerState.ts (grepped directly), confirming
+//     nothing account-related is separately attached to any AI request.
+// ---------------------------------------------------------------------------
+
+test("the third bullet also discloses that Integrity Review can forward questions and answers to Anthropic", () => {
+  assert.match(
+    PROVIDER_SECTION,
+    /Ebben a kérdezési lépésben a válaszaid és magyarázataid az xAI-hoz vagy az OpenAI-hoz kerülnek\. A játék végi ellenőrzés során a kérdések és válaszok az Anthropicnak is továbbításra kerülhetnek\./
+  );
+  // The old, narrower ending sentence must be gone.
+  assert.doesNotMatch(PROVIDER_SECTION, /ehhez a szolgáltatóhoz kerül, nem az Anthropichoz/);
+});
+
+test("the closing paragraph states no account data/name/balance is separately attached, with the personal-data-you-type caveat", () => {
+  assert.match(
+    PROVIDER_SECTION,
+    /Az AI-szolgáltatóknak az adott játékbeli feladathoz szükséges szöveget\s*\n?\s*továbbítjuk\. A fiókadataidat, a regisztrált nevedet és a\s*\n?\s*VERSENY-egyenlegedet nem csatoljuk külön a kérésekhez\. Ha azonban\s*\n?\s*személyes adatot írsz a játék szövegébe, az a szöveggel együtt\s*\n?\s*továbbításra kerülhet\./
+  );
+  // The old, less specific paragraph must be gone.
+  assert.doesNotMatch(PROVIDER_SECTION, /Minden esetben csak az adott lépéshez szükséges szöveg kerül/);
+});

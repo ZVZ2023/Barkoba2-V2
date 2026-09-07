@@ -115,12 +115,15 @@ export default function PrivacyPage() {
           items={[
             "Az Anthropic minden játékban ellenőrzi a rögzített titkot és a meghatározását, a játék végén pedig ő bírálja el a tippet, és — ha a tipp nem talált vagy feladtad — ő nézi át a válaszokat egy esetleges ellentmondás miatt. Ehhez mindig megkapja a titkot és a meghatározását, függetlenül attól, ki gondolt rá.",
             "Amikor az AI gondol valamire és te kérdezel, szintén az Anthropic találja ki a titkot, ő válaszol a kérdéseidre, és ő ad segítő megjegyzést, ha kérsz ilyet. Ilyenkor a kérdéseid szövege is hozzá kerül.",
-            "Amikor te gondolsz valamire és az AI kérdez, a kérdező motor más szolgáltatóhoz tartozik: az alapértelmezett, ingyenes „Érvelő AI” esetén az xAI-hoz, a megvásárolt VERSENY-egyenlegből indítható „Emberi szintű AI” esetén az OpenAI-hoz. Ilyenkor a válaszaid szövege — az IGEN/NEM/BIZONYTALAN és az ehhez fűzött magyarázat — ehhez a szolgáltatóhoz kerül, nem az Anthropichoz.",
+            "Amikor te gondolsz valamire és az AI kérdez, a kérdező motor más szolgáltatóhoz tartozik: az alapértelmezett, ingyenes „Érvelő AI” esetén az xAI-hoz, a megvásárolt VERSENY-egyenlegből indítható „Emberi szintű AI” esetén az OpenAI-hoz. Ebben a kérdezési lépésben a válaszaid és magyarázataid az xAI-hoz vagy az OpenAI-hoz kerülnek. A játék végi ellenőrzés során a kérdések és válaszok az Anthropicnak is továbbításra kerülhetnek.",
           ]}
         />
         <p>
-          Minden esetben csak az adott lépéshez szükséges szöveg kerül
-          elküldésre — soha nem a fiókod, a neved vagy a VERSENY-egyenleged.
+          Az AI-szolgáltatóknak az adott játékbeli feladathoz szükséges szöveget
+          továbbítjuk. A fiókadataidat, a regisztrált nevedet és a
+          VERSENY-egyenlegedet nem csatoljuk külön a kérésekhez. Ha azonban
+          személyes adatot írsz a játék szövegébe, az a szöveggel együtt
+          továbbításra kerülhet.
         </p>
         <p>
           Kérünk, ne írj a játékba olyan személyes vagy bizalmas információt, amelyet nem
