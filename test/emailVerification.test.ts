@@ -1700,7 +1700,7 @@ test("GET /api/account/profile refuses a caller without an active session", asyn
   assert.equal(response.status, 401);
 });
 
-test("GET /api/account/profile reports display name, email, verification status and photo — nothing else", async () => {
+test("GET /api/account/profile reports the caller's own player_id, display name, email, verification status and photo — nothing else", async () => {
   const playerId = "7".repeat(32);
   const token = await registeredSession(playerId, "zsolt@example.com");
   const response = await readProfile(
@@ -1710,7 +1710,12 @@ test("GET /api/account/profile reports display name, email, verification status 
   );
   assert.equal(response.status, 200);
   const body = await response.json();
+  // V2.9.2 — player_id is a deliberate addition (self-service admin-access
+  // discovery; see that route's own updated header) — not a leak. It is
+  // always exactly the caller's OWN id, resolved server-side from the
+  // session, never anything the caller could supply or spoof.
   assert.deepEqual(body, {
+    player_id: playerId,
     display_name: "Zsolt",
     email: "zsolt@example.com",
     email_verified: false,

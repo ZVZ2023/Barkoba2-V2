@@ -23,6 +23,7 @@ import {
   verificationTokenHash,
   EMAIL_VERIFICATION_TTL_SECONDS,
 } from "@/lib/emailVerification";
+import { notifyOwnerOfNewSignup } from "@/lib/ownerNotifications";
 
 export const dynamic = "force-dynamic";
 
@@ -129,6 +130,20 @@ export async function POST(req: Request) {
     } catch (err) {
       // eslint-disable-next-line no-console
       console.error("[barkoba] sendVerificationEmail failed (registration still succeeded):", err);
+    }
+
+    // V2.9.2 — owner-monitoring alert. A SECOND best-effort send, entirely
+    // independent of the player's own verification email above: this one
+    // never blocks or fails registration either way, and its own recipient
+    // (OWNER_NOTIFICATION_EMAIL) is unrelated to the player's address.
+    // Fires at most once per real new account — see
+    // lib/ownerNotifications.ts's own doc on why a retried registration
+    // attempt for the same player_id can never reach this a second time.
+    try {
+      await notifyOwnerOfNewSignup({ playerName: displayName, email, signupTime: new Date() });
+    } catch (err) {
+      // eslint-disable-next-line no-console
+      console.error("[barkoba] notifyOwnerOfNewSignup failed (registration still succeeded):", err);
     }
 
     const secure = new URL(req.url).protocol === "https:";

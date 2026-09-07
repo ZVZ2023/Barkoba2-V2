@@ -412,6 +412,19 @@ export const env = {
    */
   resendFromEmail: () => process.env.RESEND_FROM_EMAIL || "Barkóba <onboarding@resend.dev>",
 
+  /**
+   * V2.9.2 — owner-monitoring signup alerts (lib/ownerNotifications.ts).
+   * OPTIONAL, exactly like resendApiKey: unset means the alert is skipped
+   * (sent:false, logged), never invented and never a reason to fail
+   * registration or verification. Deliberately a SEPARATE env var from
+   * ADMIN_PLAYER_IDS — one configures who can read the admin overview
+   * (an allowlist of player_ids, checked server-side), the other configures
+   * where an email alert is delivered (an address, no relation to identity
+   * or authorization). Conflating them would mean adding a second admin
+   * silently starts emailing that admin too, which nobody asked for.
+   */
+  ownerNotificationEmail: () => process.env.OWNER_NOTIFICATION_EMAIL || null,
+
   // --- V2.6.x: profile photo upload (Vercel Blob) ---------------------------
   blobReadWriteToken: () => process.env.BLOB_READ_WRITE_TOKEN || null,
 
