@@ -45,7 +45,9 @@ interface EnginePriceCopy {
 
 const PREMIUM_PRICE_COPY: Record<"hu" | "en", EnginePriceCopy> = {
   hu: {
-    price: "2 gombóc — jelenleg kb. 4,20 USD / játék",
+    // V2.9.1.3 — "gombóc" spelled out to "digitális fagyigombóc" for
+    // clarity; the amount and USD figure are unchanged (same DICS pricing).
+    price: "2 digitális fagyigombóc — jelenleg kb. 4,20 USD / játék",
     disclaimer:
       "A hozzávetőleges USD-árfolyam és az ár a vezető csúcskategóriás modellek " +
       "szolgáltatási költségeinek változásával módosulhat.",

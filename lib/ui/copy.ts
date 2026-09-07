@@ -36,7 +36,10 @@ export const copy = {
   },
 
   features: [
-    { title: "20 kérdés", lines: ["Egy tipp.", "Semmi találgatás."] },
+    // V2.9.1.3 — replaces the old "20 kérdés / Egy tipp. / Semmi
+    // találgatás." card. One sentence, no sub-lines; FrontDoor.tsx's
+    // <p className="font-semibold leading-snug"> already wraps naturally.
+    { title: "Míg mások az AI-ról vitáznak, mi az elménket élesítjük vele.", lines: [] },
     { title: "Titokban marad", lines: ["A gondolatod csak a tiéd."] },
     { title: "Tiszta logika", lines: ["Nincsenek trükkök.", "Csak következtetés."] },
     { title: "Tisztességes játék", lines: ["Átlátható szabályok.", "Tisztelet mindenkinek."] },
@@ -55,7 +58,7 @@ export const copy = {
   },
 
   footer: {
-    tagline: "Egy gondolat. Húsz kérdés. Egy tipp.",
+    tagline: "Jó kérdések. Élesebb gondolkodás.",
     rules: "Szabályzat",
     privacy: "Adatvédelem",
     about: "Rólunk",
