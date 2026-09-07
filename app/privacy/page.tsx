@@ -8,8 +8,26 @@ export const metadata: Metadata = { title: "Adatvédelem — Barkóba" };
 //   lib/gameStore.ts   — state:<id>, TTL from GAME_TTL_SECONDS (24h default)
 //   lib/secretStore.ts — secret:<id>, same TTL
 //   lib/callBudget.ts  — aggregate counters, no personal data
-//   lib/anthropic.ts   — game text is sent to api.anthropic.com
+//   lib/providers/anthropic.ts — target validation/generation, Composer
+//     answering and clues, adjudication, and integrity review: all run on
+//     api.anthropic.com, for every game, regardless of who plays what.
+//   lib/providers/xai.ts, lib/providers/openai.ts — the AI Racer OPPONENT
+//     (when you set the secret and it asks the questions) runs on
+//     api.x.ai (default "Érvelő AI" tier) or api.openai.com (purchased
+//     "Emberi szintű AI" tier) instead — see lib/racerEngineTier.ts and
+//     app/api/game/create/route.ts's PUBLIC_RACER_PROVIDER/
+//     PREMIUM_RACER_PROVIDER for exactly which tier maps to which vendor.
 //   lib/playerIdentity.ts / middleware.ts — two functional cookies (V2)
+//
+// CORRECTED IN 2.9.1.1 — this section previously named only Anthropic as
+// the recipient of "the secret, its definition, the questions and the
+// answers." That was true only for games where the AI plays Composer
+// (invents the secret, answers your questions) or for the validation/
+// adjudication/integrity steps every game goes through regardless of mode.
+// It was never true for the OTHER direction — you set the secret, the AI
+// asks the questions — where the Racer opponent is xAI or OpenAI depending
+// on engine tier, and it receives your own YES/NO/BIZONYTALAN answers (and
+// any explanation you attach to one). Two vendors were simply missing.
 //
 // CORRECTED IN 2.1.2.0. This page previously stated that no cookie handling
 // existed. That was true of V1 and became false in 2.1.1.0, when the anonymous
@@ -88,11 +106,24 @@ export default function PrivacyPage() {
         </p>
       </Section>
 
-      <Section heading="Amit az AI-szolgáltatónak elküldünk">
+      <Section heading="Amit az AI-szolgáltatóknak elküldünk">
         <p>
-          A játék működéséhez a szövegek — a titok, a meghatározása, a kérdések és a
-          válaszok — feldolgozásra elküldésre kerülnek az Anthropic API-jának. Csak azt
-          küldjük el, ami a játékhoz szükséges.
+          A Barkóba jelenleg három külső AI-szolgáltatót használ — mindig csak
+          azt, amelyiknek az adott lépésben szerepe van.
+        </p>
+        <Bullets
+          items={[
+            "Az Anthropic minden játékban ellenőrzi a rögzített titkot és a meghatározását, a játék végén pedig ő bírálja el a tippet, és — ha a tipp nem talált vagy feladtad — ő nézi át a válaszokat egy esetleges ellentmondás miatt. Ehhez mindig megkapja a titkot és a meghatározását, függetlenül attól, ki gondolt rá.",
+            "Amikor az AI gondol valamire és te kérdezel, szintén az Anthropic találja ki a titkot, ő válaszol a kérdéseidre, és ő ad segítő megjegyzést, ha kérsz ilyet. Ilyenkor a kérdéseid szövege is hozzá kerül.",
+            "Amikor te gondolsz valamire és az AI kérdez, a kérdező motor más szolgáltatóhoz tartozik: az alapértelmezett, ingyenes „Érvelő AI” esetén az xAI-hoz, a megvásárolt VERSENY-egyenlegből indítható „Emberi szintű AI” esetén az OpenAI-hoz. Ebben a kérdezési lépésben a válaszaid és magyarázataid az xAI-hoz vagy az OpenAI-hoz kerülnek. A játék végi ellenőrzés során a kérdések és válaszok az Anthropicnak is továbbításra kerülhetnek.",
+          ]}
+        />
+        <p>
+          Az AI-szolgáltatóknak az adott játékbeli feladathoz szükséges szöveget
+          továbbítjuk. A fiókadataidat, a regisztrált nevedet és a
+          VERSENY-egyenlegedet nem csatoljuk külön a kérésekhez. Ha azonban
+          személyes adatot írsz a játék szövegébe, az a szöveggel együtt
+          továbbításra kerülhet.
         </p>
         <p>
           Kérünk, ne írj a játékba olyan személyes vagy bizalmas információt, amelyet nem
